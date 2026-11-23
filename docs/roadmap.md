@@ -43,7 +43,7 @@ layer.
 ## B. Catalog
 
 - [x] B1 Variants and options: up to 3 options per product, variants with own SKU and price (product currency), options change only while variants still fit **alpha**
-- [ ] B2 Collections **alpha**
+- [x] B2 Collections: hand-picked, ordered, unique handles per shop **alpha**
 - [ ] B3 Smart collections
 - [ ] B4 Categories and tags **alpha**
 - [ ] B5 Custom fields **alpha**
