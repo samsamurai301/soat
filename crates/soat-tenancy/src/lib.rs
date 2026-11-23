@@ -18,12 +18,15 @@
 //!     WITH CHECK (tenant_id = current_setting('soat.tenant', true));
 //! ```
 
+pub mod api_keys;
 mod extract;
 mod list;
 pub mod routes;
 pub mod staff;
 
-pub use extract::{enter, Access, Tenant, TenantTx, HEADER, OWNER, SETTING, STAFF};
+pub use extract::{
+    enter, Access, Actor, Tenant, TenantTx, API_KEY_PREFIX, HEADER, OWNER, SETTING, STAFF,
+};
 pub use list::TenantListing;
 
 use soat_core::Permission;
@@ -57,10 +60,12 @@ impl Module for Tenancy {
     }
 
     fn permissions(&self) -> &'static [Permission] {
-        &[STAFF_READ, STAFF_MANAGE]
+        &[STAFF_READ, STAFF_MANAGE, api_keys::API_KEYS_MANAGE]
     }
 
     fn mount(&self, app: App) -> App {
-        app.plugin(routes::mount).plugin(staff::mount)
+        app.plugin(routes::mount)
+            .plugin(staff::mount)
+            .plugin(api_keys::mount)
     }
 }

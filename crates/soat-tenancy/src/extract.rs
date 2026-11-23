@@ -10,6 +10,8 @@ use std::collections::HashSet;
 use soat_auth::Staff;
 use soat_core::{Permission, TenantId};
 use soat_module::Permissions;
+use zapline::auth::password::hash_token;
+use zapline::auth::BearerToken;
 use zapline::db::sqlx::{PgConnection, Postgres, Transaction};
 use zapline::db::{sqlx, Db};
 use zapline::extract::FromRequestParts;
@@ -25,35 +27,67 @@ pub const SETTING: &str = "soat.tenant";
 /// query on tenant-owned tables on it (`&mut *tx`), then `tx.commit()`.
 pub type TenantTx = Transaction<'static, Postgres>;
 
-/// The shop named by the request and the signed-in user acting for it.
-/// Call [`Tenant::begin`] before touching its data: that is where
-/// membership is checked.
+/// The prefix of every SOAT API key: `soat_sk_<shop>_<secret>`.
+pub const API_KEY_PREFIX: &str = "soat_sk_";
+
+/// The shop a request acts for and who acts: a signed-in user or an API
+/// key. Call [`Tenant::begin`] before touching its data: that is where
+/// membership or the key is checked.
 pub struct Tenant {
     pub id: TenantId,
-    pub staff: Staff,
+    pub actor: Actor,
     permissions: Permissions,
+}
+
+/// Who acts for the shop.
+#[derive(Debug, Clone)]
+pub enum Actor {
+    /// A signed-in user, checked against the shop's memberships.
+    Staff(Staff),
+    /// An API key of the shop (scripts, apps, Claude). Only its SHA-256 is
+    /// known until [`Tenant::begin`] looks it up.
+    ApiKey { token_hash: String },
 }
 
 impl FromRequestParts for Tenant {
     async fn from_request_parts(req: &mut Request) -> Result<Self> {
-        let raw = req
+        let header = req
             .headers()
             .get(HEADER)
             .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| {
+            .map(|raw| {
+                TenantId::parse(raw)
+                    .map_err(|e| Error::bad_request(e.to_string()).with_code("invalid_tenant"))
+            })
+            .transpose()?;
+        let bearer = BearerToken::from_request_parts(req).await.ok();
+        let api_key = bearer
+            .as_ref()
+            .and_then(|b| b.token().strip_prefix(API_KEY_PREFIX));
+        let (id, actor) = if let Some(rest) = api_key {
+            // The key names its shop; a header, if sent, must agree.
+            let shop = rest
+                .split_once('_')
+                .and_then(|(shop, _)| TenantId::parse(shop).ok())
+                .ok_or_else(|| Error::unauthorized().with_code("invalid_api_key"))?;
+            if header.as_ref().is_some_and(|h| *h != shop) {
+                return Err(unknown());
+            }
+            let token_hash = hash_token(bearer.as_ref().map(|b| b.token()).unwrap_or_default());
+            (shop, Actor::ApiKey { token_hash })
+        } else {
+            let id = header.ok_or_else(|| {
                 Error::bad_request("missing x-soat-tenant header").with_code("missing_tenant")
-            })?
-            .to_owned();
-        let id = TenantId::parse(&raw)
-            .map_err(|e| Error::bad_request(e.to_string()).with_code("invalid_tenant"))?;
-        let staff = Staff::from_request_parts(req).await?;
+            })?;
+            (id, Actor::Staff(Staff::from_request_parts(req).await?))
+        };
         let permissions = State::<Permissions>::from_request_parts(req)
             .await
             .map(|State(p)| p)
             .unwrap_or_default();
         Ok(Tenant {
             id,
-            staff,
+            actor,
             permissions,
         })
     }
@@ -137,12 +171,32 @@ impl Tenant {
             return Err(unknown());
         }
         enter(&mut tx, &self.id).await?;
-        if self.staff.is_platform_admin {
+        let staff = match &self.actor {
+            Actor::Staff(staff) => staff,
+            Actor::ApiKey { token_hash } => {
+                let key: Option<(String, Vec<String>)> = sqlx::query_as(
+                    "SELECT name, permissions FROM api_keys \
+                     WHERE token_hash = $1 AND revoked_at IS NULL",
+                )
+                .bind(token_hash)
+                .fetch_optional(&mut *tx)
+                .await?;
+                let Some((name, permissions)) = key else {
+                    return Err(Error::unauthorized().with_code("invalid_api_key"));
+                };
+                let access = Access {
+                    role: format!("api_key:{name}"),
+                    granted: Granted::Only(permissions.into_iter().collect()),
+                };
+                return Ok((tx, access));
+            }
+        };
+        if staff.is_platform_admin {
             return Ok((tx, owner()));
         }
         let role: Option<(String,)> =
             sqlx::query_as("SELECT role FROM memberships WHERE user_id = $1")
-                .bind(self.staff.user_id.as_str())
+                .bind(staff.user_id.as_str())
                 .fetch_optional(&mut *tx)
                 .await?;
         let Some((role,)) = role else {
@@ -184,6 +238,14 @@ impl Tenant {
 
     pub fn id(&self) -> &str {
         self.id.as_str()
+    }
+
+    /// The signed-in user, or `None` for an API key.
+    pub fn staff(&self) -> Option<&Staff> {
+        match &self.actor {
+            Actor::Staff(staff) => Some(staff),
+            Actor::ApiKey { .. } => None,
+        }
     }
 }
 

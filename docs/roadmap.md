@@ -30,7 +30,7 @@ through events, never by importing each other.
 - [x] A4 Row-level security per shop (`Tenant::begin`, `TenantListing`), a test that fails for any unprotected `tenant_id` table **alpha**
 - [x] A5 First-run setup token, platform admin, staff accounts and memberships, bearer sessions; shop creation behind auth **alpha**
 - [x] A6 Permissions declared per module, built-in owner and staff roles, custom roles, no granting beyond your own permissions **alpha**
-- [ ] A7 API keys with scopes **alpha**
+- [x] A7 Shop API keys (`soat_sk_<shop>_…`) scoped by permissions, shown once, revocable, never beyond their creator **alpha**
 - [ ] A8 Domain events and transactional outbox **alpha**
 - [ ] A9 Webhooks: signed, retried, logged **alpha**
 - [ ] A10 Audit log **alpha**

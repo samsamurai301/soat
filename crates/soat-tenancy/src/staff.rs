@@ -200,7 +200,10 @@ async fn change_role(
     Path(user_id): Path<String>,
     Json(change): Json<RoleChange>,
 ) -> Result<Json<Member>> {
-    if user_id == tenant.staff.user_id.as_str() {
+    if tenant
+        .staff()
+        .is_some_and(|s| s.user_id.as_str() == user_id)
+    {
         return Err(Error::forbidden().with_code("own_role"));
     }
     let (mut tx, access) = tenant.begin_with_access(&db).await?;
