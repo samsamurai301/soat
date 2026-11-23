@@ -62,6 +62,8 @@ curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-te
 | `crates/soat-shipping` | Shipping zones and rates by order value and weight |
 | `crates/soat-payments` | Payment provider trait, payment methods, payments and refunds, manual payment |
 | `crates/soat-stripe` | Stripe provider: PaymentIntents, Connect accounts, refunds, signed webhooks (feature `stripe`) |
+| `crates/soat-mollie` | Mollie provider: iDEAL, Bancontact, cards, Klarna and more, refunds, webhooks checked with Mollie (feature `mollie`) |
+| `crates/soat-paypal` | PayPal provider: Orders v2, capture or authorize, partner merchants, refunds, verified webhooks (feature `paypal`) |
 | `crates/soat-promotions` | Discount codes: percentage, fixed amount, free shipping, with dates, minimums and limits |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
@@ -89,7 +91,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Tax zones and EU VAT
 - [x] Shipping zones and rates
 - [x] Payments core and manual payment
-- [x] Stripe
+- [x] Stripe, Mollie and PayPal
 - [x] Orders
 - [x] Checkout
 - [x] Fulfillment, returns and refunds

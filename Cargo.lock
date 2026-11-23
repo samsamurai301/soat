@@ -1570,6 +1570,7 @@ dependencies = [
  "soat-notify",
  "soat-orders",
  "soat-payments",
+ "soat-paypal",
  "soat-pricing",
  "soat-promotions",
  "soat-shipping",
@@ -1814,6 +1815,22 @@ dependencies = [
  "soat-module",
  "soat-tenancy",
  "sqlx",
+ "tokio",
+ "zapline",
+]
+
+[[package]]
+name = "soat-paypal"
+version = "0.0.1"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-module",
+ "soat-payments",
+ "soat-tenancy",
  "tokio",
  "zapline",
 ]

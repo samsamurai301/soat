@@ -46,6 +46,9 @@ pub struct Settings {
     /// Mollie, when configured.
     #[cfg(feature = "mollie")]
     pub mollie: Option<soat_mollie::MollieConfig>,
+    /// PayPal, when configured.
+    #[cfg(feature = "paypal")]
+    pub paypal: Option<soat_paypal::PayPalConfig>,
 }
 
 impl Settings {
@@ -54,6 +57,8 @@ impl Settings {
     /// `STORAGE_SECRET` to keep file links valid across restarts;
     /// `SOAT_STRIPE_SECRET_KEY` and `SOAT_STRIPE_WEBHOOK_SECRET` for Stripe;
     /// `SOAT_MOLLIE_API_KEY` and `SOAT_PUBLIC_URL` (for its webhooks) for Mollie;
+    /// `SOAT_PAYPAL_CLIENT_ID`, `SOAT_PAYPAL_CLIENT_SECRET` and
+    /// `SOAT_PAYPAL_WEBHOOK_ID` for PayPal;
     /// `SMTP_URL` and `MAIL_FROM` for email (without `SMTP_URL`, a debug
     /// build keeps mail in the dev inbox at `/_dev/mail`).
     ///
@@ -74,6 +79,8 @@ impl Settings {
             stripe: soat_stripe::StripeConfig::from_env(),
             #[cfg(feature = "mollie")]
             mollie: soat_mollie::MollieConfig::from_env(),
+            #[cfg(feature = "paypal")]
+            paypal: soat_paypal::PayPalConfig::from_env(),
         })
     }
 
@@ -88,6 +95,8 @@ impl Settings {
             stripe: None,
             #[cfg(feature = "mollie")]
             mollie: None,
+            #[cfg(feature = "paypal")]
+            paypal: None,
         }
     }
 }
@@ -103,6 +112,12 @@ pub fn modules(settings: Settings) -> Modules {
     #[cfg(feature = "mollie")]
     if let Some(config) = &settings.mollie {
         payments = payments.with(soat_mollie::Mollie::new(config.clone()));
+    }
+    #[cfg(feature = "paypal")]
+    let paypal = settings.paypal.clone().map(soat_paypal::PayPal::new);
+    #[cfg(feature = "paypal")]
+    if let Some(p) = &paypal {
+        payments = payments.with(p.clone());
     }
     let modules = Modules::new()
         .with(settings.auth)
@@ -132,6 +147,11 @@ pub fn modules(settings: Settings) -> Modules {
     #[cfg(feature = "mollie")]
     let modules = match settings.mollie {
         Some(config) => modules.with(soat_mollie::MollieWebhooks::new(config)),
+        None => modules,
+    };
+    #[cfg(feature = "paypal")]
+    let modules = match paypal {
+        Some(p) => modules.with(p.webhooks()),
         None => modules,
     };
     modules

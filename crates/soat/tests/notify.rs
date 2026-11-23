@@ -284,6 +284,9 @@ async fn order_events_send_email() {
         200,
     )
     .await;
+    // Each step's emails go out before the next step (order.paid comes
+    // from a subscriber, so it takes a second round).
+    s.dispatch().await;
     s.dispatch().await;
     s.staff(
         "POST",
@@ -292,6 +295,7 @@ async fn order_events_send_email() {
         201,
     )
     .await;
+    s.dispatch().await;
     s.staff(
         "POST",
         &format!("/api/orders/{id}/refunds"),

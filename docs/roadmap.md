@@ -77,7 +77,7 @@ layer.
 - [ ] C15 Gift cards and store credit
 - [x] C16 Transactional email: order confirmation, staff new-order notice, payment received (off by default), shipping confirmation with tracking, cancellation and refund emails from order events, sent once per event; shops reword any template (a small safe template language), preview it, turn templates off, set sender name and reply-to; a sent log with resend; SMTP through Zapline's mailer **alpha**
 - [x] C17 Invoices and credit notes: shop legal details, an invoice per order when paid, placed or by hand, gapless numbers per series and year, lines with net, VAT and gross, totals per rate, reverse-charge note, immutable once issued; refunds issue credit notes split over the invoice's rates, staff issue more; printable HTML for staff and the buyer **alpha**
-- [ ] C18 PayPal and Mollie
+- [x] C18 PayPal and Mollie: Mollie with one platform key or organization token and a profile per method, checkout redirect, capture, cancel, refunds, webhooks that re-read the payment from Mollie; PayPal Orders v2 with buyer approval, capture or authorize, partner merchant accounts, refunds and voids, webhooks verified with PayPal; both behind features, tested against local fakes **alpha**
 - [ ] C19 Carrier adapters and labels
 - [ ] C20 Order edits and draft orders
 
