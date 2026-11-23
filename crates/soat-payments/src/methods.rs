@@ -2,8 +2,9 @@
 
 use serde_json::Value;
 use soat_core::id_kind;
-use soat_tenancy::{Shop, Tenant};
+use soat_tenancy::{Scope, Shop, Tenant};
 use zapline::db::sqlx::types::Json as SqlJson;
+use zapline::db::sqlx::PgConnection;
 use zapline::db::{sqlx, Db};
 use zapline::prelude::*;
 
@@ -295,22 +296,33 @@ async fn delete_method(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// The payment methods a buyer can choose, in order.
-#[get("/api/storefront/payment-methods", tag = "storefront")]
-async fn storefront_methods(db: Db, shop: Shop) -> Result<Json<PublicMethodList>> {
-    let mut tx = shop.begin(&db).await?;
+/// The active payment methods a buyer can choose, in order.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn public_methods(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+) -> Result<Vec<PublicMethod>> {
     let rows: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT id, provider, name FROM payment_methods WHERE tenant_id = $1 AND active \
          ORDER BY position, name",
     )
-    .bind(shop.id())
-    .fetch_all(&mut *tx)
+    .bind(scope.tenant_id())
+    .fetch_all(conn)
     .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, provider, name)| PublicMethod { id, provider, name })
+        .collect())
+}
+
+/// The payment methods a buyer can choose, in order.
+#[get("/api/storefront/payment-methods", tag = "storefront")]
+async fn storefront_methods(db: Db, shop: Shop) -> Result<Json<PublicMethodList>> {
+    let mut tx = shop.begin(&db).await?;
+    let items = public_methods(&mut tx, &shop).await?;
     tx.commit().await?;
-    Ok(Json(PublicMethodList {
-        items: rows
-            .into_iter()
-            .map(|(id, provider, name)| PublicMethod { id, provider, name })
-            .collect(),
-    }))
+    Ok(Json(PublicMethodList { items }))
 }

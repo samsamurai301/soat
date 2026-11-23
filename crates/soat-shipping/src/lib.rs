@@ -326,6 +326,20 @@ pub async fn options(
     Ok(rows.into_iter().map(to_option).collect())
 }
 
+/// The countries the shop ships to (with an active rate), sorted. Run it
+/// in the shop's transaction.
+pub async fn countries(conn: &mut PgConnection, scope: &impl Scope) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT c.country FROM shipping_zone_countries c \
+         JOIN shipping_rates r ON r.zone_id = c.zone_id AND r.tenant_id = c.tenant_id \
+         WHERE c.tenant_id = $1 AND r.active ORDER BY c.country",
+    )
+    .bind(scope.tenant_id())
+    .fetch_all(conn)
+    .await?;
+    Ok(rows.into_iter().map(|(c,)| c).collect())
+}
+
 /// The rate `rate_id` if it applies to `q`, else `None`. Run it in the
 /// shop's transaction.
 pub async fn option(

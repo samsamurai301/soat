@@ -1,0 +1,72 @@
+<h1>Checkout</h1>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+<div class="checkout">
+<section>
+<form class="fields" method="post" action="/checkout">
+  <fieldset>
+    <legend>Contact</legend>
+    <label>Email <input type="email" name="email" value="{{ checkout.email }}" autocomplete="email" required></label>
+  </fieldset>
+  <fieldset>
+    <legend>Shipping address</legend>
+    <div class="pair">
+      <label>First name <input name="first_name" value="{{ address.first_name }}" autocomplete="given-name"></label>
+      <label>Last name <input name="last_name" value="{{ address.last_name }}" autocomplete="family-name"></label>
+    </div>
+    <label>Company <input name="company" value="{{ address.company }}" autocomplete="organization"></label>
+    <label>Street and number <input name="line1" value="{{ address.line1 }}" autocomplete="address-line1" required></label>
+    <label>Address line 2 <input name="line2" value="{{ address.line2 }}" autocomplete="address-line2"></label>
+    <div class="pair">
+      <label>Postal code <input name="postal_code" value="{{ address.postal_code }}" autocomplete="postal-code"></label>
+      <label>City <input name="city" value="{{ address.city }}" autocomplete="address-level2" required></label>
+    </div>
+    <label>Country
+      <select name="country" autocomplete="country">{{#each countries }}<option value="{{ code }}"{{#if selected }} selected{{/if}}>{{ name }}</option>{{/each}}</select>
+    </label>
+    <label>Phone <input type="tel" name="phone" value="{{ address.phone }}" autocomplete="tel"></label>
+    <label>VAT number (businesses) <input name="vat_number" value="{{ checkout.vat_number }}"></label>
+  </fieldset>
+  {{#if shipping_options }}
+  <fieldset>
+    <legend>Shipping</legend>
+    {{#each shipping_options }}
+    <label class="choice"><input type="radio" name="shipping_rate_id" value="{{ rate_id }}"{{#if selected }} checked{{/if}}> {{ name }} · {{ price }}{{#if days }} <span class="muted">({{ days }})</span>{{/if}}</label>
+    {{/each}}
+  </fieldset>
+  {{else}}{{#if address.line1 }}<p class="notice">We do not ship to this address yet.</p>{{/if}}{{/if}}
+  <fieldset>
+    <legend>Discount code</legend>
+    <label>Code <input name="discount_code" value="{{ discount_code }}"></label>
+    {{#if checkout.discount_issue }}<p class="notice">{{ checkout.discount_issue }}</p>{{/if}}
+  </fieldset>
+  <button class="button" type="submit">{{#if ready }}Update{{else}}Continue{{/if}}</button>
+</form>
+{{#if ready }}
+<form class="fields" method="post" action="/checkout/complete">
+  <fieldset>
+    <legend>Payment</legend>
+    {{#each payment_methods }}
+    <label class="choice"><input type="radio" name="payment_method_id" value="{{ id }}"{{#if checked }} checked{{/if}} required> {{ name }}</label>
+    {{/each}}
+  </fieldset>
+  {{#if payment_methods }}<button class="button" type="submit">Place order · {{ totals.total }}</button>{{else}}<p class="notice">This shop takes no payments yet.</p>{{/if}}
+</form>
+{{/if}}
+</section>
+<aside class="summary">
+  <h2>Your order</h2>
+  <table class="cart-lines">
+    <tbody>
+    {{#each lines }}<tr><td>{{ quantity }} × {{ title }}</td><td>{{ total }}</td></tr>{{/each}}
+    </tbody>
+  </table>
+  <dl class="totals">
+    <dt>Subtotal</dt><dd>{{ totals.subtotal }}</dd>
+    {{#if totals.shipping }}<dt>Shipping</dt><dd>{{ totals.shipping }}</dd>{{/if}}
+    {{#if totals.discount }}<dt>Discount{{#if checkout.discount.code }} ({{ checkout.discount.code }}){{/if}}</dt><dd>−{{ totals.discount }}</dd>{{/if}}
+    {{#if totals.tax }}<dt>{{#if checkout.prices_include_tax }}Including VAT{{else}}VAT{{/if}}</dt><dd>{{ totals.tax }}</dd>{{/if}}
+    <dt class="total">Total</dt><dd class="total">{{ totals.total }}</dd>
+  </dl>
+  <p><a href="/cart">Change the cart</a></p>
+</aside>
+</div>

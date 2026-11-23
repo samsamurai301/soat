@@ -23,7 +23,7 @@ use soat_module::Module;
 use zapline::embed::Dir;
 use zapline::prelude::*;
 
-pub use methods::{active_method, PaymentMethod, PaymentMethodId};
+pub use methods::{active_method, public_methods, PaymentMethod, PaymentMethodId, PublicMethod};
 pub use payments::{
     apply, for_reference, get, refund, refund_reference, start, Payment, PaymentId, Refund,
     RefundResult, StartPayment,

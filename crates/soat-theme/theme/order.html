@@ -1,0 +1,29 @@
+<h1>Thank you!</h1>
+<p>Order <strong>#{{ order.number }}</strong> is placed. We sent a confirmation to {{ order.email }}.</p>
+{{#if instructions }}
+<div class="notice"><h2>How to pay</h2><p class="pre">{{ instructions }}</p></div>
+{{/if}}
+<div class="checkout">
+<section>
+  <table class="cart-lines">
+    <tbody>
+    {{#each lines }}<tr><td>{{ quantity }} × {{ title }}</td><td>{{ total }}</td></tr>{{/each}}
+    </tbody>
+  </table>
+  <dl class="totals">
+    <dt>Subtotal</dt><dd>{{ totals.subtotal }}</dd>
+    {{#if totals.shipping }}<dt>Shipping{{#if order.shipping_name }} ({{ order.shipping_name }}){{/if}}</dt><dd>{{ totals.shipping }}</dd>{{/if}}
+    {{#if totals.discount }}<dt>Discount</dt><dd>−{{ totals.discount }}</dd>{{/if}}
+    {{#if totals.tax }}<dt>{{#if order.prices_include_tax }}Including VAT{{else}}VAT{{/if}}</dt><dd>{{ totals.tax }}</dd>{{/if}}
+    <dt class="total">Total</dt><dd class="total">{{ totals.total }}</dd>
+  </dl>
+  <p class="muted">Payment: {{ payment_status }}</p>
+</section>
+{{#if order.shipping_address }}
+<aside class="summary">
+  <h2>Shipping to</h2>
+  <address>{{ order.shipping_address.first_name }} {{ order.shipping_address.last_name }}<br>{{#if order.shipping_address.company }}{{ order.shipping_address.company }}<br>{{/if}}{{ order.shipping_address.line1 }}<br>{{#if order.shipping_address.line2 }}{{ order.shipping_address.line2 }}<br>{{/if}}{{ order.shipping_address.postal_code }} {{ order.shipping_address.city }}<br>{{ order.shipping_address.country }}</address>
+</aside>
+{{/if}}
+</div>
+<p><a class="button" href="/">Keep shopping</a></p>

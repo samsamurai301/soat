@@ -291,3 +291,176 @@ async fn the_cart_lives_in_a_cookie() {
     let cart = page(&client, "acme", "/cart", Some(&forged), 200).await;
     assert!(cart.contains("Your cart is empty"));
 }
+
+async fn form(
+    client: &TestClient,
+    shop: &str,
+    path: &str,
+    cookie: &str,
+    body: Value,
+    status: u16,
+) -> zapline::test::TestResponse {
+    let res = client
+        .post(path)
+        .header("x-soat-tenant", shop)
+        .header("cookie", cookie)
+        .form(&body)
+        .send()
+        .await;
+    res.assert_status(status);
+    res
+}
+
+#[tokio::test]
+async fn buyers_check_out_and_see_their_order() {
+    let (client, t) = common::with_tenants(&["acme", "globex"]).await;
+    shop_with_products(&client, &t).await;
+    let z = admin(
+        &client,
+        &t,
+        "POST",
+        "/api/shipping/zones",
+        json!({ "name": "DE", "countries": ["DE", "AT"] }),
+    )
+    .await;
+    for (name, price) in [("Express", 1495), ("Standard", 495)] {
+        admin(
+            &client,
+            &t,
+            "POST",
+            &format!("/api/shipping/zones/{}/rates", z["id"].as_str().unwrap()),
+            json!({ "name": name, "currency": "EUR", "price_minor": price, "min_days": 1, "max_days": 3 }),
+        )
+        .await;
+    }
+    let invoice = admin(
+        &client,
+        &t,
+        "POST",
+        "/api/payment-methods",
+        json!({ "provider": "manual", "name": "Invoice", "settings": { "instructions": "Pay in 14 days" } }),
+    )
+    .await;
+    let shoe = admin(&client, &t, "GET", "/api/products?q=trail", Value::Null).await["items"][0]
+        ["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Nothing to check out yet.
+    let res = client
+        .get("/checkout")
+        .header("x-soat-tenant", "acme")
+        .send()
+        .await;
+    res.assert_status(303);
+    assert_eq!(res.header("location"), Some("/cart"));
+
+    let res = client
+        .post("/cart/add")
+        .header("x-soat-tenant", "acme")
+        .form(&json!({ "product_id": shoe }))
+        .send()
+        .await;
+    let cart = format!("soat_cart={}", res.cookie("soat_cart").unwrap().value());
+
+    let page1 = page(&client, "acme", "/checkout", Some(&cart), 200).await;
+    assert!(
+        page1.contains("<option value=\"DE\">Germany</option>"),
+        "{page1}"
+    );
+    assert!(page1.contains("<option value=\"AT\">Austria</option>"));
+    assert!(!page1.contains("Place order"), "not ready yet");
+
+    let address = json!({
+        "email": "ada@example.com", "first_name": "Ada", "last_name": "L",
+        "line1": "Hauptstr. 1", "postal_code": "10115", "city": "Berlin", "country": "DE",
+        "discount_code": ""
+    });
+    let res = form(&client, "acme", "/checkout", &cart, address.clone(), 303).await;
+    assert_eq!(res.header("location"), Some("/checkout"));
+    let page2 = page(&client, "acme", "/checkout", Some(&cart), 200).await;
+    assert!(page2.contains("value=\"ada@example.com\""), "{page2}");
+    assert!(page2.contains("<option value=\"DE\" selected>Germany</option>"));
+    // The cheapest option is chosen for the buyer.
+    assert!(page2.contains("checked> Standard · 4.95 EUR"), "{page2}");
+    assert!(page2.contains("(1–3 days)"));
+    assert!(page2.contains("Place order · 134.94 EUR"), "{page2}");
+    assert!(page2.contains(&format!(
+        "value=\"{}\" checked",
+        invoice["id"].as_str().unwrap()
+    )));
+
+    // A code that does not apply is shown; the rest is kept.
+    let mut bad = address.clone();
+    bad["discount_code"] = json!("NOPE");
+    let res = form(&client, "acme", "/checkout", &cart, bad, 422).await;
+    let text = res.text();
+    assert!(text.contains("role=\"alert\""), "{text}");
+    assert!(text.contains("value=\"NOPE\""));
+    // A bad address is shown back as typed.
+    let mut bad = address.clone();
+    bad["line1"] = json!("");
+    bad["first_name"] = json!("Grace");
+    let res = form(&client, "acme", "/checkout", &cart, bad, 422).await;
+    assert!(res.text().contains("value=\"Grace\""));
+    page(&client, "acme", "/checkout", Some(&cart), 200)
+        .await
+        .contains("value=\"Ada\"")
+        .then_some(())
+        .expect("the saved address stays");
+
+    // Express instead.
+    let mut express = address.clone();
+    let express_id = page2
+        .split("name=\"shipping_rate_id\" value=\"")
+        .nth(2)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_owned();
+    express["shipping_rate_id"] = json!(express_id);
+    form(&client, "acme", "/checkout", &cart, express, 303).await;
+    let page3 = page(&client, "acme", "/checkout", Some(&cart), 200).await;
+    assert!(page3.contains("checked> Express · 14.95 EUR"), "{page3}");
+
+    // Another shop's method is no method.
+    form(
+        &client,
+        "acme",
+        "/checkout/complete",
+        &cart,
+        json!({ "payment_method_id": "pm_nope" }),
+        422,
+    )
+    .await;
+    let res = form(
+        &client,
+        "acme",
+        "/checkout/complete",
+        &cart,
+        json!({ "payment_method_id": invoice["id"] }),
+        303,
+    )
+    .await;
+    assert_eq!(res.header("location"), Some("/order"));
+    assert!(res.cookie("soat_cart").unwrap().is_removal());
+    let set = res.cookie("soat_order").unwrap();
+    assert!(set.http_only());
+    let order = format!("soat_order={}", set.value());
+
+    let done = page(&client, "acme", "/order", Some(&order), 200).await;
+    assert!(done.contains("Order <strong>#1001</strong>"), "{done}");
+    assert!(done.contains("Pay in 14 days"));
+    assert!(done.contains("1 × Trail Shoe"));
+    assert!(done.contains("144.94 EUR"));
+    assert!(done.contains("Hauptstr. 1"));
+
+    // The cart is gone; the order is only the buyer's, and only this shop's.
+    page(&client, "acme", "/checkout", Some(&cart), 303).await;
+    let forged = format!("{}.forged", order.split('.').next().unwrap());
+    page(&client, "acme", "/order", Some(&forged), 404).await;
+    page(&client, "acme", "/order", None, 404).await;
+    page(&client, "globex", "/order", Some(&order), 404).await;
+}

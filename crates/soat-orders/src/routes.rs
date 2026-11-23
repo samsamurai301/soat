@@ -201,6 +201,15 @@ pub struct OrderToken {
 }
 
 impl OrderToken {
+    /// The holder of `token` in `shop`, e.g. from a cookie.
+    #[must_use]
+    pub fn new(shop: Shop, token: &str) -> Self {
+        Self {
+            shop,
+            hash: hash_token(token),
+        }
+    }
+
     /// Opens the shop's transaction for order `id` if the token is its;
     /// otherwise a 404. Returns the transaction and the order's id.
     ///

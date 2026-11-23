@@ -27,6 +27,76 @@ pub fn country_list(raw: &[String]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// English names of the countries shops sell to most, by code.
+const COUNTRY_NAMES: &[(&str, &str)] = &[
+    ("AD", "Andorra"),
+    ("AL", "Albania"),
+    ("AT", "Austria"),
+    ("AU", "Australia"),
+    ("BA", "Bosnia and Herzegovina"),
+    ("BE", "Belgium"),
+    ("BG", "Bulgaria"),
+    ("BR", "Brazil"),
+    ("CA", "Canada"),
+    ("CH", "Switzerland"),
+    ("CN", "China"),
+    ("CY", "Cyprus"),
+    ("CZ", "Czechia"),
+    ("DE", "Germany"),
+    ("DK", "Denmark"),
+    ("EE", "Estonia"),
+    ("ES", "Spain"),
+    ("FI", "Finland"),
+    ("FR", "France"),
+    ("GB", "United Kingdom"),
+    ("GR", "Greece"),
+    ("HR", "Croatia"),
+    ("HU", "Hungary"),
+    ("IE", "Ireland"),
+    ("IL", "Israel"),
+    ("IN", "India"),
+    ("IS", "Iceland"),
+    ("IT", "Italy"),
+    ("JP", "Japan"),
+    ("KR", "South Korea"),
+    ("LI", "Liechtenstein"),
+    ("LT", "Lithuania"),
+    ("LU", "Luxembourg"),
+    ("LV", "Latvia"),
+    ("MC", "Monaco"),
+    ("MD", "Moldova"),
+    ("ME", "Montenegro"),
+    ("MK", "North Macedonia"),
+    ("MT", "Malta"),
+    ("MX", "Mexico"),
+    ("NL", "Netherlands"),
+    ("NO", "Norway"),
+    ("NZ", "New Zealand"),
+    ("PL", "Poland"),
+    ("PT", "Portugal"),
+    ("RO", "Romania"),
+    ("RS", "Serbia"),
+    ("SE", "Sweden"),
+    ("SG", "Singapore"),
+    ("SI", "Slovenia"),
+    ("SK", "Slovakia"),
+    ("SM", "San Marino"),
+    ("TR", "Türkiye"),
+    ("UA", "Ukraine"),
+    ("US", "United States"),
+    ("VA", "Vatican City"),
+    ("ZA", "South Africa"),
+];
+
+/// The English name of country `code`, if it is one of the common ones;
+/// otherwise the code itself is the best label.
+pub fn country_name(code: &str) -> Option<&'static str> {
+    COUNTRY_NAMES
+        .binary_search_by(|(c, _)| (*c).cmp(code))
+        .ok()
+        .map(|i| COUNTRY_NAMES[i].1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -37,6 +107,8 @@ mod tests {
         assert_eq!(l(&["fr", " DE", "FR"]), Ok(vec!["DE".into(), "FR".into()]));
         assert!(l(&["DEU"]).is_err());
         assert_eq!(l(&[]), Ok(vec![]));
+        assert_eq!(country_name("DE"), Some("Germany"));
+        assert_eq!(country_name("ZZ"), None);
     }
 
     #[test]

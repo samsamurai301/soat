@@ -85,7 +85,7 @@ layer.
 
 - [x] D1 Theme engine **alpha**
 - [x] D2 Default theme **alpha**
-- [ ] D3 Storefront checkout pages **alpha**
+- [x] D3 Storefront checkout pages **alpha**
 - [ ] D4 Customer account pages **alpha**
 - [x] D5 CMS pages and blocks **alpha**
 - [x] D6 Menus **alpha**

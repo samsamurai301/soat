@@ -26,7 +26,7 @@ use soat_payments::{Payment, Providers, StartPayment};
 use soat_promotions::{AppliedDiscount, DiscountContext};
 use soat_shipping::{ShippingOption, ShippingQuery};
 use soat_tax::{QuoteInput, TaxQuote};
-use soat_tenancy::{Scope, TenantTx};
+use soat_tenancy::{Scope, Shop, TenantTx};
 use zapline::db::sqlx::types::Json as SqlJson;
 use zapline::db::sqlx::{PgConnection, PgPool};
 use zapline::db::{sqlx, Db};
@@ -406,16 +406,19 @@ async fn get_checkout(
     Ok(Json(built.view))
 }
 
-/// Give the checkout's email, addresses, VAT number, shipping choice or
-/// discount code. A shipping choice that does not apply to the address, or
-/// a code that does not apply to the cart, is a 422.
-#[patch("/api/storefront/carts/{id}/checkout", tag = "storefront")]
-async fn update_checkout(
-    db: Db,
-    holder: CartToken,
-    Path(id): Path<String>,
-    Valid(Json(c)): Valid<Json<CheckoutChange>>,
-) -> Result<Json<CheckoutView>> {
+/// Saves `c` on the checkout of open cart `id` (locked with
+/// [`CartToken::open`]) and returns it worked out again.
+///
+/// # Errors
+///
+/// 422 for a bad address or VAT number, a shipping choice that does not
+/// apply, or a discount code that does not apply.
+pub async fn update(
+    tx: &mut TenantTx,
+    shop: &Shop,
+    id: &str,
+    c: &CheckoutChange,
+) -> Result<CheckoutView> {
     for a in [&c.shipping_address, &c.billing_address]
         .into_iter()
         .flatten()
@@ -428,8 +431,6 @@ async fn update_checkout(
                 .with_code("invalid_vat_number"));
         }
     }
-    let (mut tx, id) = holder.open(&db, &id).await?;
-    let shop = &holder.shop;
     let json = |a: &Option<PostalAddress>| {
         a.as_ref()
             .map(|a| SqlJson(serde_json::to_value(a).unwrap_or(Value::Null)))
@@ -446,7 +447,7 @@ async fn update_checkout(
          discount_code = COALESCE(EXCLUDED.discount_code, checkouts.discount_code), \
          updated_at = now()",
     )
-    .bind(&id)
+    .bind(id)
     .bind(shop.id())
     .bind(c.email.as_deref().map(|e| e.trim().to_lowercase()))
     .bind(json(&c.shipping_address))
@@ -454,9 +455,9 @@ async fn update_checkout(
     .bind(c.vat_number.as_deref().map(str::trim))
     .bind(&c.shipping_rate_id)
     .bind(c.discount_code.as_deref().map(str::trim))
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
-    let mut built = build(&mut tx, shop, &id).await?;
+    let mut built = build(tx, shop, id).await?;
     if c.discount_code
         .as_deref()
         .is_some_and(|c| !c.trim().is_empty())
@@ -473,29 +474,48 @@ async fn update_checkout(
             .with_code("invalid_shipping"));
         }
     }
-    tx.commit().await?;
-    Ok(Json(built.view))
+    Ok(built.view)
 }
 
-/// Place the order: checks that nothing is missing (422
-/// `checkout_incomplete` names it), holds the stock (409
-/// `insufficient_stock`), closes the cart and starts the payment with the
-/// chosen method. A discount code that no longer applies is a 422
-/// `invalid_discount`. Publishes `order.placed`, `cart.completed` and
-/// `discount.redeemed`.
-#[post(
-    "/api/storefront/carts/{id}/checkout/complete",
-    tag = "storefront",
-    status = 201
-)]
-async fn complete_checkout(
+/// The checkout of cart `id`: totals with shipping and tax, and what is
+/// still missing.
+pub async fn checkout(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    id: &str,
+) -> Result<CheckoutView> {
+    Ok(build(conn, scope, id).await?.view)
+}
+
+/// Give the checkout's email, addresses, VAT number, shipping choice or
+/// discount code. A shipping choice that does not apply to the address, or
+/// a code that does not apply to the cart, is a 422.
+#[patch("/api/storefront/carts/{id}/checkout", tag = "storefront")]
+async fn update_checkout(
     db: Db,
     holder: CartToken,
-    providers: State<Providers>,
     Path(id): Path<String>,
-    Valid(Json(c)): Valid<Json<Complete>>,
-) -> Result<(StatusCode, Json<Completed>)> {
+    Valid(Json(c)): Valid<Json<CheckoutChange>>,
+) -> Result<Json<CheckoutView>> {
     let (mut tx, id) = holder.open(&db, &id).await?;
+    let view = update(&mut tx, &holder.shop, &id, &c).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+/// Places the order of cart `id` held by `holder` and starts its payment.
+///
+/// # Errors
+///
+/// See `POST /api/storefront/carts/{id}/checkout/complete`.
+pub async fn complete(
+    db: &Db,
+    providers: &Providers,
+    holder: &CartToken,
+    id: &str,
+    c: Complete,
+) -> Result<Completed> {
+    let (mut tx, id) = holder.open(db, id).await?;
     let shop = &holder.shop;
     let mut built = build(&mut tx, shop, &id).await?;
     if let Some(e) = built.discount_error.take() {
@@ -560,18 +580,37 @@ async fn complete_checkout(
             currency: built.currency,
             return_url: c.return_url,
         };
-        Some(soat_payments::start(&db, &providers, shop, &req).await?)
+        Some(soat_payments::start(db, providers, shop, &req).await?)
     } else {
         None
     };
-    Ok((
-        StatusCode::CREATED,
-        Json(Completed {
-            order: placed,
-            order_token: token,
-            payment,
-        }),
-    ))
+    Ok(Completed {
+        order: placed,
+        order_token: token,
+        payment,
+    })
+}
+
+/// Place the order: checks that nothing is missing (422
+/// `checkout_incomplete` names it), holds the stock (409
+/// `insufficient_stock`), closes the cart and starts the payment with the
+/// chosen method. A discount code that no longer applies is a 422
+/// `invalid_discount`. Publishes `order.placed`, `cart.completed` and
+/// `discount.redeemed`.
+#[post(
+    "/api/storefront/carts/{id}/checkout/complete",
+    tag = "storefront",
+    status = 201
+)]
+async fn complete_checkout(
+    db: Db,
+    holder: CartToken,
+    providers: State<Providers>,
+    Path(id): Path<String>,
+    Valid(Json(c)): Valid<Json<Complete>>,
+) -> Result<(StatusCode, Json<Completed>)> {
+    let done = complete(&db, &providers, &holder, &id, c).await?;
+    Ok((StatusCode::CREATED, Json(done)))
 }
 
 async fn hold(

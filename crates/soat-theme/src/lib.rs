@@ -1,8 +1,9 @@
 //! Themes: how the storefront looks.
 //!
 //! A theme is a set of files: page templates (`index`, `product`,
-//! `collection`, `search`, `page`, `cart`, `not_found`), the `layout` that
-//! wraps every page (it writes the page with `{{> content }}`), partials
+//! `collection`, `search`, `page`, `cart`, `checkout`, `order`, `not_found`),
+//! the `layout` that wraps every page (it writes the page with
+//! `{{> content }}`), partials
 //! (`header`, `footer`, `product_card`, `product_list`, `blocks`, and any
 //! `snippet-…` a shop adds) and `theme.css`. Templates use the safe
 //! language of [`soat_core::template`]: they read the values a page is
@@ -50,6 +51,12 @@ pub const DEFAULT_FILES: &[(&str, Kind, &str)] = &[
     ("search", Kind::Page, include_str!("../theme/search.html")),
     ("page", Kind::Page, include_str!("../theme/page.html")),
     ("cart", Kind::Page, include_str!("../theme/cart.html")),
+    (
+        "checkout",
+        Kind::Page,
+        include_str!("../theme/checkout.html"),
+    ),
+    ("order", Kind::Page, include_str!("../theme/order.html")),
     (
         "not_found",
         Kind::Page,
