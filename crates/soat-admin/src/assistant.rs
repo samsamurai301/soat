@@ -69,7 +69,7 @@ async fn entries(cx: &Ctx, chat: &Value) -> Vec<Value> {
 }
 
 /// What went wrong, in words for the page.
-fn problem(status: u16, body: &Value) -> String {
+pub(crate) fn problem(status: u16, body: &Value) -> String {
     match (status, body["code"].as_str()) {
         (409, Some("no_assistant_key")) => {
             "The shop has no Anthropic key yet. An owner adds one under Settings, Assistant."

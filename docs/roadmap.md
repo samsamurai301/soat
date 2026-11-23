@@ -134,7 +134,7 @@ layer.
 - [x] H2 A tool for every API operation, generated from OpenAPI **alpha**
 - [x] H3 Approval mode for AI writes **alpha**
 - [x] H4 Bring your own Anthropic key per shop
-- [ ] H5 Shop builder from a description
+- [x] H5 Shop builder from a description: Claude drafts products (with variants), collections and pages as structured output (`POST /api/assistant/plan`), the owner reviews the draft at `/admin/{shop}/build` and builds it through the API
 - [ ] H6 Content helpers: copy, translations, alt text, SEO
 - [x] H7 Admin assistant panel: chats with Claude in the admin on the shop's own key, every API tool found by tool search and run as the staff member, changes approved in the chat
 

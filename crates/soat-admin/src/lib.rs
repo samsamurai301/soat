@@ -31,6 +31,7 @@ macro_rules! page_or {
 
 mod api;
 mod assistant;
+mod builder;
 mod content;
 mod customers;
 mod dashboard;
@@ -123,6 +124,9 @@ impl Module for Admin {
             assistant::start,
             assistant::send,
             assistant::act,
+            builder::show,
+            builder::draft,
+            builder::apply,
         ))
         .mount((
             transfer::show,

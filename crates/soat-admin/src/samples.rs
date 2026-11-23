@@ -43,7 +43,12 @@ fn refused(message: &str) -> Failed {
     (422, json!({ "error": message }))
 }
 
-async fn call(cx: &Ctx, method: Method, path: &str, body: Option<&Value>) -> Result<Value, Failed> {
+pub(crate) async fn call(
+    cx: &Ctx,
+    method: Method,
+    path: &str,
+    body: Option<&Value>,
+) -> Result<Value, Failed> {
     let (status, out) = cx.call(method, path, body).await;
     if (200..300).contains(&status) {
         Ok(out)
@@ -90,15 +95,7 @@ pub(crate) async fn load(
             "Sample products are loaded already. Remove them first.",
         ));
     }
-    let locations = call(cx, Method::GET, "/api/locations?limit=1", None).await?;
-    let location = match locations["items"][0]["id"].as_str() {
-        Some(id) => id.to_owned(),
-        None => {
-            let body = json!({ "name": "Warehouse", "country": country });
-            let l = call(cx, Method::POST, "/api/locations", Some(&body)).await?;
-            l["id"].as_str().unwrap_or_default().to_owned()
-        }
-    };
+    let location = location(cx, country).await?;
     let c = &t["collection"];
     let body = json!({
         "title": c["title"], "description": c["description"], "handle": format!("{TAG}-{key}"),
@@ -122,65 +119,101 @@ pub(crate) async fn load(
     };
     let mut loaded = 0;
     for p in t["products"].as_array().into_iter().flatten() {
-        let sku = p["sku"].as_str().unwrap_or_default();
-        let Some(price) = amount(p["price"].as_str().unwrap_or_default(), currency) else {
-            return Err(refused(&format!(
-                "{currency} is not a currency SOAT knows."
-            )));
+        let Some(id) = create_product(cx, p, currency, Some(TAG), Some((&location, STOCK))).await?
+        else {
+            continue;
         };
-        let mut tags = p["tags"].as_array().cloned().unwrap_or_default();
-        tags.push(json!(TAG));
-        let body = json!({
-            "sku": sku, "title": p["title"], "description": p["description"],
-            "price_minor": price, "currency": currency, "tags": tags,
-            "tax_class": p["tax_class"].as_str().unwrap_or("standard"),
-            "weight_grams": p["weight_grams"],
-        });
-        let product = match call(cx, Method::POST, "/api/products", Some(&body)).await {
-            Ok(p) => p,
-            Err((409, _)) => continue,
-            Err(e) => return Err(e),
-        };
-        let id = product["id"].as_str().unwrap_or_default().to_owned();
-        let mut stocked = vec![id.clone()];
-        if let Some(values) = p["option"]["values"].as_array() {
-            let options = json!({ "options": [{ "name": p["option"]["name"], "values": values }] });
-            call(
-                cx,
-                Method::PUT,
-                &format!("/api/products/{id}/options"),
-                Some(&options),
-            )
-            .await?;
-            stocked.clear();
-            for v in values.iter().filter_map(Value::as_str) {
-                let body = json!({ "sku": format!("{sku}-{}", sku_part(v)), "options": [v] });
-                match call(
-                    cx,
-                    Method::POST,
-                    &format!("/api/products/{id}/variants"),
-                    Some(&body),
-                )
-                .await
-                {
-                    Ok(variant) => {
-                        stocked.push(variant["id"].as_str().unwrap_or_default().to_owned())
-                    }
-                    Err((409, _)) => {}
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-        for item in stocked {
-            let body = json!({ "location_id": location, "delta": STOCK, "reason": "received" });
-            let path = format!("/api/inventory/{}/adjustments", encode(&item));
-            call(cx, Method::POST, &path, Some(&body)).await?;
-        }
         let path = format!("/api/collections/{collection}/products/{id}");
         call(cx, Method::PUT, &path, None).await?;
         loaded += 1;
     }
     Ok(loaded)
+}
+
+/// The shop's first stock location, made (`Warehouse` in `country`) when
+/// it has none.
+pub(crate) async fn location(cx: &Ctx, country: &str) -> Result<String, Failed> {
+    let locations = call(cx, Method::GET, "/api/locations?limit=1", None).await?;
+    Ok(match locations["items"][0]["id"].as_str() {
+        Some(id) => id.to_owned(),
+        None => {
+            let body = json!({ "name": "Warehouse", "country": country });
+            let l = call(cx, Method::POST, "/api/locations", Some(&body)).await?;
+            l["id"].as_str().unwrap_or_default().to_owned()
+        }
+    })
+}
+
+/// Creates product `p` as a store template writes it (`sku`, `title`,
+/// `description`, decimal `price`, `tax_class`, `weight_grams`, `tags`,
+/// one `option` with `values`), active and priced in `currency`, with a
+/// variant per option value, an extra `tag`, and `stock` units of each at
+/// a location. `None` when the shop has its SKU already.
+pub(crate) async fn create_product(
+    cx: &Ctx,
+    p: &Value,
+    currency: &str,
+    tag: Option<&str>,
+    stock: Option<(&str, i64)>,
+) -> Result<Option<String>, Failed> {
+    let sku = p["sku"].as_str().unwrap_or_default();
+    let Some(price) = amount(p["price"].as_str().unwrap_or_default(), currency) else {
+        return Err(refused(&format!(
+            "{} is not a price in {currency}.",
+            p["price"].as_str().unwrap_or_default()
+        )));
+    };
+    let mut tags = p["tags"].as_array().cloned().unwrap_or_default();
+    if let Some(t) = tag {
+        tags.push(json!(t));
+    }
+    let body = json!({
+        "sku": sku, "title": p["title"], "description": p["description"],
+        "price_minor": price, "currency": currency, "tags": tags, "status": "active",
+        "tax_class": p["tax_class"].as_str().unwrap_or("standard"),
+        "weight_grams": p["weight_grams"],
+    });
+    let product = match call(cx, Method::POST, "/api/products", Some(&body)).await {
+        Ok(p) => p,
+        Err((409, _)) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let id = product["id"].as_str().unwrap_or_default().to_owned();
+    let mut stocked = vec![id.clone()];
+    if let Some(values) = p["option"]["values"].as_array() {
+        let options = json!({ "options": [{ "name": p["option"]["name"], "values": values }] });
+        call(
+            cx,
+            Method::PUT,
+            &format!("/api/products/{id}/options"),
+            Some(&options),
+        )
+        .await?;
+        stocked.clear();
+        for v in values.iter().filter_map(Value::as_str) {
+            let body = json!({ "sku": format!("{sku}-{}", sku_part(v)), "options": [v] });
+            match call(
+                cx,
+                Method::POST,
+                &format!("/api/products/{id}/variants"),
+                Some(&body),
+            )
+            .await
+            {
+                Ok(variant) => stocked.push(variant["id"].as_str().unwrap_or_default().to_owned()),
+                Err((409, _)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+    }
+    if let Some((location, units)) = stock {
+        for item in stocked {
+            let body = json!({ "location_id": location, "delta": units, "reason": "received" });
+            let path = format!("/api/inventory/{}/adjustments", encode(&item));
+            call(cx, Method::POST, &path, Some(&body)).await?;
+        }
+    }
+    Ok(Some(id))
 }
 
 /// Delete every sample product and the templates' collections.

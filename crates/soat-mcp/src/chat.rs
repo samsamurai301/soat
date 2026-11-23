@@ -122,7 +122,11 @@ async fn load(conn: &mut PgConnection, tenant: &Tenant, id: &str) -> Result<Row>
 }
 
 /// The shop's key, or 409 `no_assistant_key`.
-async fn key(conn: &mut PgConnection, tenant: &Tenant, s: &Shared) -> Result<AnthropicKey> {
+pub(crate) async fn shop_key(
+    conn: &mut PgConnection,
+    tenant: &Tenant,
+    s: &Shared,
+) -> Result<AnthropicKey> {
     let missing = || {
         Error::conflict(
             "the shop has no Anthropic key: an owner adds one in the assistant settings",
@@ -170,7 +174,7 @@ async fn start_chat(
     Valid(Json(m)): Valid<Json<ChatMessage>>,
 ) -> Result<(StatusCode, Json<ChatView>)> {
     let mut tx = tenant.begin_for(&db, &ASSISTANT_USE).await?;
-    let key = key(&mut tx, &tenant, &s).await?;
+    let key = shop_key(&mut tx, &tenant, &s).await?;
     let (today,): (String,) =
         sqlx::query_as("SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')")
             .fetch_one(&mut *tx)
@@ -241,7 +245,7 @@ async fn send_message(
 ) -> Result<Json<ChatView>> {
     let mut tx = tenant.begin_for(&db, &ASSISTANT_USE).await?;
     let row = load(&mut tx, &tenant, &id).await?;
-    let key = key(&mut tx, &tenant, &s).await?;
+    let key = shop_key(&mut tx, &tenant, &s).await?;
     tx.commit().await?;
     if row.messages.len() >= MAX_MESSAGES {
         return Err(Error::conflict("this chat is long: start a new one").with_code("chat_full"));

@@ -428,3 +428,110 @@ async fn staff_chat_in_the_admin_and_approve_there() {
         .await
         .assert_status(404);
 }
+
+/// Undoes the admin's HTML escaping of an attribute value.
+fn unescape(s: &str) -> String {
+    s.replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+#[tokio::test]
+async fn claude_drafts_a_shop_and_the_owner_builds_it() {
+    let plan = json!({
+        "summary": "A tea shop with teas, a teapot and pages.",
+        "products": [
+            { "sku": "SENCHA", "title": "Sencha \"Asahi\"", "description": "Grassy & sweet.", "price": "8.50",
+              "tax_class": "reduced", "weight_grams": 100, "tags": ["green tea"],
+              "option": { "name": "Size", "values": ["100 g", "250 g"] } },
+            { "sku": "POT", "title": "Cast iron teapot", "description": "Keeps tea warm.", "price": "39.00",
+              "tax_class": "standard", "weight_grams": 900, "tags": ["teaware"], "option": null }
+        ],
+        "collections": [
+            { "title": "Green tea", "description": "From Japan.", "skus": ["SENCHA"] },
+            { "title": "Teaware", "description": "", "skus": ["POT", "GHOST"] }
+        ],
+        "pages": [{ "title": "About us", "handle": "about-us", "body": "We are [your name]." }]
+    });
+    let (client, admin, log) = app(vec![message(
+        "end_turn",
+        json!([{ "type": "text", "text": plan.to_string() }]),
+    )])
+    .await;
+    set_shop_key(&client, &admin).await;
+    let res = client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let cookie = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+
+    let res = client
+        .post("/admin/acme/build")
+        .header("cookie", &cookie)
+        .form(&json!({ "description": "A small tea shop in Vienna" }))
+        .send()
+        .await;
+    res.assert_status(200);
+    let html = res.text();
+    assert!(html.contains("A tea shop with teas"), "{html}");
+    assert!(html.contains("100 g, 250 g"));
+    assert!(html.contains("8.50 EUR"));
+    {
+        let seen = log.lock().unwrap();
+        let body = seen[0].json();
+        assert_eq!(body["output_config"]["format"]["type"], "json_schema");
+        assert!(body["messages"][0]["content"]
+            .as_str()
+            .unwrap()
+            .contains("A small tea shop in Vienna"));
+    }
+    // Nothing is made before the owner says so.
+    let products: Value = client
+        .get("/api/products")
+        .header("x-soat-tenant", "acme")
+        .bearer(&admin)
+        .send()
+        .await
+        .json();
+    assert_eq!(products["total"], 0);
+
+    let draft = html
+        .split("name=\"plan\" value=\"")
+        .nth(1)
+        .and_then(|r| r.split('"').next())
+        .map(unescape)
+        .unwrap();
+    let res = client
+        .post("/admin/acme/build/apply")
+        .header("cookie", &cookie)
+        .form(&json!({ "plan": draft }))
+        .send()
+        .await;
+    res.assert_status(303);
+    assert_eq!(res.header("location"), Some("/admin/acme/products"));
+
+    let api = |path: &'static str| {
+        client
+            .get(path)
+            .header("x-soat-tenant", "acme")
+            .bearer(&admin)
+            .send()
+    };
+    let products: Value = api("/api/products?sort=title").await.json();
+    assert_eq!(products["total"], 2);
+    let tea = &products["items"][1];
+    assert_eq!(tea["title"], "Sencha \"Asahi\"");
+    assert_eq!(tea["price_minor"], 850);
+    assert_eq!(tea["status"], "active");
+    assert_eq!(tea["tax_class"], "reduced");
+    let collections: Value = api("/api/collections").await.json();
+    assert_eq!(collections["total"], 2);
+    let pages: Value = api("/api/pages").await.json();
+    let about = &pages["items"][0];
+    assert_eq!(about["handle"], "about-us");
+    assert_eq!(about["published"], false);
+}

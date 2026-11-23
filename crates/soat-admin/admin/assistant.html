@@ -1,4 +1,4 @@
-<div class="head"><h1>Assistant</h1><a class="button" href="{{ base }}/assistant">New chat</a></div>
+<div class="head"><h1>Assistant</h1><p><a href="{{ base }}/build">Build your shop from a description</a> <a class="button" href="{{ base }}/assistant">New chat</a></p></div>
 <div class="assistant">
   <nav class="chats" aria-label="Your chats">
     {{#each chats }}<a href="{{ base }}/assistant/{{ id }}"{{#if current }} aria-current="page"{{/if}}>{{ title }}</a>{{/each}}
