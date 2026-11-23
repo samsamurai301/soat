@@ -282,7 +282,117 @@ pub(crate) async fn edit_page(
     let mut cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
     let p = page!(cx.get(&format!("/api/products/{}", encode(&id))).await);
     cx.set("saved", json!(q.contains_key("saved")));
+    if let Some(l) = q.get("translated").and_then(Value::as_str) {
+        cx.set("translated", json!(l));
+    }
+    languages(&mut cx).await;
     Ok(show_form(cx, ProductForm::of(&p), None, StatusCode::OK))
+}
+
+/// The shop's other languages, to translate into; none when the staff
+/// member may not see them.
+async fn languages(cx: &mut Ctx) {
+    let (status, l) = cx.call(Method::GET, "/api/languages", None).await;
+    if status == 200 {
+        let codes: Vec<Value> = l["languages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|c| **c != l["default_language"])
+            .map(|c| json!({ "code": c }))
+            .collect();
+        cx.set("languages", Value::Array(codes));
+    }
+}
+
+/// The form's fields.
+#[model]
+pub struct WriteForm {
+    pub notes: Option<String>,
+    pub language: Option<String>,
+}
+
+/// Have Claude suggest the product's description and search-engine
+/// fields (a form post): the form shows them, unsaved, to review.
+#[post("/admin/{shop}/products/{id}/write", tag = "admin")]
+pub(crate) async fn write(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, id)): Path<(String, String)>,
+    Form(f): Form<WriteForm>,
+) -> Result<Response> {
+    let mut cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
+    let p = page!(cx.get(&format!("/api/products/{}", encode(&id))).await);
+    let body = json!({ "resource": "product", "id": p["id"], "task": "copy", "notes": f.notes });
+    let (status, out) = cx
+        .call(Method::POST, "/api/assistant/write", Some(&body))
+        .await;
+    languages(&mut cx).await;
+    let mut form = ProductForm::of(&p);
+    match status {
+        200 => {
+            for field in ["description", "seo_title", "seo_description"] {
+                form[field] = out[field].clone();
+            }
+            cx.set("suggested", json!(true));
+            Ok(show_form(cx, form, None, StatusCode::OK))
+        }
+        401 => Ok(crate::to_login()),
+        _ => {
+            let e = crate::assistant::problem(status, &out);
+            Ok(show_form(cx, form, Some(e), StatusCode::OK))
+        }
+    }
+}
+
+/// Have Claude translate the product into one of the shop's languages
+/// and save it as the product's translation (a form post).
+#[post("/admin/{shop}/products/{id}/translate", tag = "admin")]
+pub(crate) async fn translate(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, id)): Path<(String, String)>,
+    Form(f): Form<WriteForm>,
+) -> Result<Response> {
+    let mut cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
+    let p = page!(cx.get(&format!("/api/products/{}", encode(&id))).await);
+    let language = f.language.unwrap_or_default().trim().to_ascii_lowercase();
+    let body = json!({
+        "resource": "product", "id": p["id"], "task": "translate", "language": language,
+    });
+    let (mut status, mut out) = cx
+        .call(Method::POST, "/api/assistant/write", Some(&body))
+        .await;
+    if status == 200 {
+        let fields = json!({ "fields": {
+            "title": out["title"], "description": out["description"],
+            "seo_title": out["seo_title"], "seo_description": out["seo_description"],
+        } });
+        let path = format!(
+            "/api/translations/product/{}/{}",
+            encode(&id),
+            encode(&language)
+        );
+        (status, out) = cx.call(Method::PUT, &path, Some(&fields)).await;
+    }
+    match status {
+        200 => Ok(Redirect::to(&format!(
+            "/admin/{shop}/products/{}?translated={}",
+            encode(&id),
+            encode(&language)
+        ))
+        .into_response()),
+        401 => Ok(crate::to_login()),
+        _ => {
+            languages(&mut cx).await;
+            let e = crate::assistant::problem(status, &out);
+            Ok(show_form(cx, ProductForm::of(&p), Some(e), StatusCode::OK))
+        }
+    }
 }
 
 /// Change a product (a form post); problems show the form again, as typed.

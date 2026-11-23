@@ -4,6 +4,8 @@
 </div>
 {{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
 {{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+{{#if suggested }}<p class="notice" role="status">Claude's suggestion is in the form below, not saved yet. Review it, then save.</p>{{/if}}
+{{#if translated }}<p class="notice" role="status">Translated into {{ translated }} and saved as the product's translation.</p>{{/if}}
 <form method="post" action="{{ base }}/products{{#if product.id }}/{{ product.id }}{{/if}}" class="form">
   <label>Title <input name="title" value="{{ product.title }}" required maxlength="500"></label>
   <div class="row">
@@ -26,6 +28,17 @@
   <button class="button">{{#if creating }}Create product{{else}}Save{{/if}}</button>
 </form>
 {{#if product.id }}
+<section class="panel">
+  <h2>Write with Claude</h2>
+  <form method="post" action="{{ base }}/products/{{ product.id }}/write" class="inline ask" hx-disabled-elt="find button">
+    <label>Notes for Claude <input name="notes" maxlength="1000" placeholder="A warmer tone; mention the gift box"></label>
+    <button class="button">Suggest a description and SEO</button> <span class="working muted">Claude is writing…</span>
+  </form>
+  {{#if languages }}<form method="post" action="{{ base }}/products/{{ product.id }}/translate" class="inline ask" hx-disabled-elt="find button">
+    <label>Language <select name="language">{{#each languages }}<option value="{{ code }}">{{ code }}</option>{{/each}}</select></label>
+    <button class="button">Translate and save</button> <span class="working muted">Claude is translating…</span>
+  </form>{{/if}}
+</section>
 <form method="post" action="{{ base }}/products/{{ product.id }}/delete" class="danger" hx-confirm="Delete this product? This cannot be undone.">
   <button class="link">Delete product</button>
 </form>

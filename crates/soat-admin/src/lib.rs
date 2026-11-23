@@ -142,6 +142,8 @@ impl Module for Admin {
             products::edit_page,
             products::update,
             products::delete,
+            products::write,
+            products::translate,
         ))
         .mount((
             orders::list,

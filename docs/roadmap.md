@@ -135,7 +135,7 @@ layer.
 - [x] H3 Approval mode for AI writes **alpha**
 - [x] H4 Bring your own Anthropic key per shop
 - [x] H5 Shop builder from a description: Claude drafts products (with variants), collections and pages as structured output (`POST /api/assistant/plan`), the owner reviews the draft at `/admin/{shop}/build` and builds it through the API
-- [ ] H6 Content helpers: copy, translations, alt text, SEO
+- [x] H6 Content helpers: Claude suggests a product's or collection's description and SEO fields, or translates them (`POST /api/assistant/write`); the product screen shows a suggestion to review, or saves a translation into one of the shop's languages. Alt text waits for alt text on media (B7)
 - [x] H7 Admin assistant panel: chats with Claude in the admin on the shop's own key, every API tool found by tool search and run as the staff member, changes approved in the chat
 
 ## I. Growth (after alpha)

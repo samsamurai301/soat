@@ -145,6 +145,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Each shop's own Anthropic key, encrypted at rest (`SOAT_SECRET_KEY`)
 - [x] Assistant in the admin: chat with Claude about the shop, approve its changes in the chat
 - [x] Shop builder: describe the shop, review Claude's draft of products, collections and pages, build it
+- [x] Content helpers: Claude suggests product copy and SEO fields, and translates products
 - [ ] WASM plugin host, built into Zapline
 
 ## License

@@ -19,6 +19,7 @@ mod claude;
 pub mod keys;
 mod plan;
 mod tools;
+mod write;
 
 use std::sync::{Arc, OnceLock};
 
@@ -209,7 +210,7 @@ impl Module for Mcp {
                 anthropic: self.anthropic.clone(),
             })
             .mount((rpc, rpc_get));
-        plan::mount(chat::mount(keys::mount(approval::mount(app))))
+        write::mount(plan::mount(chat::mount(keys::mount(approval::mount(app)))))
     }
 }
 

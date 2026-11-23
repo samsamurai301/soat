@@ -535,3 +535,136 @@ async fn claude_drafts_a_shop_and_the_owner_builds_it() {
     assert_eq!(about["handle"], "about-us");
     assert_eq!(about["published"], false);
 }
+
+#[tokio::test]
+async fn claude_writes_and_translates_product_copy() {
+    let suggestion = |title: &str, description: &str| {
+        message(
+            "end_turn",
+            json!([{ "type": "text", "text": json!({
+                "title": title, "description": description,
+                "seo_title": format!("{title} | Acme"), "seo_description": "Short and true.",
+            }).to_string() }]),
+        )
+    };
+    let (client, admin, log) = app(vec![
+        suggestion("Trail shoe", "A **light** shoe for long trails."),
+        suggestion("Trailschuh", "Ein **leichter** Schuh für lange Wege."),
+    ])
+    .await;
+    set_shop_key(&client, &admin).await;
+    let api = |method: &'static str, path: String, body: Option<Value>| {
+        let req = match method {
+            "POST" => client.post(&path),
+            "PUT" => client.put(&path),
+            _ => client.get(&path),
+        }
+        .header("x-soat-tenant", "acme")
+        .bearer(&admin);
+        async move {
+            match body {
+                Some(b) => req.json(&b).send().await,
+                None => req.send().await,
+            }
+        }
+    };
+    let product: Value = api(
+        "POST",
+        "/api/products".into(),
+        Some(
+            json!({ "sku": "SHOE", "title": "Trail shoe", "price_minor": 4999, "currency": "EUR" }),
+        ),
+    )
+    .await
+    .json();
+    let id = product["id"].as_str().unwrap().to_owned();
+    api(
+        "PUT",
+        "/api/languages".into(),
+        Some(json!({ "default_language": "en", "languages": ["de"] })),
+    )
+    .await
+    .assert_status(200);
+
+    // The API checks what it is asked for before calling Claude.
+    for bad in [
+        json!({ "resource": "order", "id": id, "task": "copy" }),
+        json!({ "resource": "product", "id": id, "task": "translate" }),
+        json!({ "resource": "product", "id": id, "task": "poem" }),
+    ] {
+        api("POST", "/api/assistant/write".into(), Some(bad))
+            .await
+            .assert_status(422);
+    }
+    client
+        .post("/api/assistant/write")
+        .header("x-soat-tenant", "globex")
+        .bearer(&admin)
+        .json(&json!({ "resource": "product", "id": id, "task": "copy" }))
+        .send()
+        .await
+        .assert_status(409);
+    assert!(log.lock().unwrap().is_empty());
+
+    let res = client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let cookie = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let page = client
+        .get(&format!("/admin/acme/products/{id}"))
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .text();
+    assert!(page.contains("Suggest a description and SEO"));
+    assert!(page.contains("<option value=\"de\">de</option>"));
+
+    let res = client
+        .post(&format!("/admin/acme/products/{id}/write"))
+        .header("cookie", &cookie)
+        .form(&json!({ "notes": "Mention long trails" }))
+        .send()
+        .await;
+    res.assert_status(200);
+    let html = res.text();
+    assert!(html.contains("not saved yet"));
+    assert!(html.contains("A **light** shoe for long trails."));
+    assert!(html.contains("Trail shoe | Acme"));
+    {
+        let seen = log.lock().unwrap();
+        let ask = seen[0].json()["messages"][0]["content"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert!(ask.contains("Task: copy"));
+        assert!(ask.contains("Mention long trails"));
+        assert!(ask.contains("Trail shoe"));
+    }
+    // A suggestion is not saved.
+    let p: Value = api("GET", format!("/api/products/{id}"), None).await.json();
+    assert!(p["description"].is_null() || p["description"] == "");
+
+    let res = client
+        .post(&format!("/admin/acme/products/{id}/translate"))
+        .header("cookie", &cookie)
+        .form(&json!({ "language": "de" }))
+        .send()
+        .await;
+    res.assert_status(303);
+    assert_eq!(
+        res.header("location").unwrap(),
+        format!("/admin/acme/products/{id}?translated=de")
+    );
+    let t: Value = api("GET", format!("/api/translations/product/{id}"), None)
+        .await
+        .json();
+    let title = t["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["field"] == "title" && i["language"] == "de")
+        .unwrap();
+    assert_eq!(title["value"], "Trailschuh");
+}
