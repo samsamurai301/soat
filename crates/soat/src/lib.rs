@@ -14,6 +14,7 @@ use soat_fields::Fields;
 use soat_files::Files;
 use soat_inventory::Inventory;
 use soat_invoices::Invoices;
+use soat_mcp::Mcp;
 use soat_module::Modules;
 use soat_notify::Notify;
 use soat_orders::Orders;
@@ -32,6 +33,7 @@ use zapline::prelude::*;
 use zapline::storage::Storage;
 
 /// What a SOAT install is configured with.
+#[derive(Clone)]
 pub struct Settings {
     pub auth: Auth,
     /// Where uploaded files go.
@@ -102,7 +104,15 @@ impl Settings {
 }
 
 /// Every module in this build. A module must come after the ones it needs.
+/// The last, `mcp`, serves the others' API as tools for Claude.
 pub fn modules(settings: Settings) -> Modules {
+    let api = settings.clone();
+    let mcp = Mcp::new(move |app| shop_modules(api, Events::manual()).install(app));
+    shop_modules(settings, Events::new()).with(mcp)
+}
+
+/// Every module but `mcp`.
+fn shop_modules(settings: Settings, events: Events) -> Modules {
     #[allow(unused_mut)]
     let mut payments = Payments::new();
     #[cfg(feature = "stripe")]
@@ -121,7 +131,7 @@ pub fn modules(settings: Settings) -> Modules {
     }
     let modules = Modules::new()
         .with(settings.auth)
-        .with(Events::new())
+        .with(events)
         .with(Tenancy)
         .with(Webhooks::new())
         .with(Fields)

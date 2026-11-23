@@ -41,6 +41,23 @@ curl -X POST localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x
 curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-tenant: acme'
 ```
 
+## Run your shop with Claude
+
+SOAT is an MCP server at `/mcp`: every API operation is a tool. Give Claude an
+API key with `assistant:use` and the permissions it should have, then connect it:
+
+```sh
+KEY=$(curl -s -X POST localhost:8080/api/api-keys -H "authorization: Bearer $TOKEN" \
+  -H 'x-soat-tenant: acme' -H 'content-type: application/json' \
+  -d '{"name":"claude","permissions":["assistant:use","products:read","products:write","orders:read"]}' | jq -r .secret)
+claude mcp add --transport http soat http://localhost:8080/mcp --header "Authorization: Bearer $KEY"
+```
+
+Claude reads freely. A change waits for a person until someone with
+`assistant:approve` approves it (`POST /api/assistant/proposals/{id}/approve`;
+it then runs with the approver's permissions) or rejects it. Owners can let
+changes run at once with `PUT /api/assistant/settings {"approval":"off"}`.
+
 ## Layout
 
 | Path | What |
@@ -69,6 +86,7 @@ curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-te
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |
 | `crates/soat-notify` | Transactional email: order, shipping, cancel and refund emails, staff notices, editable templates, sent log |
+| `crates/soat-mcp` | MCP server at `/mcp`: Claude runs a shop through a tool per API operation, scoped by API key, changes held for approval |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
 | `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
 
@@ -98,6 +116,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Discount codes
 - [x] Transactional email with editable templates
 - [x] Invoices and credit notes
+- [x] Claude runs your shop over MCP, with every change approved by a person
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline
 

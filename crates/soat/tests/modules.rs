@@ -25,7 +25,8 @@ fn module_list_is_valid_and_ordered() {
             "orders",
             "checkout",
             "invoices",
-            "notify"
+            "notify",
+            "mcp"
         ]
     );
 }

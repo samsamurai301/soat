@@ -26,6 +26,7 @@ use zapline::prelude::App;
 pub const SESSION_DAYS: i32 = 30;
 
 /// The auth module. It depends on nothing, so it is listed first.
+#[derive(Clone)]
 pub struct Auth {
     setup_token: String,
 }

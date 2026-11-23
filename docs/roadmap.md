@@ -130,9 +130,9 @@ layer.
 
 ## H. AI layer
 
-- [ ] H1 MCP server with scoped API keys **alpha**
-- [ ] H2 A tool for every API operation, generated from OpenAPI **alpha**
-- [ ] H3 Approval mode for AI writes **alpha**
+- [x] H1 MCP server with scoped API keys **alpha**
+- [x] H2 A tool for every API operation, generated from OpenAPI **alpha**
+- [x] H3 Approval mode for AI writes **alpha**
 - [ ] H4 Bring your own Anthropic key per shop
 - [ ] H5 Shop builder from a description
 - [ ] H6 Content helpers: copy, translations, alt text, SEO

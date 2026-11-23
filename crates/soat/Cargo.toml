@@ -28,6 +28,7 @@ soat-orders.workspace = true
 soat-checkout.workspace = true
 soat-invoices.workspace = true
 soat-notify.workspace = true
+soat-mcp.workspace = true
 soat-stripe = { workspace = true, optional = true }
 soat-mollie = { workspace = true, optional = true }
 soat-paypal = { workspace = true, optional = true }
