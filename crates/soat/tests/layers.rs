@@ -3,7 +3,8 @@
 //! Every workspace crate has a rank. A crate's normal and build
 //! dependencies on other SOAT crates must have a lower rank, so siblings in
 //! one layer (equal rank) never import each other and nothing imports a
-//! layer above it. Foundation crates form a stack, one rank each.
+//! layer above it. Foundation crates form a stack, one rank each; in the
+//! catalog layer, inventory and pricing build on the catalog itself.
 //! Dev-dependencies are free: tests may pull in whatever they need.
 //!
 //! A new crate fails this test until it is given a rank here, from the
@@ -27,8 +28,8 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-files", 8),
     // Catalog.
     ("soat-catalog", 10),
-    ("soat-inventory", 10),
-    ("soat-pricing", 10),
+    ("soat-inventory", 11),
+    ("soat-pricing", 11),
     // Selling.
     ("soat-customers", 20),
     ("soat-cart", 20),

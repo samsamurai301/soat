@@ -51,6 +51,7 @@ curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-te
 | `crates/soat-fields` | Custom fields any resource can carry |
 | `crates/soat-files` | Uploads checked by content, stored on disk or S3 |
 | `crates/soat-catalog` | Products, variants, collections, categories, tags, product media |
+| `crates/soat-inventory` | Locations, stock levels, adjustments, counts, transfers and their ledger |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
 | `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
 
@@ -65,7 +66,8 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Row-level security per tenant
 - [x] Roles, API keys, events, webhooks, audit log, shop domains
 - [x] Variants, collections, categories, tags, custom fields, media
-- [ ] Inventory, price lists
+- [x] Inventory and locations
+- [ ] Stock reservations, price lists
 - [ ] Cart, checkout, Stripe, orders
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline

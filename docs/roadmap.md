@@ -11,7 +11,8 @@ Lines marked **alpha** are in the public alpha (week of 2027-01-04).
 
 Each layer may use only the layers below it. Siblings in one layer talk
 through events, never by importing each other. Foundation crates are a stack
-(core, module, db, auth, events, tenancy, webhooks, fields, files, bottom up).
+(core, module, db, auth, events, tenancy, webhooks, fields, files, bottom up); in the catalog layer, inventory and
+pricing build on the catalog.
 `crates/soat/tests/layers.rs` enforces this and fails for a crate without a
 layer.
 
@@ -49,7 +50,7 @@ layer.
 - [x] B5 Custom fields: `soat-fields` (foundation), typed definitions per resource type, product values at `/api/products/{id}/fields` **alpha**
 - [x] B6 Files and media: `soat-files` (foundation) on Zapline storage, type from content (no HTML/SVG), signed links, ordered product media **alpha**
 - [ ] B7 Image pipeline
-- [ ] B8 Inventory and locations **alpha**
+- [x] B8 Inventory and locations: stock per variant (or variant-less product) and location, adjustments with reasons, counts, transfers, a ledger **alpha**
 - [ ] B9 Stock reservations **alpha**
 - [ ] B10 Price lists and currencies **alpha**
 - [ ] B11 Group and tier prices

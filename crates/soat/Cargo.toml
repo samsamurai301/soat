@@ -16,6 +16,7 @@ soat-webhooks.workspace = true
 soat-fields.workspace = true
 soat-files.workspace = true
 soat-catalog.workspace = true
+soat-inventory.workspace = true
 zapline = { workspace = true, features = ["storage"] }
 
 [dev-dependencies]

@@ -6,7 +6,16 @@ fn module_list_is_valid_and_ordered() {
     assert_eq!(modules.validate(), Ok(()));
     assert_eq!(
         modules.names(),
-        ["auth", "events", "tenancy", "webhooks", "fields", "files", "catalog"]
+        [
+            "auth",
+            "events",
+            "tenancy",
+            "webhooks",
+            "fields",
+            "files",
+            "catalog",
+            "inventory"
+        ]
     );
 }
 

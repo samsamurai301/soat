@@ -223,11 +223,19 @@ async fn update_product(
 }
 
 /// Delete a product with its options and variants (`products:write`).
-/// Publishes `product.deleted`.
+/// Publishes `product.deleted` with the ids of its variants.
 #[delete("/api/products/{id}", tag = "catalog", status = 204)]
 async fn delete_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<StatusCode> {
     let id = ProductId::parse(&id).map_err(|_| Error::not_found())?;
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
+    let variants: Vec<(String,)> = sqlx::query_as(
+        "SELECT id FROM product_variants WHERE tenant_id = $1 AND product_id = $2 ORDER BY id",
+    )
+    .bind(tenant.id())
+    .bind(id.as_str())
+    .fetch_all(&mut *tx)
+    .await?;
+    let variant_ids: Vec<String> = variants.into_iter().map(|(v,)| v).collect();
     let deleted = sqlx::query("DELETE FROM products WHERE tenant_id = $1 AND id = $2")
         .bind(tenant.id())
         .bind(id.as_str())
@@ -241,7 +249,7 @@ async fn delete_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Resul
         .publish(
             &mut tx,
             "product.deleted",
-            &serde_json::json!({ "id": id.as_str() }),
+            &serde_json::json!({ "id": id.as_str(), "variant_ids": variant_ids }),
         )
         .await?;
     tx.commit().await?;
@@ -296,4 +304,61 @@ async fn existing(tx: &mut soat_tenancy::TenantTx, tenant: &Tenant, id: &str) ->
             .fetch_optional(&mut **tx)
             .await?;
     row.map(|(id,)| id).ok_or_else(Error::not_found)
+}
+
+/// Something that can be stocked and sold: a variant, or a product that
+/// has no variants.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StockItem {
+    /// `var_...` or `prod_...`.
+    pub id: String,
+    pub product_id: String,
+    pub sku: String,
+}
+
+/// Looks up a stock item of the shop. A product that has variants is not
+/// one (`Err` 422 `has_variants`: stock its variants); an unknown id is
+/// `Ok(None)`. Run it in the tenant transaction.
+pub async fn stock_item(
+    conn: &mut sqlx::PgConnection,
+    tenant: &Tenant,
+    id: &str,
+) -> Result<Option<StockItem>> {
+    if let Ok(vid) = variants::VariantId::parse(id) {
+        let row: Option<(String, String)> = sqlx::query_as(
+            "SELECT product_id, sku FROM product_variants WHERE tenant_id = $1 AND id = $2",
+        )
+        .bind(tenant.id())
+        .bind(vid.as_str())
+        .fetch_optional(&mut *conn)
+        .await?;
+        return Ok(row.map(|(product_id, sku)| StockItem {
+            id: vid.to_string(),
+            product_id,
+            sku,
+        }));
+    }
+    let Ok(pid) = ProductId::parse(id) else {
+        return Ok(None);
+    };
+    let row: Option<(String, bool)> = sqlx::query_as(
+        "SELECT sku, EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id) \
+         FROM products p WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant.id())
+    .bind(pid.as_str())
+    .fetch_optional(&mut *conn)
+    .await?;
+    match row {
+        None => Ok(None),
+        Some((_, true)) => Err(Error::unprocessable(
+            "this product has variants: stock each variant instead",
+        )
+        .with_code("has_variants")),
+        Some((sku, false)) => Ok(Some(StockItem {
+            id: pid.to_string(),
+            product_id: pid.to_string(),
+            sku,
+        })),
+    }
 }

@@ -3,6 +3,7 @@
 //! Nothing here knows about HTTP or databases, so these types can be reused by
 //! the server, plugins and SDKs alike.
 
+pub mod address;
 mod domain;
 pub mod fields;
 pub mod handle;

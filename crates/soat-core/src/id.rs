@@ -65,14 +65,40 @@ impl fmt::Display for IdError {
 
 impl std::error::Error for IdError {}
 
+/// The last (millis, randomness) handed out, shared by every id kind.
+static LAST: std::sync::Mutex<(u64, u128)> = std::sync::Mutex::new((0, 0));
+
+/// The monotonic ULID rule: in the same (or an earlier) millisecond as the
+/// last id, reuse its time and add one to its randomness.
+fn next_monotonic(now: u64, random: [u8; 10]) -> (u64, [u8; 10]) {
+    const MAX_RANDOM: u128 = (1 << 80) - 1;
+    let fresh = random.iter().fold(0u128, |acc, b| (acc << 8) | u128::from(*b));
+    let mut last = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (millis, bits) = if now > last.0 {
+        (now, fresh)
+    } else if last.1 < MAX_RANDOM {
+        (last.0, last.1 + 1)
+    } else {
+        // 2^80 ids in one millisecond: borrow the next one.
+        (last.0 + 1, fresh)
+    };
+    *last = (millis, bits);
+    let bytes = bits.to_be_bytes();
+    let mut out = [0u8; 10];
+    out.copy_from_slice(&bytes[6..]);
+    (millis, out)
+}
+
 impl<K: IdKind> Id<K> {
-    /// A new id for now.
+    /// A new id for now. Ids made by this process only ever grow, even
+    /// within one millisecond, so sorting by id is creation order.
     pub fn new() -> Self {
-        let millis = SystemTime::now()
+        let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as u64);
         let mut random = [0u8; 10];
         getrandom::getrandom(&mut random).expect("the OS random source is available");
+        let (millis, random) = next_monotonic(now, random);
         Self::from_parts(millis, random)
     }
 
@@ -244,5 +270,22 @@ mod tests {
         let json = serde_json::to_string(&id).unwrap();
         assert_eq!(serde_json::from_str::<TestId>(&json).unwrap(), id);
         assert!(serde_json::from_str::<TestId>("\"nope\"").is_err());
+    }
+
+    #[test]
+    fn ids_made_in_a_burst_keep_their_order() {
+        let ids: Vec<String> = (0..2000).map(|_| TestId::new().to_string()).collect();
+        let mut sorted = ids.clone();
+        sorted.sort();
+        assert_eq!(ids, sorted);
+        sorted.dedup();
+        assert_eq!(sorted.len(), ids.len());
+    }
+
+    #[test]
+    fn a_clock_going_back_does_not_reorder() {
+        let (t1, r1) = next_monotonic(u64::MAX / 2, [0xff; 10]);
+        let (t2, r2) = next_monotonic(5, [0; 10]);
+        assert!((t2, r2) > (t1, r1));
     }
 }

@@ -1476,6 +1476,7 @@ dependencies = [
  "soat-events",
  "soat-fields",
  "soat-files",
+ "soat-inventory",
  "soat-module",
  "soat-tenancy",
  "soat-testing",
@@ -1556,6 +1557,20 @@ version = "0.0.1"
 dependencies = [
  "serde",
  "serde_json",
+ "soat-core",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-inventory"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-catalog",
  "soat-core",
  "soat-module",
  "soat-tenancy",

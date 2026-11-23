@@ -9,6 +9,7 @@ use soat_catalog::Catalog;
 use soat_events::Events;
 use soat_fields::Fields;
 use soat_files::Files;
+use soat_inventory::Inventory;
 use soat_module::Modules;
 use soat_tenancy::Tenancy;
 use soat_webhooks::Webhooks;
@@ -59,6 +60,7 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Fields)
         .with(Files::new(settings.storage))
         .with(Catalog)
+        .with(Inventory)
 }
 
 /// Builds the application on top of `db` (Postgres). `main` passes the real
