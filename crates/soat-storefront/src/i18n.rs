@@ -1,4 +1,4 @@
-//! The storefront in the shop's languages. Addresses in the default
+//! The storefront in the shop's languages and markets. Addresses in the default
 //! language have no prefix; others start with the language, e.g.
 //! `/de/products/trail-shoe`. A global middleware takes the prefix off
 //! before routing, so every page and form works in every language.
@@ -9,7 +9,9 @@ use serde_json::{Map, Value};
 use soat_catalog::storefront::{ProductCard, ShopCollection, ShopProduct};
 use soat_cms::{Menu, Page};
 use soat_core::i18n::{is_language_code, language_name};
+use soat_core::Currency;
 use soat_i18n::{translated, ShopLanguages};
+use soat_pricing::Market;
 use soat_tenancy::Scope;
 use zapline::db::sqlx::PgConnection;
 use zapline::prelude::*;
@@ -72,6 +74,9 @@ pub(crate) struct Lang {
     /// `/de`, or empty in the default language.
     pub root: String,
     pub shop: ShopLanguages,
+    /// The buyer's market, from their country; prices show in its
+    /// currency.
+    pub market: Option<Market>,
 }
 
 impl Lang {
@@ -88,11 +93,13 @@ impl Lang {
                 root: format!("/{code}"),
                 code,
                 shop,
+                market: None,
             },
             None => Lang {
                 code: shop.default_language.clone(),
                 root: String::new(),
                 shop,
+                market: None,
             },
         }
     }
@@ -100,6 +107,14 @@ impl Lang {
     /// Whether texts need translating.
     pub fn translated(&self) -> bool {
         !self.root.is_empty()
+    }
+
+    /// The market's currency when it is not `own`.
+    fn currency(&self, own: &str) -> Option<Currency> {
+        self.market
+            .as_ref()
+            .filter(|m| m.currency != own)
+            .and_then(|m| Currency::parse(&m.currency).ok())
     }
 
     /// `path` in this language.
@@ -155,6 +170,52 @@ impl Lang {
     }
 }
 
+/// The cookie holding the buyer's country, e.g. `CH`.
+pub const COUNTRY_COOKIE: &str = "soat_country";
+
+/// The buyer's market, from the country they picked.
+pub(crate) async fn market_of(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    headers: &HeaderMap,
+) -> Result<Option<Market>> {
+    match super::cookie(headers, COUNTRY_COOKIE) {
+        Some(c) if c.len() == 2 && c.bytes().all(|b| b.is_ascii_uppercase()) => {
+            soat_pricing::market_for(conn, scope, &c).await
+        }
+        _ => Ok(None),
+    }
+}
+
+/// The countries of the shop's markets for a picker, by name; none
+/// without markets.
+pub(crate) async fn countries(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    current: Option<&str>,
+) -> Result<Vec<Value>> {
+    let mut out: Vec<(&'static str, String, String)> = Vec::new();
+    for m in soat_pricing::active_markets(conn, scope).await? {
+        for c in m.countries {
+            if let Some(name) = soat_core::address::country_name(&c) {
+                out.push((name, c, m.currency.clone()));
+            }
+        }
+    }
+    out.sort();
+    Ok(out
+        .into_iter()
+        .map(|(name, code, currency)| {
+            serde_json::json!({
+                "code": code,
+                "name": name,
+                "currency": currency,
+                "selected": Some(code.as_str()) == current,
+            })
+        })
+        .collect())
+}
+
 /// `path` under `root` when it is a path on the shop.
 pub(crate) fn prefixed(root: &str, path: &str) -> String {
     if root.is_empty() || !path.starts_with('/') || path.starts_with("//") {
@@ -197,13 +258,43 @@ fn take(fields: &mut HashMap<String, String>, name: &str, into: &mut String) {
     }
 }
 
-/// Product cards' titles in `lang`.
+/// `minor` of `own` in the market's currency, when the item is sold in it.
+async fn reprice(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    lang: &Lang,
+    item_id: &str,
+    minor: &mut i64,
+    currency: &mut String,
+) -> Result<()> {
+    let (Some(to), Ok(own)) = (lang.currency(currency), Currency::parse(currency)) else {
+        return Ok(());
+    };
+    if let Some(p) = soat_pricing::shown_price(conn, scope, item_id, *minor, own, to).await? {
+        *minor = p;
+        *currency = to.as_str().to_owned();
+    }
+    Ok(())
+}
+
+/// Product cards' titles in `lang`, prices in the market's currency.
 pub(crate) async fn cards(
     conn: &mut PgConnection,
     scope: &impl Scope,
     lang: &Lang,
     cards: &mut [ProductCard],
 ) -> Result<()> {
+    for c in cards.iter_mut() {
+        reprice(
+            conn,
+            scope,
+            lang,
+            &c.id,
+            &mut c.price_minor,
+            &mut c.currency,
+        )
+        .await?;
+    }
     if !lang.translated() || cards.is_empty() {
         return Ok(());
     }
@@ -217,13 +308,33 @@ pub(crate) async fn cards(
     Ok(())
 }
 
-/// A product's texts in `lang`.
+/// A product's texts in `lang`, prices in the market's currency.
 pub(crate) async fn product(
     conn: &mut PgConnection,
     scope: &impl Scope,
     lang: &Lang,
     p: &mut ShopProduct,
 ) -> Result<()> {
+    reprice(
+        conn,
+        scope,
+        lang,
+        &p.id,
+        &mut p.price_minor,
+        &mut p.currency,
+    )
+    .await?;
+    for v in p.variants.iter_mut() {
+        reprice(
+            conn,
+            scope,
+            lang,
+            &v.id,
+            &mut v.price_minor,
+            &mut v.currency,
+        )
+        .await?;
+    }
     if !lang.translated() {
         return Ok(());
     }

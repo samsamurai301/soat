@@ -39,6 +39,9 @@ pub struct NewCart {
 pub struct CartChange {
     #[validate(email, length(max = 254))]
     pub email: Option<String>,
+    /// Reprices every line in this currency, e.g. when the buyer picks
+    /// another country; lines not sold in it show `not_sold_in_currency`.
+    pub currency: Option<String>,
 }
 
 /// Body of adding an item.
@@ -202,7 +205,26 @@ async fn read_cart(db: Db, holder: CartToken, Path(id): Path<String>) -> Result<
     Ok(Json(cart))
 }
 
-/// Set the cart's email. Publishes `cart.updated`.
+/// Moves open cart `id` (locked with [`CartToken::open`]) to another
+/// currency; lines are priced anew. Publishes `cart.updated`.
+pub async fn set_currency(
+    tx: &mut TenantTx,
+    shop: &Shop,
+    id: &str,
+    currency: &str,
+) -> Result<CartView> {
+    let currency = Currency::parse(currency)
+        .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))?;
+    sqlx::query("UPDATE carts SET currency = $3 WHERE tenant_id = $1 AND id = $2")
+        .bind(shop.id())
+        .bind(id)
+        .bind(currency.as_str())
+        .execute(&mut **tx)
+        .await?;
+    touch_and_view(tx, shop, id).await
+}
+
+/// Set the cart's email or currency. Publishes `cart.updated`.
 #[patch("/api/storefront/carts/{id}", tag = "storefront")]
 async fn update_cart(
     db: Db,
@@ -218,6 +240,11 @@ async fn update_cart(
             .bind(email.trim().to_lowercase())
             .execute(&mut *tx)
             .await?;
+    }
+    if let Some(currency) = &c.currency {
+        let cart = set_currency(&mut tx, &holder.shop, &id, currency).await?;
+        tx.commit().await?;
+        return Ok(Json(cart));
     }
     let cart = touch_and_view(&mut tx, &holder.shop, &id).await?;
     tx.commit().await?;

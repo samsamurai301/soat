@@ -92,7 +92,7 @@ layer.
 - [ ] D7 Blog
 - [x] D8 SEO basics: SEO title and description for products and collections, canonical and Open Graph tags, product structured data, robots.txt, sitemap.xml, noindex on private pages, URL redirects (automatic when a handle changes) **alpha**
 - [x] D9 Search with facets: full-text search (prefix words over titles, SKUs, tags and descriptions, ranked), filters by tag, option value, price and collection with counts that keep each facet whole, sorting; an API and a storefront page **alpha**
-- [ ] D10 Translations and markets **alpha**: translations done (languages per shop, `/api/translations/{type}/{id}/{language}` for products, collections, pages, menus and theme texts, storefront under `/de/...` with hreflang and a switcher, German built in); markets next
+- [x] D10 Translations and markets **alpha**: languages per shop, translated products, collections, pages, menus and theme texts (`/api/translations`), storefront under `/de/...` with hreflang and a switcher, German built in; markets of countries with a currency, exchange rate and rounding (`/api/markets`), price lists first, then conversion; buyers pick a country and the cart follows
 - [ ] D11 Headless Storefront API
 - [ ] D12 Merchant-defined content types
 

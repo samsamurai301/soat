@@ -127,7 +127,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Search with facets (tags, options, price) in Postgres full-text search
 - [x] Checkout, order confirmation and customer account pages
 - [x] Storefront in more languages: translated products, collections, pages, menus and theme texts under `/de/...`, hreflang, a language switcher
-- [ ] Markets: prices in more currencies by country
+- [x] Markets: prices in more currencies by country, with exchange rates and rounding
 - [ ] Admin UI (htmx)
 - [ ] WASM plugin host, built into Zapline
 

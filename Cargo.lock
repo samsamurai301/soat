@@ -1938,6 +1938,7 @@ dependencies = [
  "soat-module",
  "soat-orders",
  "soat-payments",
+ "soat-pricing",
  "soat-shipping",
  "soat-tenancy",
  "soat-theme",

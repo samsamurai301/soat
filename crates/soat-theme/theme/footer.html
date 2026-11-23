@@ -1,6 +1,7 @@
 <footer class="site-footer">
   <div class="wrap">
     <nav aria-label="Footer">{{#each menus.footer.items }}<a href="{{ url }}">{{ title }}</a>{{/each}}</nav>
+    {{#if countries }}<form class="country" method="post" action="{{ root }}/country"><input type="hidden" name="back" value="{{ root }}{{ here }}"><label>{{ t.country_region }} <select name="country"><option value="">{{ t.other_country }}</option>{{#each countries }}<option value="{{ code }}"{{#if selected }} selected{{/if}}>{{ name }} ({{ currency }})</option>{{/each}}</select></label> <button class="button">{{ t.update }}</button></form>{{/if}}
     {{#if languages }}<nav class="languages" aria-label="{{ t.language }}">{{#each languages }}<a href="{{ href }}" hreflang="{{ code }}" lang="{{ code }}"{{#if current }} aria-current="true"{{/if}}>{{ name }}</a>{{/each}}</nav>{{/if}}
     <p>© {{ shop.name }}</p>
   </div>

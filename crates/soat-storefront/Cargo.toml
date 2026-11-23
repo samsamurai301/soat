@@ -22,6 +22,7 @@ soat-checkout.workspace = true
 soat-cms.workspace = true
 soat-theme.workspace = true
 soat-i18n.workspace = true
+soat-pricing.workspace = true
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true

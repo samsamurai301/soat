@@ -64,6 +64,7 @@ impl Module for Storefront {
             "checkout",
             "cms",
             "i18n",
+            "pricing",
             "theme",
         ]
     }
@@ -95,6 +96,7 @@ impl Module for Storefront {
             account::account_order,
             seo::robots,
             seo::sitemap,
+            choose_country,
         ))
         .fallback(seo::fallback)
         .wrap(i18n::language_prefix)
@@ -235,7 +237,10 @@ impl View {
             .bind(shop.tenant_id())
             .fetch_one(&mut *tx)
             .await?;
-        let lang = Lang::of(headers, soat_i18n::shop_languages(&mut tx, shop).await?);
+        let mut lang = Lang::of(headers, soat_i18n::shop_languages(&mut tx, shop).await?);
+        lang.market = i18n::market_of(&mut tx, shop, headers).await?;
+        let country = cookie(headers, i18n::COUNTRY_COOKIE);
+        let countries = i18n::countries(&mut tx, shop, country.as_deref()).await?;
         let mut menus = Map::new();
         for handle in ["main", "footer"] {
             if let Some(m) = soat_cms::menu_by_handle(&mut tx, shop, handle).await? {
@@ -266,6 +271,8 @@ impl View {
             Value::Object(i18n::texts(&mut tx, shop, &lang).await?),
         );
         data.insert("languages".to_owned(), json!(lang.switcher(&path)));
+        data.insert("countries".to_owned(), json!(countries));
+        data.insert("here".to_owned(), json!(path));
         data.insert("menus".to_owned(), Value::Object(menus));
         data.insert("cart".to_owned(), json!({ "count": count }));
         let mut customer = None;
@@ -869,7 +876,18 @@ async fn cart_add(
     let Some(product) = shown.first() else {
         return Err(Error::unprocessable("this product is not for sale").with_code("unknown_item"));
     };
-    let currency = product.currency.clone();
+    // The buyer's market's currency when the item is sold in it.
+    let mut currency = product.currency.clone();
+    if let Some(m) = i18n::market_of(&mut tx, &shop, &headers).await? {
+        if let Ok(c) = Currency::parse(&m.currency) {
+            if soat_pricing::resolve(&mut tx, &shop, &item, c)
+                .await?
+                .is_some()
+            {
+                currency = m.currency;
+            }
+        }
+    }
     let held = match cart_cookie(&headers) {
         Some((id, token)) => carts::held(&mut tx, &shop, &id, &token)
             .await?
@@ -1400,6 +1418,75 @@ fn order_status(status: &str, financial: &str, fulfillment: &str) -> &'static st
         (_, "paid" | "partially_refunded", _) => "paid",
         _ => "awaiting_payment",
     }
+}
+
+/// The country picker's fields.
+#[model]
+pub struct CountryForm {
+    /// e.g. `CH`; empty for none.
+    pub country: String,
+    /// The page to go back to, e.g. `/de/products/x`.
+    pub back: Option<String>,
+}
+
+/// Pick the buyer's country (a form post): prices show in its market's
+/// currency, and the cart moves to it. Remembered in a cookie.
+#[post("/country", tag = "storefront")]
+async fn choose_country(
+    db: Db,
+    shop: Shop,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Form(f): Form<CountryForm>,
+) -> Result<Response> {
+    let country = f.country.trim().to_ascii_uppercase();
+    let known = soat_core::address::country_name(&country).is_some();
+    let mut tx = shop.begin(&db).await?;
+    let market = if known {
+        soat_pricing::market_for(&mut tx, &shop, &country).await?
+    } else {
+        None
+    };
+    let currency = match &market {
+        Some(m) => Some(m.currency.clone()),
+        None => catalog::main_currency(&mut tx, &shop).await?,
+    };
+    let held = match cart_cookie(&headers) {
+        Some((id, token)) => carts::held(&mut tx, &shop, &id, &token)
+            .await?
+            .filter(|c| Some(&c.currency) != currency.as_ref())
+            .map(|c| (c.id, token)),
+        None => None,
+    };
+    tx.commit().await?;
+    if let (Some((id, token)), Some(currency)) = (held, &currency) {
+        let holder = CartToken::new(shop.clone(), &token);
+        let (mut tx, id) = holder.open(&db, &id).await?;
+        carts::set_currency(&mut tx, &shop, &id, currency).await?;
+        tx.commit().await?;
+    }
+    let back = f
+        .back
+        .filter(|b| {
+            b.starts_with('/')
+                && !b.starts_with("//")
+                && !b.contains('\\')
+                && !b.chars().any(char::is_control)
+        })
+        .unwrap_or_else(|| format!("{}/", root_of(&headers)));
+    let mut res = Redirect::to(&back).into_response();
+    if known {
+        put_cookie(
+            &mut res,
+            i18n::COUNTRY_COOKIE,
+            &country,
+            365 * 86_400,
+            conn.secure,
+        );
+    } else {
+        put_cookie(&mut res, i18n::COUNTRY_COOKIE, "", 0, conn.secure);
+    }
+    Ok(res)
 }
 
 /// The theme's stylesheet.

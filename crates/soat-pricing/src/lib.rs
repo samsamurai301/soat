@@ -7,8 +7,11 @@
 //! that prices the item, else the item's own price when the currency
 //! matches, else none: the item is not sold in that currency.
 //!
-//! Customer groups and quantity tiers come in B11; markets that convert
-//! with exchange rates in D10.
+//! [`markets`] group countries that buy in one currency; with an exchange
+//! rate they convert items priced in their base currency when no list
+//! prices them. Customer groups and quantity tiers come in B11.
+
+pub mod markets;
 
 use std::sync::Arc;
 
@@ -21,6 +24,8 @@ use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::embed::Dir;
 use zapline::prelude::*;
 use zapline::Resources;
+
+pub use markets::{active_markets, market_for, Market};
 
 id_kind!(PriceListId, PriceListKind, "pl");
 
@@ -67,6 +72,14 @@ impl Module for Pricing {
             delete_price_list,
         ))
         .mount((list_prices, set_prices, delete_price, resolved_price))
+        .mount((
+            markets::list_markets,
+            markets::create_market,
+            markets::get_market,
+            markets::update_market,
+            markets::delete_market,
+            markets::storefront_market,
+        ))
     }
 }
 
@@ -129,12 +142,16 @@ pub struct ResolvedPrice {
     pub compare_at_minor: Option<i64>,
     /// The price list it comes from, or null for the item's own price.
     pub price_list_id: Option<String>,
+    /// The market whose exchange rate converted the item's own price.
+    pub market_id: Option<String>,
 }
 
 const COLUMNS: &str = "id, name, currency, priority, active";
 
-/// The price of `item_id` in `currency`, or `None` when it is not sold in
-/// that currency (or does not exist). Run it in the tenant transaction.
+/// The price of `item_id` in `currency`: from the best active price list,
+/// else the item's own price in its currency, else its own price converted
+/// by a market. `None` when it is not sold in that currency (or does not
+/// exist). Run it in the tenant transaction.
 pub async fn resolve(
     conn: &mut PgConnection,
     scope: &impl Scope,
@@ -159,21 +176,73 @@ pub async fn resolve(
             price_minor,
             compare_at_minor,
             price_list_id: Some(list),
+            market_id: None,
         }));
     }
-    let item = stock_item(conn, scope, item_id).await?;
-    Ok(item
-        .filter(|i| i.currency == currency.as_str())
-        .map(|i| ResolvedPrice {
-            item_id: i.id,
-            currency: i.currency,
-            price_minor: i.price_minor,
+    let Some(item) = stock_item(&mut *conn, scope, item_id).await? else {
+        return Ok(None);
+    };
+    if item.currency == currency.as_str() {
+        return Ok(Some(ResolvedPrice {
+            item_id: item.id,
+            currency: item.currency,
+            price_minor: item.price_minor,
             compare_at_minor: None,
             price_list_id: None,
-        }))
+            market_id: None,
+        }));
+    }
+    let Ok(own) = Currency::parse(&item.currency) else {
+        return Ok(None);
+    };
+    Ok(
+        markets::converted(conn, scope, item.price_minor, own, currency)
+            .await?
+            .map(|(price_minor, market)| ResolvedPrice {
+                item_id: item.id,
+                currency: currency.as_str().to_owned(),
+                price_minor,
+                compare_at_minor: None,
+                price_list_id: None,
+                market_id: Some(market),
+            }),
+    )
 }
 
-fn currency(code: &str) -> Result<Currency> {
+/// What `own_minor` of `own` shows as in `currency`, for listings: the
+/// item's best list price, else the amount itself in its own currency,
+/// else converted by a market. `None` when it is not sold in `currency`.
+pub async fn shown_price(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    item_id: &str,
+    own_minor: i64,
+    own: Currency,
+    currency: Currency,
+) -> Result<Option<i64>> {
+    let listed: Option<(i64,)> = sqlx::query_as(
+        "SELECT p.price_minor FROM price_list_prices p \
+         JOIN price_lists l ON l.id = p.price_list_id \
+         WHERE p.tenant_id = $1 AND p.item_id = $2 AND l.currency = $3 AND l.active \
+         ORDER BY l.priority DESC, l.id LIMIT 1",
+    )
+    .bind(scope.tenant_id())
+    .bind(item_id)
+    .bind(currency.as_str())
+    .fetch_optional(&mut *conn)
+    .await?;
+    if let Some((p,)) = listed {
+        return Ok(Some(p));
+    }
+    if own == currency {
+        return Ok(Some(own_minor));
+    }
+    Ok(markets::converted(conn, scope, own_minor, own, currency)
+        .await?
+        .map(|(m, _)| m))
+}
+
+pub(crate) fn currency(code: &str) -> Result<Currency> {
     Currency::parse(code)
         .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))
 }

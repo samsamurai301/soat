@@ -26,6 +26,6 @@ mod tenant;
 
 pub use domain::{Domain, DomainError};
 pub use id::{Id, IdError, IdKind};
-pub use money::{Currency, CurrencyError, Money, MoneyError};
+pub use money::{convert, Currency, CurrencyError, Money, MoneyError, Rounding};
 pub use permission::{is_permission_name, Permission};
 pub use tenant::{TenantId, TenantIdError};
