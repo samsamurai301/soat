@@ -1566,6 +1566,7 @@ dependencies = [
  "soat-inventory",
  "soat-invoices",
  "soat-module",
+ "soat-mollie",
  "soat-notify",
  "soat-orders",
  "soat-payments",
@@ -1753,6 +1754,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "soat-mollie"
+version = "0.0.1"
+dependencies = [
+ "bytes",
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-module",
+ "soat-payments",
+ "soat-tenancy",
+ "zapline",
+]
+
+[[package]]
 name = "soat-notify"
 version = "0.0.1"
 dependencies = [
@@ -1787,12 +1802,19 @@ dependencies = [
 name = "soat-payments"
 version = "0.0.1"
 dependencies = [
+ "bytes",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
  "serde",
  "serde_json",
  "soat-core",
  "soat-module",
  "soat-tenancy",
  "sqlx",
+ "tokio",
  "zapline",
 ]
 
@@ -1842,11 +1864,6 @@ version = "0.0.1"
 dependencies = [
  "bytes",
  "hmac",
- "http",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-util",
  "serde",
  "serde_json",
  "sha2",
@@ -1854,7 +1871,6 @@ dependencies = [
  "soat-module",
  "soat-payments",
  "soat-tenancy",
- "tokio",
  "zapline",
 ]
 
@@ -1890,6 +1906,8 @@ dependencies = [
 name = "soat-testing"
 version = "0.0.1"
 dependencies = [
+ "serde_json",
+ "tokio",
  "zapline",
 ]
 

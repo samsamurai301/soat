@@ -7,7 +7,11 @@
 //! that role owns. Each test then creates its own schema in it and the app
 //! connects with that schema as its search path.
 
+mod fake;
+
 use std::sync::atomic::{AtomicU64, Ordering};
+
+pub use fake::{fake_api, Log, Received};
 
 use zapline::db::sqlx::postgres::{PgConnectOptions, PgConnection};
 use zapline::db::sqlx::{self, ConnectOptions, Connection, Executor};

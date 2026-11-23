@@ -11,6 +11,7 @@
 //! staff mark the payment paid. Stripe comes in C8; its webhooks will feed
 //! [`apply`].
 
+pub mod http;
 mod methods;
 mod payments;
 mod provider;

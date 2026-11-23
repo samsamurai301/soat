@@ -43,6 +43,9 @@ pub struct Settings {
     /// Stripe, when configured.
     #[cfg(feature = "stripe")]
     pub stripe: Option<soat_stripe::StripeConfig>,
+    /// Mollie, when configured.
+    #[cfg(feature = "mollie")]
+    pub mollie: Option<soat_mollie::MollieConfig>,
 }
 
 impl Settings {
@@ -50,6 +53,7 @@ impl Settings {
     /// (default `./storage`), or `S3_BUCKET` and friends, and
     /// `STORAGE_SECRET` to keep file links valid across restarts;
     /// `SOAT_STRIPE_SECRET_KEY` and `SOAT_STRIPE_WEBHOOK_SECRET` for Stripe;
+    /// `SOAT_MOLLIE_API_KEY` and `SOAT_PUBLIC_URL` (for its webhooks) for Mollie;
     /// `SMTP_URL` and `MAIL_FROM` for email (without `SMTP_URL`, a debug
     /// build keeps mail in the dev inbox at `/_dev/mail`).
     ///
@@ -68,6 +72,8 @@ impl Settings {
                 .unwrap_or_else(|| "no-reply@localhost".to_owned()),
             #[cfg(feature = "stripe")]
             stripe: soat_stripe::StripeConfig::from_env(),
+            #[cfg(feature = "mollie")]
+            mollie: soat_mollie::MollieConfig::from_env(),
         })
     }
 
@@ -80,6 +86,8 @@ impl Settings {
             mail_from: "shops@soat.test".to_owned(),
             #[cfg(feature = "stripe")]
             stripe: None,
+            #[cfg(feature = "mollie")]
+            mollie: None,
         }
     }
 }
@@ -91,6 +99,10 @@ pub fn modules(settings: Settings) -> Modules {
     #[cfg(feature = "stripe")]
     if let Some(config) = &settings.stripe {
         payments = payments.with(soat_stripe::Stripe::new(config.clone()));
+    }
+    #[cfg(feature = "mollie")]
+    if let Some(config) = &settings.mollie {
+        payments = payments.with(soat_mollie::Mollie::new(config.clone()));
     }
     let modules = Modules::new()
         .with(settings.auth)
@@ -115,6 +127,11 @@ pub fn modules(settings: Settings) -> Modules {
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {
         Some(config) => modules.with(soat_stripe::StripeWebhooks::new(config)),
+        None => modules,
+    };
+    #[cfg(feature = "mollie")]
+    let modules = match settings.mollie {
+        Some(config) => modules.with(soat_mollie::MollieWebhooks::new(config)),
         None => modules,
     };
     modules

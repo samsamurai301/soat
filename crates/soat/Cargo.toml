@@ -29,12 +29,15 @@ soat-checkout.workspace = true
 soat-invoices.workspace = true
 soat-notify.workspace = true
 soat-stripe = { workspace = true, optional = true }
+soat-mollie = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage", "mail"] }
 
 [features]
-default = ["stripe"]
+default = ["stripe", "mollie"]
 # Stripe payments (PaymentIntents, Connect, webhooks).
 stripe = ["dep:soat-stripe"]
+# Mollie payments: iDEAL, Bancontact, cards, Klarna and more.
+mollie = ["dep:soat-mollie"]
 
 [dev-dependencies]
 soat-testing.workspace = true

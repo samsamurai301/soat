@@ -58,20 +58,46 @@ impl Currency {
     /// `amount_minor` written out with a decimal point and the code, e.g.
     /// `1999` EUR as `19.99 EUR`, `-500` JPY as `-500 JPY`.
     pub fn format(&self, amount_minor: i64) -> String {
+        format!("{} {}", self.decimal(amount_minor), self.as_str())
+    }
+
+    /// `amount_minor` as a decimal string, as payment APIs take it:
+    /// `1999` EUR as `19.99`, `500` JPY as `500`.
+    pub fn decimal(&self, amount_minor: i64) -> String {
         let decimals = self.decimals();
         let sign = if amount_minor < 0 { "-" } else { "" };
         let abs = amount_minor.unsigned_abs();
         if decimals == 0 {
-            return format!("{sign}{abs} {}", self.as_str());
+            return format!("{sign}{abs}");
         }
         let unit = 10u64.pow(decimals);
         format!(
-            "{sign}{}.{:0width$} {}",
+            "{sign}{}.{:0width$}",
             abs / unit,
             abs % unit,
-            self.as_str(),
             width = decimals as usize
         )
+    }
+
+    /// The minor units of a decimal string like `19.99` (or `19.9`, `19`);
+    /// `None` for more decimals than the currency has, or not a number.
+    pub fn parse_decimal(&self, text: &str) -> Option<i64> {
+        let decimals = self.decimals() as usize;
+        let (negative, text) = match text.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, text),
+        };
+        let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+        if whole.is_empty()
+            || fraction.len() > decimals
+            || !whole.bytes().all(|b| b.is_ascii_digit())
+            || !fraction.bytes().all(|b| b.is_ascii_digit())
+        {
+            return None;
+        }
+        let padded = format!("{whole}{fraction:0<decimals$}");
+        let value: i64 = padded.parse().ok()?;
+        Some(if negative { -value } else { value })
     }
 }
 
@@ -212,5 +238,22 @@ mod tests {
         assert_eq!(eur.format(i64::MIN), "-92233720368547758.08 EUR");
         assert_eq!(Currency::parse("JPY").unwrap().format(500), "500 JPY");
         assert_eq!(Currency::parse("KWD").unwrap().format(1234), "1.234 KWD");
+    }
+
+    #[test]
+    fn decimals_round_trip() {
+        let eur = Currency::parse("EUR").unwrap();
+        assert_eq!(eur.decimal(1999), "19.99");
+        assert_eq!(eur.parse_decimal("19.99"), Some(1999));
+        assert_eq!(eur.parse_decimal("19.9"), Some(1990));
+        assert_eq!(eur.parse_decimal("19"), Some(1900));
+        assert_eq!(eur.parse_decimal("-0.05"), Some(-5));
+        assert_eq!(eur.parse_decimal("1.999"), None);
+        assert_eq!(eur.parse_decimal("1e3"), None);
+        assert_eq!(eur.parse_decimal(".5"), None);
+        let jpy = Currency::parse("JPY").unwrap();
+        assert_eq!(jpy.decimal(500), "500");
+        assert_eq!(jpy.parse_decimal("500"), Some(500));
+        assert_eq!(jpy.parse_decimal("500.0"), None);
     }
 }

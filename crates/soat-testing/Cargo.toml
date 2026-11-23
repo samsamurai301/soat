@@ -9,3 +9,5 @@ publish.workspace = true
 
 [dependencies]
 zapline.workspace = true
+serde_json.workspace = true
+tokio = { version = "1", features = ["net", "io-util", "rt", "sync"] }

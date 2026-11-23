@@ -28,6 +28,7 @@ soat-tax = { path = "crates/soat-tax" }
 soat-shipping = { path = "crates/soat-shipping" }
 soat-payments = { path = "crates/soat-payments" }
 soat-stripe = { path = "crates/soat-stripe" }
+soat-mollie = { path = "crates/soat-mollie" }
 soat-promotions = { path = "crates/soat-promotions" }
 soat-orders = { path = "crates/soat-orders" }
 soat-checkout = { path = "crates/soat-checkout" }
