@@ -27,6 +27,7 @@ fn module_list_is_valid_and_ordered() {
             "invoices",
             "notify",
             "cms",
+            "i18n",
             "theme",
             "storefront",
             "mcp"

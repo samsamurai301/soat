@@ -33,7 +33,10 @@ use zapline::prelude::*;
 use zapline::storage::Storage;
 
 mod account;
+mod i18n;
 mod seo;
+
+use i18n::{root_of, Lang};
 
 /// The cookie holding the buyer's cart: `<cart id>.<token>`.
 pub const CART_COOKIE: &str = "soat_cart";
@@ -60,6 +63,7 @@ impl Module for Storefront {
             "orders",
             "checkout",
             "cms",
+            "i18n",
             "theme",
         ]
     }
@@ -93,6 +97,7 @@ impl Module for Storefront {
             seo::sitemap,
         ))
         .fallback(seo::fallback)
+        .wrap(i18n::language_prefix)
     }
 }
 
@@ -219,6 +224,7 @@ struct View {
     data: Map<String, Value>,
     /// The signed-in customer's id.
     customer: Option<String>,
+    lang: Lang,
 }
 
 impl View {
@@ -229,10 +235,12 @@ impl View {
             .bind(shop.tenant_id())
             .fetch_one(&mut *tx)
             .await?;
+        let lang = Lang::of(headers, soat_i18n::shop_languages(&mut tx, shop).await?);
         let mut menus = Map::new();
         for handle in ["main", "footer"] {
             if let Some(m) = soat_cms::menu_by_handle(&mut tx, shop, handle).await? {
-                menus.insert(handle.to_owned(), json!({ "items": m.items }));
+                let items = i18n::menu(&mut tx, shop, &lang, &m).await?;
+                menus.insert(handle.to_owned(), json!({ "items": items }));
             }
         }
         let count = match cart_cookie(headers) {
@@ -242,8 +250,22 @@ impl View {
             None => 0,
         };
         let url = origin(&mut tx, shop, headers).await?;
+        let path = headers
+            .get(i18n::PATH_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("/")
+            .to_owned();
         let mut data = Map::new();
-        data.insert("shop".to_owned(), json!({ "name": name, "url": url }));
+        data.insert(
+            "shop".to_owned(),
+            json!({ "name": name, "url": url, "language": lang.code }),
+        );
+        data.insert("root".to_owned(), json!(lang.root));
+        data.insert(
+            "t".to_owned(),
+            Value::Object(i18n::texts(&mut tx, shop, &lang).await?),
+        );
+        data.insert("languages".to_owned(), json!(lang.switcher(&path)));
         data.insert("menus".to_owned(), Value::Object(menus));
         data.insert("cart".to_owned(), json!({ "count": count }));
         let mut customer = None;
@@ -263,6 +285,7 @@ impl View {
             theme,
             data,
             customer,
+            lang,
         })
     }
 
@@ -270,9 +293,23 @@ impl View {
         self.data.insert(key.to_owned(), value);
     }
 
+    /// The theme's text `key` in the page's language.
+    fn t(&self, key: &str) -> String {
+        self.data["t"][key].as_str().unwrap_or(key).to_owned()
+    }
+
     async fn render(mut self, page: &str, status: StatusCode) -> Result<Response> {
         if NOINDEX.contains(&page) {
             self.set("noindex", json!(true));
+        }
+        if let Some(path) = self.data.get("canonical").and_then(Value::as_str) {
+            let path = path.to_owned();
+            let origin = self.data["shop"]["url"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            self.set("alternates", json!(self.lang.alternates(&origin, &path)));
+            self.set("canonical", json!(self.lang.url(&path)));
         }
         self.tx.commit().await?;
         let html = self.theme.render(page, &Value::Object(self.data));
@@ -287,7 +324,7 @@ impl View {
     /// Where the shop now sends `path` (a `301`), or the not-found page.
     async fn missing(mut self, shop: &Shop, path: &str) -> Result<Response> {
         match soat_cms::redirect_for(&mut self.tx, shop, path).await? {
-            Some(to) => match HeaderValue::from_str(&to) {
+            Some(to) => match HeaderValue::from_str(&self.lang.url(&to)) {
                 Ok(location) => {
                     self.tx.commit().await?;
                     let mut res = StatusCode::MOVED_PERMANENTLY.into_response();
@@ -301,7 +338,8 @@ impl View {
     }
 
     async fn not_found(mut self) -> Result<Response> {
-        self.set("page_title", json!("Not found"));
+        let title = self.t("not_found");
+        self.set("page_title", json!(title));
         self.render("not_found", StatusCode::NOT_FOUND).await
     }
 }
@@ -312,6 +350,7 @@ async fn blocks(
     conn: &mut PgConnection,
     shop: &Shop,
     storage: &Storage,
+    lang: &Lang,
     blocks: &[Value],
 ) -> Result<Vec<Value>> {
     let mut out = Vec::with_capacity(blocks.len());
@@ -330,7 +369,7 @@ async fn blocks(
             }
             "products" => {
                 let limit = b["limit"].as_i64().unwrap_or(8).clamp(1, 50);
-                let cards = if let Some(id) = b["collection_id"].as_str() {
+                let mut cards = if let Some(id) = b["collection_id"].as_str() {
                     match catalog::collection_handle(conn, shop, id).await? {
                         Some(h) => {
                             let params = ListParams::from_query(&format!(
@@ -353,13 +392,14 @@ async fn blocks(
                         .collect();
                     catalog::cards_by_ids(conn, shop, storage, &ids).await?
                 };
+                i18n::cards(conn, shop, lang, &mut cards).await?;
                 b["products"] = Value::Array(cards.iter().map(card).collect());
             }
             "columns" => {
                 let mut cols = Vec::new();
                 for col in b["columns"].as_array().cloned().unwrap_or_default() {
                     let inner = col.as_array().cloned().unwrap_or_default();
-                    let inner = Box::pin(self::blocks(conn, shop, storage, &inner)).await?;
+                    let inner = Box::pin(self::blocks(conn, shop, storage, lang, &inner)).await?;
                     cols.push(json!({ "blocks": inner }));
                 }
                 b["columns"] = Value::Array(cols);
@@ -378,15 +418,20 @@ async fn home(db: Db, shop: Shop, storage: Storage, headers: HeaderMap) -> Resul
     let mut v = View::open(&db, &shop, &headers).await?;
     let name = v.data["shop"]["name"].clone();
     v.set("page_title", name);
-    if let Some(page) = soat_cms::published_page(&mut v.tx, &shop, "home").await? {
-        let b = blocks(&mut v.tx, &shop, &storage, &page.blocks).await?;
-        v.set("blocks", Value::Array(b));
+    v.set("canonical", json!("/"));
+    if let Some(mut page) = soat_cms::published_page(&mut v.tx, &shop, "home").await? {
+        i18n::page(&mut v.tx, &shop, &v.lang, &mut page).await?;
+        let b = blocks(&mut v.tx, &shop, &storage, &v.lang, &page.blocks).await?;
+        let mut b = Value::Array(b);
+        i18n::prefix_links(&v.lang.root, &mut b);
+        v.set("blocks", b);
         if let Some(d) = page.seo_description {
             v.set("meta_description", json!(d));
         }
     }
     let params = ListParams::from_query("limit=8");
-    let featured = catalog::product_cards(&mut v.tx, &shop, &storage, &params).await?;
+    let mut featured = catalog::product_cards(&mut v.tx, &shop, &storage, &params).await?;
+    i18n::cards(&mut v.tx, &shop, &v.lang, &mut featured.items).await?;
     v.set(
         "featured",
         Value::Array(featured.items.iter().map(card).collect()),
@@ -404,9 +449,10 @@ async fn product_page(
     Path(handle): Path<String>,
 ) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
-    let Some(p) = catalog::product_by_handle(&mut v.tx, &shop, &storage, &handle).await? else {
+    let Some(mut p) = catalog::product_by_handle(&mut v.tx, &shop, &storage, &handle).await? else {
         return v.missing(&shop, &format!("/products/{handle}")).await;
     };
+    i18n::product(&mut v.tx, &shop, &v.lang, &mut p).await?;
     let mut product = serde_json::to_value(&p).unwrap_or_default();
     product["price"] = json!(money(p.price_minor, &p.currency));
     if let Some(variants) = product["variants"].as_array_mut() {
@@ -431,7 +477,8 @@ async fn product_page(
     if let Some(first) = images.first() {
         v.set("og_image", json!(first));
     }
-    v.set("product_ld", product_ld(&p, &origin, &path, images));
+    let url = v.lang.url(&path);
+    v.set("product_ld", product_ld(&p, &origin, &url, images));
     v.set("product", product);
     v.render("product", StatusCode::OK).await
 }
@@ -482,7 +529,9 @@ fn product_ld(p: &catalog::ShopProduct, origin: &str, path: &str, images: Vec<St
 }
 
 /// Sets `products`, `prev_url` and `next_url` from a page of cards.
-fn list(v: &mut View, page: &Paged<ProductCard>, base: &str) {
+async fn list(v: &mut View, shop: &Shop, mut page: Paged<ProductCard>, base: &str) -> Result<()> {
+    i18n::cards(&mut v.tx, shop, &v.lang, &mut page.items).await?;
+    let base = v.lang.url(base);
     v.set(
         "products",
         Value::Array(page.items.iter().map(card).collect()),
@@ -498,6 +547,7 @@ fn list(v: &mut View, page: &Paged<ProductCard>, base: &str) {
             json!(format!("{base}{sep}offset={}", page.offset + page.limit)),
         );
     }
+    Ok(())
 }
 
 fn offset(params: &ListParams) -> i64 {
@@ -519,9 +569,10 @@ async fn collection_page(
     Path(handle): Path<String>,
 ) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
-    let Some(c) = catalog::collection_by_handle(&mut v.tx, &shop, &handle).await? else {
+    let Some(mut c) = catalog::collection_by_handle(&mut v.tx, &shop, &handle).await? else {
         return v.missing(&shop, &format!("/collections/{handle}")).await;
     };
+    i18n::collection(&mut v.tx, &shop, &v.lang, &mut c).await?;
     let query = format!(
         "collection={}&offset={}&sort={}",
         encode(&c.handle),
@@ -543,7 +594,7 @@ async fn collection_page(
         v.set("meta_description", json!(description));
     }
     v.set("canonical", json!(format!("/collections/{}", c.handle)));
-    list(&mut v, &page, &format!("/collections/{}", c.handle));
+    list(&mut v, &shop, page, &format!("/collections/{}", c.handle)).await?;
     v.set("collection", serde_json::to_value(&c).unwrap_or_default());
     v.render("collection", StatusCode::OK).await
 }
@@ -558,10 +609,13 @@ async fn content_page(
     Path(handle): Path<String>,
 ) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
-    let Some(p) = soat_cms::published_page(&mut v.tx, &shop, &handle).await? else {
+    let Some(mut p) = soat_cms::published_page(&mut v.tx, &shop, &handle).await? else {
         return v.missing(&shop, &format!("/pages/{handle}")).await;
     };
-    let b = blocks(&mut v.tx, &shop, &storage, &p.blocks).await?;
+    i18n::page(&mut v.tx, &shop, &v.lang, &mut p).await?;
+    let b = blocks(&mut v.tx, &shop, &storage, &v.lang, &p.blocks).await?;
+    let mut b = Value::Array(b);
+    i18n::prefix_links(&v.lang.root, &mut b);
     v.set(
         "page_title",
         json!(p.seo_title.clone().unwrap_or_else(|| p.title.clone())),
@@ -570,7 +624,7 @@ async fn content_page(
         v.set("meta_description", json!(d));
     }
     v.set("canonical", json!(format!("/pages/{}", p.handle)));
-    v.set("blocks", Value::Array(b));
+    v.set("blocks", b);
     v.set("page", serde_json::to_value(&p).unwrap_or_default());
     v.render("page", StatusCode::OK).await
 }
@@ -610,6 +664,7 @@ async fn search_page(
         query.max_price = to.as_deref().and_then(|p| c.parse_decimal(p));
     }
     let found = search::search(&mut v.tx, &shop, &storage, &query).await?;
+    let root = v.lang.root.clone();
 
     // Links keep every filter but the page.
     let keep: Vec<(String, String)> = pairs
@@ -628,18 +683,18 @@ async fn search_page(
         limit: found.limit,
         offset: found.offset,
     };
-    list(&mut v, &page, base.trim_end_matches('?'));
+    list(&mut v, &shop, page, base.trim_end_matches('?')).await?;
 
     let sorts: Vec<Value> = [
-        ("relevance", "Best match"),
-        ("newest", "Newest"),
-        ("price", "Price, low to high"),
-        ("-price", "Price, high to low"),
-        ("title", "Name"),
+        ("relevance", "best_match"),
+        ("newest", "newest"),
+        ("price", "price_low"),
+        ("-price", "price_high"),
+        ("title", "name"),
     ]
     .iter()
     .filter(|(s, _)| *s != "relevance" || !query.q.trim().is_empty())
-    .map(|(s, label)| json!({ "value": s, "label": label, "selected": *s == found.sort }))
+    .map(|(s, label)| json!({ "value": s, "label": v.t(label), "selected": *s == found.sort }))
     .collect();
     let options: Vec<Value> = found
         .facets
@@ -664,9 +719,9 @@ async fn search_page(
     v.set(
         "page_title",
         json!(if q.is_empty() {
-            "All products".to_owned()
+            v.t("all_products")
         } else {
-            format!("Search: {q}")
+            format!("{}: {q}", v.t("search"))
         }),
     );
     v.set("query", json!(q));
@@ -680,9 +735,9 @@ async fn search_page(
     v.set(
         "clear_url",
         json!(if q.is_empty() {
-            "/search".to_owned()
+            format!("{root}/search")
         } else {
-            format!("/search?q={}", encode(&q))
+            format!("{root}/search?q={}", encode(&q))
         }),
     );
     v.set("collection_handle", json!(query.collection));
@@ -724,7 +779,8 @@ async fn render_cart(db: &Db, shop: &Shop, headers: &HeaderMap) -> Result<Respon
         Some((id, token)) => carts::held(&mut v.tx, shop, &id, &token).await?,
         None => None,
     };
-    v.set("page_title", json!("Your cart"));
+    let title = v.t("your_cart");
+    v.set("page_title", json!(title));
     if let Some(c) = &cart {
         v.set("cart", cart_value(c));
     }
@@ -740,10 +796,16 @@ pub struct AddToCart {
     pub quantity: Option<i64>,
 }
 
-fn cart_link(count: Option<i64>, notice: Option<&str>) -> Response {
+fn cart_link(headers: &HeaderMap, count: Option<i64>, notice: Option<&str>) -> Response {
     let count = count.map(|n| format!(" ({n})")).unwrap_or_default();
+    let root = root_of(headers);
+    let lang = root.trim_start_matches('/');
+    let label = soat_theme::strings(if lang.is_empty() { "en" } else { lang })["cart"]
+        .as_str()
+        .unwrap_or("Cart")
+        .to_owned();
     let mut out =
-        format!("<a class=\"cart-link\" href=\"/cart\" id=\"cart-count\">Cart{count}</a>");
+        format!("<a class=\"cart-link\" href=\"{root}/cart\" id=\"cart-count\">{label}{count}</a>");
     if let Some(n) = notice {
         let mut escaped = String::new();
         for c in n.chars() {
@@ -835,9 +897,9 @@ async fn cart_add(
         }
     };
     let mut res = match (&outcome, is_htmx(&headers)) {
-        (Ok(cart), true) => cart_link(Some(cart.item_count), None),
-        (Ok(_), false) => Redirect::to("/cart").into_response(),
-        (Err(e), true) => cart_link(None, Some(&upper_first(e.message()))),
+        (Ok(cart), true) => cart_link(&headers, Some(cart.item_count), None),
+        (Ok(_), false) => Redirect::to(&format!("{}/cart", root_of(&headers))).into_response(),
+        (Err(e), true) => cart_link(&headers, None, Some(&upper_first(e.message()))),
         (Err(_), false) => return outcome.map(|_| StatusCode::OK.into_response()),
     };
     if outcome.is_ok() {
@@ -865,7 +927,7 @@ async fn cart_line(
     Form(f): Form<LineQuantity>,
 ) -> Result<Response> {
     let Some((id, token)) = cart_cookie(&headers) else {
-        return Ok(Redirect::to("/cart").into_response());
+        return Ok(Redirect::to(&format!("{}/cart", root_of(&headers))).into_response());
     };
     let holder = CartToken::new(shop.clone(), &token);
     let (mut tx, id) = holder.open(&db, &id).await?;
@@ -874,7 +936,7 @@ async fn cart_line(
     if is_htmx(&headers) {
         render_cart(&db, &shop, &headers).await
     } else {
-        Ok(Redirect::to("/cart").into_response())
+        Ok(Redirect::to(&format!("{}/cart", root_of(&headers))).into_response())
     }
 }
 
@@ -922,12 +984,13 @@ impl CheckoutForm {
     }
 }
 
-fn days(o: &ShippingOption) -> Option<String> {
+fn days(v: &View, o: &ShippingOption) -> Option<String> {
+    let (d, up_to, from) = (v.t("days"), v.t("up_to"), v.t("from").to_lowercase());
     match (o.min_days, o.max_days) {
-        (Some(a), Some(b)) if a == b => Some(format!("{a} days")),
-        (Some(a), Some(b)) => Some(format!("{a}–{b} days")),
-        (None, Some(b)) => Some(format!("up to {b} days")),
-        (Some(a), None) => Some(format!("from {a} days")),
+        (Some(a), Some(b)) if a == b => Some(format!("{a} {d}")),
+        (Some(a), Some(b)) => Some(format!("{a}–{b} {d}")),
+        (None, Some(b)) => Some(format!("{up_to} {b} {d}")),
+        (Some(a), None) => Some(format!("{from} {a} {d}")),
         (None, None) => None,
     }
 }
@@ -983,7 +1046,7 @@ async fn checkout_values(
                 "rate_id": o.rate_id,
                 "name": o.name,
                 "price": money(o.price_minor, &o.currency),
-                "days": days(o),
+                "days": days(v, o),
                 "selected": Some(o.rate_id.as_str()) == chosen_rate,
             })
         })
@@ -1010,7 +1073,8 @@ async fn checkout_values(
             .map(|d| d.code.clone())
             .unwrap_or_default(),
     };
-    v.set("page_title", json!("Checkout"));
+    let title = v.t("checkout");
+    v.set("page_title", json!(title));
     v.set("checkout", checkout);
     v.set("address", address);
     v.set("countries", Value::Array(countries));
@@ -1049,7 +1113,7 @@ async fn render_checkout(
     };
     let Some(mut cart) = cart.filter(|c| !c.lines.is_empty()) else {
         v.tx.commit().await?;
-        return Ok(Redirect::to("/cart").into_response());
+        return Ok(Redirect::to(&format!("{}/cart", root_of(headers))).into_response());
     };
     if let (Some(customer), None) = (v.customer.clone(), &cart.customer_id) {
         cart = carts::attach(&mut v.tx, shop, &cart.id, &customer).await?;
@@ -1093,7 +1157,7 @@ async fn checkout_update(
     Form(f): Form<CheckoutForm>,
 ) -> Result<Response> {
     let Some((id, token)) = cart_cookie(&headers) else {
-        return Ok(Redirect::to("/cart").into_response());
+        return Ok(Redirect::to(&format!("{}/cart", root_of(&headers))).into_response());
     };
     let holder = CartToken::new(shop.clone(), &token);
     let (mut tx, id) = holder.open(&db, &id).await?;
@@ -1162,7 +1226,7 @@ async fn checkout_update(
     tx.commit().await?;
     match problem {
         Some(p) => render_checkout(&db, &shop, &headers, Some(p), Some(&f)).await,
-        None => Ok(Redirect::to("/checkout").into_response()),
+        None => Ok(Redirect::to(&format!("{}/checkout", root_of(&headers))).into_response()),
     }
 }
 
@@ -1179,7 +1243,13 @@ fn return_url(headers: &HeaderMap, secure: bool) -> Option<String> {
         && host
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b':' | b'[' | b']'));
-    ok.then(|| format!("{}://{host}/order", if secure { "https" } else { "http" }))
+    ok.then(|| {
+        format!(
+            "{}://{host}{}/order",
+            if secure { "https" } else { "http" },
+            root_of(headers)
+        )
+    })
 }
 
 /// Places the order (a form post): sends the buyer to the payment provider
@@ -1195,7 +1265,7 @@ async fn checkout_complete(
     Form(f): Form<PlaceOrder>,
 ) -> Result<Response> {
     let Some((id, token)) = cart_cookie(&headers) else {
-        return Ok(Redirect::to("/cart").into_response());
+        return Ok(Redirect::to(&format!("{}/cart", root_of(&headers))).into_response());
     };
     let holder = CartToken::new(shop.clone(), &token);
     let req = Complete {
@@ -1216,7 +1286,7 @@ async fn checkout_complete(
         .filter(|a| a["type"] == "redirect")
         .and_then(|a| a["url"].as_str())
         .filter(|u| u.starts_with("https://"))
-        .map_or_else(|| "/order".to_owned(), str::to_owned);
+        .map_or_else(|| format!("{}/order", root_of(&headers)), str::to_owned);
     let mut res = Redirect::to(&next).into_response();
     put_cookie(
         &mut res,
@@ -1231,12 +1301,12 @@ async fn checkout_complete(
 
 fn payment_status(status: &str) -> &'static str {
     match status {
-        "paid" => "paid",
-        "authorized" => "authorized",
-        "failed" => "failed",
-        "canceled" => "canceled",
-        "refunded" | "partially_refunded" => "refunded",
-        _ => "pending",
+        "paid" => "payment_paid",
+        "authorized" => "payment_authorized",
+        "failed" => "payment_failed",
+        "canceled" => "payment_canceled",
+        "refunded" | "partially_refunded" => "payment_refunded",
+        _ => "payment_pending",
     }
 }
 
@@ -1297,41 +1367,38 @@ fn order_values(v: &mut View, order: &Order, payments: &[Payment]) {
         }),
     );
     v.set("instructions", json!(instructions));
-    v.set(
-        "payment_status",
-        json!(payment.map_or(
-            if order.total_minor == 0 {
-                "nothing to pay"
-            } else {
-                "pending"
-            },
-            |p| payment_status(&p.status)
-        )),
+    let paying = payment.map_or(
+        if order.total_minor == 0 {
+            "payment_none"
+        } else {
+            "payment_pending"
+        },
+        |p| payment_status(&p.status),
     );
+    let paying = v.t(paying);
+    v.set("payment_status", json!(paying));
     v.set(
         "placed",
         json!(order.placed_at.get(..10).unwrap_or_default()),
     );
-    v.set(
-        "status",
-        json!(order_status(
-            &order.status,
-            &order.financial_status,
-            &order.fulfillment_status
-        )),
-    );
+    let status = v.t(order_status(
+        &order.status,
+        &order.financial_status,
+        &order.fulfillment_status,
+    ));
+    v.set("status", json!(status));
     v.set("order", serde_json::to_value(order).unwrap_or_default());
 }
 
-/// An order's state in a buyer's words.
+/// The text key of an order's state in a buyer's words.
 fn order_status(status: &str, financial: &str, fulfillment: &str) -> &'static str {
     match (status, financial, fulfillment) {
-        ("canceled", ..) => "Canceled",
-        (_, "refunded", _) => "Refunded",
-        (_, _, "fulfilled") => "Shipped",
-        (_, _, "partially_fulfilled") => "Partly shipped",
-        (_, "paid" | "partially_refunded", _) => "Paid",
-        _ => "Awaiting payment",
+        ("canceled", ..) => "canceled",
+        (_, "refunded", _) => "refunded",
+        (_, _, "fulfilled") => "shipped",
+        (_, _, "partially_fulfilled") => "partly_shipped",
+        (_, "paid" | "partially_refunded", _) => "paid",
+        _ => "awaiting_payment",
     }
 }
 

@@ -1,30 +1,30 @@
-<h1>Hello{{#if customer.first_name }}, {{ customer.first_name }}{{/if}}</h1>
-{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+<h1>{{ t.hello }}{{#if customer.first_name }}, {{ customer.first_name }}{{/if}}</h1>
+{{#if saved }}<p class="notice" role="status">{{ t.saved }}</p>{{/if}}
 <div class="checkout">
 <section>
-  <h2>Your orders</h2>
+  <h2>{{ t.your_orders }}</h2>
   {{#if orders }}
   <table class="cart-lines">
-    <thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Total</th></tr></thead>
+    <thead><tr><th>{{ t.order }}</th><th>{{ t.placed }}</th><th>{{ t.status }}</th><th>{{ t.total }}</th></tr></thead>
     <tbody>
-    {{#each orders }}<tr><td><a href="/account/orders/{{ id }}">#{{ number }}</a></td><td>{{ placed }}</td><td>{{ status }}</td><td>{{ total }}</td></tr>{{/each}}
+    {{#each orders }}<tr><td><a href="{{ root }}/account/orders/{{ id }}">#{{ number }}</a></td><td>{{ placed }}</td><td>{{ status }}</td><td>{{ total }}</td></tr>{{/each}}
     </tbody>
   </table>
-  {{#if prev_url }}<a href="{{ prev_url }}">Newer</a>{{/if}} {{#if next_url }}<a href="{{ next_url }}">Older</a>{{/if}}
+  {{#if prev_url }}<a href="{{ prev_url }}">{{ t.newer }}</a>{{/if}} {{#if next_url }}<a href="{{ next_url }}">{{ t.older }}</a>{{/if}}
   {{else}}
-  <p class="empty">No orders yet. <a href="/search">Start shopping</a></p>
+  <p class="empty">{{ t.no_orders }} <a href="{{ root }}/search">{{ t.start_shopping }}</a></p>
   {{/if}}
 </section>
 <aside class="summary">
-  <h2>Your details</h2>
-  <form class="fields" method="post" action="/account">
-    <label>Email <input type="email" value="{{ customer.email }}" disabled></label>
-    <label>First name <input name="first_name" value="{{ customer.first_name }}" autocomplete="given-name"></label>
-    <label>Last name <input name="last_name" value="{{ customer.last_name }}" autocomplete="family-name"></label>
-    <label>Phone <input type="tel" name="phone" value="{{ customer.phone }}" autocomplete="tel"></label>
-    <label class="choice"><input type="checkbox" name="accepts_marketing" value="true"{{#if customer.accepts_marketing }} checked{{/if}}> Send me news and offers</label>
-    <button class="button" type="submit">Save</button>
+  <h2>{{ t.your_details }}</h2>
+  <form class="fields" method="post" action="{{ root }}/account">
+    <label>{{ t.email }} <input type="email" value="{{ customer.email }}" disabled></label>
+    <label>{{ t.first_name }} <input name="first_name" value="{{ customer.first_name }}" autocomplete="given-name"></label>
+    <label>{{ t.last_name }} <input name="last_name" value="{{ customer.last_name }}" autocomplete="family-name"></label>
+    <label>{{ t.phone }} <input type="tel" name="phone" value="{{ customer.phone }}" autocomplete="tel"></label>
+    <label class="choice"><input type="checkbox" name="accepts_marketing" value="true"{{#if customer.accepts_marketing }} checked{{/if}}> {{ t.news_opt_in }}</label>
+    <button class="button" type="submit">{{ t.save }}</button>
   </form>
-  <form method="post" action="/account/logout"><button class="link" type="submit">Sign out</button></form>
+  <form method="post" action="{{ root }}/account/logout"><button class="link" type="submit">{{ t.sign_out }}</button></form>
 </aside>
 </div>

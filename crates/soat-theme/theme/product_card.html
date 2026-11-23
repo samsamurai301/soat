@@ -1,4 +1,4 @@
-<a class="card" href="/products/{{ handle }}">
+<a class="card" href="{{ root }}/products/{{ handle }}">
   <div class="card-image">{{#if image }}<img src="{{ image.url }}" alt="{{ image.alt }}" loading="lazy">{{else}}<span class="no-image"></span>{{/if}}</div>
   <h3>{{ title }}</h3>
   <p class="price">{{ price }}</p>

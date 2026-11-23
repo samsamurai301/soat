@@ -6,15 +6,15 @@
   <div class="details">
     <h1>{{ product.title }}</h1>
     <p class="price">{{ product.price }}</p>
-    <form class="buy" method="post" action="/cart/add" hx-post="/cart/add" hx-target="#cart-count" hx-swap="outerHTML">
+    <form class="buy" method="post" action="{{ root }}/cart/add" hx-post="{{ root }}/cart/add" hx-target="#cart-count" hx-swap="outerHTML">
       <input type="hidden" name="product_id" value="{{ product.id }}">
       {{#if product.variants }}
-      <label>Option
+      <label>{{ t.option }}
         <select name="variant_id">{{#each product.variants }}<option value="{{ id }}">{{ title }} · {{ price }}</option>{{/each}}</select>
       </label>
       {{/if}}
-      <label>Quantity <input type="number" name="quantity" value="1" min="1" max="99"></label>
-      <button class="button" type="submit">Add to cart</button>
+      <label>{{ t.quantity }} <input type="number" name="quantity" value="1" min="1" max="99"></label>
+      <button class="button" type="submit">{{ t.add_to_cart }}</button>
     </form>
     <div class="prose">{{ product.description | markdown }}</div>
   </div>

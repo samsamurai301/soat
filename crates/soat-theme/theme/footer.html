@@ -1,6 +1,7 @@
 <footer class="site-footer">
   <div class="wrap">
     <nav aria-label="Footer">{{#each menus.footer.items }}<a href="{{ url }}">{{ title }}</a>{{/each}}</nav>
+    {{#if languages }}<nav class="languages" aria-label="{{ t.language }}">{{#each languages }}<a href="{{ href }}" hreflang="{{ code }}" lang="{{ code }}"{{#if current }} aria-current="true"{{/if}}>{{ name }}</a>{{/each}}</nav>{{/if}}
     <p>© {{ shop.name }}</p>
   </div>
 </footer>

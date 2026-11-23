@@ -13,6 +13,7 @@ use soat_customers::Customers;
 use soat_events::Events;
 use soat_fields::Fields;
 use soat_files::Files;
+use soat_i18n::I18n;
 use soat_inventory::Inventory;
 use soat_invoices::Invoices;
 use soat_mcp::Mcp;
@@ -153,6 +154,7 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Invoices)
         .with(Notify::new(settings.mailer, settings.mail_from))
         .with(Cms)
+        .with(I18n)
         .with(Themes)
         .with(Storefront);
     #[cfg(feature = "stripe")]

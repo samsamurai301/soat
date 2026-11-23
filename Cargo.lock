@@ -1564,6 +1564,7 @@ dependencies = [
  "soat-events",
  "soat-fields",
  "soat-files",
+ "soat-i18n",
  "soat-inventory",
  "soat-invoices",
  "soat-mcp",
@@ -1722,6 +1723,19 @@ dependencies = [
 
 [[package]]
 name = "soat-files"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-i18n"
 version = "0.0.1"
 dependencies = [
  "serde",
@@ -1920,6 +1934,7 @@ dependencies = [
  "soat-core",
  "soat-customers",
  "soat-files",
+ "soat-i18n",
  "soat-module",
  "soat-orders",
  "soat-payments",

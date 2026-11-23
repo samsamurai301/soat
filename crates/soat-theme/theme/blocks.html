@@ -4,7 +4,7 @@
 {{#if is_image }}<figure class="block-image">{{#if link }}<a href="{{ link }}">{{/if}}<img src="{{ src }}" alt="{{ alt }}" loading="lazy">{{#if link }}</a>{{/if}}</figure>{{/if}}
 {{#if is_button }}<p class="block-button"><a class="button" href="{{ url }}">{{ label }}</a></p>{{/if}}
 {{#if is_products }}<section class="block-products">{{#if title }}<h2>{{ title }}</h2>{{/if}}<div class="grid">{{#each products }}{{> product_card }}{{/each}}</div></section>{{/if}}
-{{#if is_video }}<p class="block-video"><a href="{{ url }}" rel="noopener">{{#if title }}{{ title }}{{else}}Watch the video{{/if}}</a></p>{{/if}}
+{{#if is_video }}<p class="block-video"><a href="{{ url }}" rel="noopener">{{#if title }}{{ title }}{{else}}{{ t.watch_video }}{{/if}}</a></p>{{/if}}
 {{#if is_spacer }}<div class="spacer spacer-{{ size }}"></div>{{/if}}
 {{#if is_columns }}<div class="columns">{{#each columns }}<div class="column">{{#each blocks }}
 {{#if is_heading }}<h3>{{ text }}</h3>{{/if}}

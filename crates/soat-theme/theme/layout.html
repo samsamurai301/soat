@@ -6,7 +6,8 @@
 <title>{{ page_title }}{{#if shop.name }} · {{ shop.name }}{{/if}}</title>
 {{#if meta_description }}<meta name="description" content="{{ meta_description }}">{{/if}}
 {{#if canonical }}<link rel="canonical" href="{{ shop.url }}{{ canonical }}">{{/if}}
-{{#if noindex }}<meta name="robots" content="noindex">{{/if}}
+{{#each alternates }}<link rel="alternate" hreflang="{{ hreflang }}" href="{{ href }}">
+{{/each}}{{#if noindex }}<meta name="robots" content="noindex">{{/if}}
 <meta property="og:site_name" content="{{ shop.name }}">
 <meta property="og:title" content="{{ page_title }}">
 {{#if meta_description }}<meta property="og:description" content="{{ meta_description }}">{{/if}}

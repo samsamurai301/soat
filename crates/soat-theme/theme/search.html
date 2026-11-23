@@ -1,19 +1,19 @@
-<h1>{{#if query }}Results for “{{ query }}”{{else}}All products{{/if}}</h1>
-<form class="search-page" method="get" action="/search">
+<h1>{{#if query }}{{ t.results_for }} “{{ query }}”{{else}}{{ t.all_products }}{{/if}}</h1>
+<form class="search-page" method="get" action="{{ root }}/search">
   {{#if collection_handle }}<input type="hidden" name="collection" value="{{ collection_handle }}">{{/if}}
   <div class="search-bar">
-    <input type="search" name="q" value="{{ query }}" placeholder="Search products" aria-label="Search products">
-    <label>Sort
+    <input type="search" name="q" value="{{ query }}" placeholder="{{ t.search_products }}" aria-label="{{ t.search_products }}">
+    <label>{{ t.sort }}
       <select name="sort">{{#each sorts }}<option value="{{ value }}"{{#if selected }} selected{{/if}}>{{ label }}</option>{{/each}}</select>
     </label>
-    <button class="button" type="submit">Search</button>
+    <button class="button" type="submit">{{ t.search }}</button>
   </div>
-  <p class="muted">{{ total }} products{{#if filtered }} · <a href="{{ clear_url }}">Clear filters</a>{{/if}}</p>
+  <p class="muted">{{ total }} {{ t.products }}{{#if filtered }} · <a href="{{ clear_url }}">{{ t.clear_filters }}</a>{{/if}}</p>
   <div class="search-layout">
     <aside class="filters" aria-label="Filters">
       {{#if facets.tags }}
       <fieldset>
-        <legend>Tags</legend>
+        <legend>{{ t.tags }}</legend>
         {{#each facets.tags }}<label class="choice"><input type="checkbox" name="tag" value="{{ value }}"{{#if selected }} checked{{/if}}> {{ value }} <span class="muted">({{ count }})</span></label>{{/each}}
       </fieldset>
       {{/if}}
@@ -25,14 +25,14 @@
       {{/each}}
       {{#if facets.price }}
       <fieldset>
-        <legend>Price ({{ facets.price.currency }})</legend>
+        <legend>{{ t.price }} ({{ facets.price.currency }})</legend>
         <div class="pair">
-          <label>From <input name="price_from" inputmode="decimal" value="{{ facets.price.from }}" placeholder="{{ facets.price.min }}"></label>
-          <label>To <input name="price_to" inputmode="decimal" value="{{ facets.price.to }}" placeholder="{{ facets.price.max }}"></label>
+          <label>{{ t.from }} <input name="price_from" inputmode="decimal" value="{{ facets.price.from }}" placeholder="{{ facets.price.min }}"></label>
+          <label>{{ t.to }} <input name="price_to" inputmode="decimal" value="{{ facets.price.to }}" placeholder="{{ facets.price.max }}"></label>
         </div>
       </fieldset>
       {{/if}}
-      <button class="button" type="submit">Apply</button>
+      <button class="button" type="submit">{{ t.apply }}</button>
     </aside>
     <section>{{> product_list }}</section>
   </div>

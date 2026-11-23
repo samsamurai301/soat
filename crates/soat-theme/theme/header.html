@@ -1,6 +1,6 @@
 <header class="site-header">
   <div class="wrap bar">
-    <a class="brand" href="/">{{ shop.name }}</a>
+    <a class="brand" href="{{ root }}/">{{ shop.name }}</a>
     <nav class="menu" aria-label="Main">
       {{#each menus.main.items }}
       <div class="menu-item">
@@ -9,10 +9,10 @@
       </div>
       {{/each}}
     </nav>
-    <form class="search" action="/search" method="get" role="search">
-      <input type="search" name="q" value="{{ query }}" placeholder="Search" aria-label="Search">
+    <form class="search" action="{{ root }}/search" method="get" role="search">
+      <input type="search" name="q" value="{{ query }}" placeholder="{{ t.search }}" aria-label="{{ t.search }}">
     </form>
-    <a class="account-link" href="/account">{{#if customer }}{{#if customer.first_name }}{{ customer.first_name }}{{else}}Account{{/if}}{{else}}Sign in{{/if}}</a>
-    <a class="cart-link" href="/cart" id="cart-count">Cart{{#if cart.count }} ({{ cart.count }}){{/if}}</a>
+    <a class="account-link" href="{{ root }}/account">{{#if customer }}{{#if customer.first_name }}{{ customer.first_name }}{{else}}{{ t.account }}{{/if}}{{else}}{{ t.sign_in }}{{/if}}</a>
+    <a class="cart-link" href="{{ root }}/cart" id="cart-count">{{ t.cart }}{{#if cart.count }} ({{ cart.count }}){{/if}}</a>
   </div>
 </header>

@@ -7,6 +7,7 @@ use soat_tenancy::Shop;
 use zapline::db::{Db, ListParams};
 use zapline::prelude::*;
 
+use super::i18n::root_of;
 use super::{
     cart_cookie, carts, cookie, money, offset, order_status, order_values, put_cookie, upper_first,
     CartToken, View,
@@ -33,7 +34,7 @@ async fn signed_in(
             tx.commit().await?;
         }
     }
-    let mut res = Redirect::to("/account").into_response();
+    let mut res = Redirect::to(&format!("{}/account", root_of(headers))).into_response();
     put_cookie(
         &mut res,
         CUSTOMER_COOKIE,
@@ -61,9 +62,9 @@ pub(crate) async fn login_page(db: Db, shop: Shop, headers: HeaderMap) -> Result
     let mut v = View::open(&db, &shop, &headers).await?;
     if v.customer.is_some() {
         v.tx.commit().await?;
-        return Ok(Redirect::to("/account").into_response());
+        return Ok(Redirect::to(&format!("{}/account", v.lang.root)).into_response());
     }
-    v.set("page_title", json!("Sign in"));
+    v.set("page_title", json!(v.t("sign_in")));
     v.render("login", StatusCode::OK).await
 }
 
@@ -95,9 +96,9 @@ pub(crate) async fn login(
         Ok(s) => signed_in(&db, &shop, &headers, conn.secure, s).await,
         Err(e) if e.status() == StatusCode::UNAUTHORIZED => {
             let mut v = View::open(&db, &shop, &headers).await?;
-            v.set("page_title", json!("Sign in"));
+            v.set("page_title", json!(v.t("sign_in")));
             v.set("email", json!(f.email));
-            v.set("error", json!("Wrong email or password."));
+            v.set("error", json!(v.t("wrong_login")));
             v.render("login", StatusCode::UNAUTHORIZED).await
         }
         Err(e) => Err(e),
@@ -110,9 +111,9 @@ pub(crate) async fn register_page(db: Db, shop: Shop, headers: HeaderMap) -> Res
     let mut v = View::open(&db, &shop, &headers).await?;
     if v.customer.is_some() {
         v.tx.commit().await?;
-        return Ok(Redirect::to("/account").into_response());
+        return Ok(Redirect::to(&format!("{}/account", v.lang.root)).into_response());
     }
-    v.set("page_title", json!("Create an account"));
+    v.set("page_title", json!(v.t("create_account")));
     v.render("register", StatusCode::OK).await
 }
 
@@ -167,7 +168,7 @@ pub(crate) async fn register(
         _ => return Err(e),
     };
     let mut v = View::open(&db, &shop, &headers).await?;
-    v.set("page_title", json!("Create an account"));
+    v.set("page_title", json!(v.t("create_account")));
     v.set("email", json!(f.email));
     v.set("first_name", json!(f.first_name));
     v.set("last_name", json!(f.last_name));
@@ -187,7 +188,8 @@ pub(crate) async fn logout(
         // An expired session is signed out already.
         let _ = SignedIn::new(shop, &token).sign_out(&db).await;
     }
-    let mut res = Redirect::to("/").into_response();
+    let root = root_of(&headers);
+    let mut res = Redirect::to(if root.is_empty() { "/" } else { &root }).into_response();
     put_cookie(&mut res, CUSTOMER_COOKIE, "", 0, conn.secure);
     Ok(res)
 }
@@ -203,7 +205,7 @@ pub(crate) async fn account_page(
     let mut v = View::open(&db, &shop, &headers).await?;
     let Some(customer) = v.customer.clone() else {
         v.tx.commit().await?;
-        return Ok(Redirect::to("/account/login").into_response());
+        return Ok(Redirect::to(&format!("{}/account/login", v.lang.root)).into_response());
     };
     let at = offset(&params);
     let query = format!("limit={ORDERS_PER_PAGE}&offset={at}");
@@ -217,22 +219,29 @@ pub(crate) async fn account_page(
                 "id": o.id,
                 "number": o.number,
                 "placed": o.placed_at.get(..10).unwrap_or_default(),
-                "status": order_status(&o.status, &o.financial_status, &o.fulfillment_status),
+                "status": v.t(order_status(&o.status, &o.financial_status, &o.fulfillment_status)),
                 "total": money(o.total_minor, &o.currency),
             })
         })
         .collect();
     if at > 0 {
         let prev = (at - ORDERS_PER_PAGE).max(0);
-        v.set("prev_url", json!(format!("/account?offset={prev}")));
+        v.set(
+            "prev_url",
+            json!(format!("{}/account?offset={prev}", v.lang.root)),
+        );
     }
     if at + ORDERS_PER_PAGE < page.total {
         v.set(
             "next_url",
-            json!(format!("/account?offset={}", at + ORDERS_PER_PAGE)),
+            json!(format!(
+                "{}/account?offset={}",
+                v.lang.root,
+                at + ORDERS_PER_PAGE
+            )),
         );
     }
-    v.set("page_title", json!("Your account"));
+    v.set("page_title", json!(v.t("your_account")));
     v.set("orders", Value::Array(orders));
     v.set("saved", json!(params.get("saved").is_some()));
     v.render("account", StatusCode::OK).await
@@ -257,11 +266,11 @@ pub(crate) async fn update_account(
     Form(f): Form<AccountForm>,
 ) -> Result<Response> {
     let Some(token) = cookie(&headers, CUSTOMER_COOKIE) else {
-        return Ok(Redirect::to("/account/login").into_response());
+        return Ok(Redirect::to(&format!("{}/account/login", root_of(&headers))).into_response());
     };
     let session = SignedIn::new(shop.clone(), &token);
     let Ok((mut tx, customer)) = session.begin(&db).await else {
-        return Ok(Redirect::to("/account/login").into_response());
+        return Ok(Redirect::to(&format!("{}/account/login", root_of(&headers))).into_response());
     };
     let trim = |v: Option<String>| v.map(|v| v.trim().to_owned());
     let c = MeChange {
@@ -273,7 +282,7 @@ pub(crate) async fn update_account(
     c.validate().map_err(zapline::validate::validation_error)?;
     accounts::change_profile(&mut tx, &shop, &customer, &c).await?;
     tx.commit().await?;
-    Ok(Redirect::to("/account?saved=1").into_response())
+    Ok(Redirect::to(&format!("{}/account?saved=1", root_of(&headers))).into_response())
 }
 
 /// One of the customer's orders; anyone else's is not found.
@@ -287,7 +296,7 @@ pub(crate) async fn account_order(
     let mut v = View::open(&db, &shop, &headers).await?;
     let Some(customer) = v.customer.clone() else {
         v.tx.commit().await?;
-        return Ok(Redirect::to("/account/login").into_response());
+        return Ok(Redirect::to(&format!("{}/account/login", v.lang.root)).into_response());
     };
     let Some(order) = soat_orders::customer_order(&mut v.tx, &shop, &customer, &id).await? else {
         return v.not_found().await;

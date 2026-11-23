@@ -36,6 +36,7 @@ soat-checkout = { path = "crates/soat-checkout" }
 soat-invoices = { path = "crates/soat-invoices" }
 soat-notify = { path = "crates/soat-notify" }
 soat-cms = { path = "crates/soat-cms" }
+soat-i18n = { path = "crates/soat-i18n" }
 soat-theme = { path = "crates/soat-theme" }
 soat-storefront = { path = "crates/soat-storefront" }
 soat-mcp = { path = "crates/soat-mcp" }

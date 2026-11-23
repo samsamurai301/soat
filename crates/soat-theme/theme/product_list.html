@@ -1,6 +1,6 @@
 {{#if products }}
 <div class="grid">{{#each products }}{{> product_card }}{{/each}}</div>
-<nav class="pager">{{#if prev_url }}<a href="{{ prev_url }}">← Previous</a>{{/if}}{{#if next_url }}<a href="{{ next_url }}">Next →</a>{{/if}}</nav>
+<nav class="pager">{{#if prev_url }}<a href="{{ prev_url }}">{{ t.previous }}</a>{{/if}}{{#if next_url }}<a href="{{ next_url }}">{{ t.next }}</a>{{/if}}</nav>
 {{else}}
-<p class="empty">Nothing here yet.</p>
+<p class="empty">{{ t.nothing_here }}</p>
 {{/if}}

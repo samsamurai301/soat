@@ -9,6 +9,7 @@ pub mod discount;
 mod domain;
 pub mod fields;
 pub mod handle;
+pub mod i18n;
 mod id;
 pub mod invoice;
 pub mod markdown;

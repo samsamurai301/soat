@@ -3,12 +3,12 @@
 {{else}}
 <section class="hero">
   <h1>{{ shop.name }}</h1>
-  <p><a class="button" href="/search">Shop all</a></p>
+  <p><a class="button" href="{{ root }}/search">{{ t.shop_all }}</a></p>
 </section>
 {{/if}}
 {{#if featured }}
 <section>
-  <h2>New in</h2>
+  <h2>{{ t.new_in }}</h2>
   <div class="grid">{{#each featured }}{{> product_card }}{{/each}}</div>
 </section>
 {{/if}}

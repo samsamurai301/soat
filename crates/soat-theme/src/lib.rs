@@ -98,6 +98,33 @@ pub const DEFAULT_FILES: &[(&str, Kind, &str)] = &[
     ("theme.css", Kind::Style, include_str!("../theme/theme.css")),
 ];
 
+/// The default theme's texts, by language. Others fall back to English.
+pub const LOCALES: &[(&str, &str)] = &[
+    ("en", include_str!("../theme/locales/en.json")),
+    ("de", include_str!("../theme/locales/de.json")),
+];
+
+/// The default theme's texts in `lang` (templates read them as
+/// `{{ t.add_to_cart }}`): English, then the base language (`de` for
+/// `de-at`), then `lang` itself.
+pub fn strings(lang: &str) -> serde_json::Map<String, Value> {
+    let parse = |code: &str| {
+        LOCALES
+            .iter()
+            .find(|(c, _)| *c == code)
+            .and_then(|(_, src)| serde_json::from_str::<serde_json::Map<String, Value>>(src).ok())
+            .unwrap_or_default()
+    };
+    let mut out = parse("en");
+    let base = lang.split('-').next().unwrap_or_default();
+    for code in [base, lang] {
+        if code != "en" {
+            out.extend(parse(code));
+        }
+    }
+    out
+}
+
 /// Prefix of the partials a shop adds.
 pub const SNIPPET_PREFIX: &str = "snippet-";
 /// Most snippets a shop may add.
@@ -218,7 +245,8 @@ impl Theme {
     }
 
     /// Renders page template `page` inside the layout. `data` gains
-    /// `theme` (the settings). An unknown page renders `not_found`.
+    /// `theme` (the settings), and `t` (the theme's texts in the page's
+    /// language) unless it has them. An unknown page renders `not_found`.
     pub fn render(&self, page: &str, data: &Value) -> String {
         let mut data = data.clone();
         if let Value::Object(map) = &mut data {
@@ -238,6 +266,10 @@ impl Theme {
                             .unwrap_or_else(|| "en".into()),
                     )
                 });
+            }
+            if !map.contains_key("t") {
+                let lang = map["shop"]["language"].as_str().unwrap_or("en").to_owned();
+                map.insert("t".to_owned(), Value::Object(strings(&lang)));
             }
         }
         let content = self
@@ -549,6 +581,18 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn every_language_has_every_text() {
+        let en = strings("en");
+        assert!(en.len() > 100);
+        for (code, _) in LOCALES {
+            let s = strings(code);
+            assert_eq!(s.len(), en.len(), "{code}");
+        }
+        assert_eq!(strings("de-at")["add_to_cart"], "In den Warenkorb");
+        assert_eq!(strings("xx")["add_to_cart"], "Add to cart");
+    }
 
     #[test]
     fn the_default_theme_parses() {

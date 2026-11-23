@@ -29,6 +29,7 @@ soat-checkout.workspace = true
 soat-invoices.workspace = true
 soat-notify.workspace = true
 soat-cms.workspace = true
+soat-i18n.workspace = true
 soat-theme.workspace = true
 soat-storefront.workspace = true
 soat-mcp.workspace = true
