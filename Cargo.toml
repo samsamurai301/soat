@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = ["crates/soat-core", "crates/soat"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.88"
+license-file = "LICENSE"
+repository = "https://github.com/samsamurai301/soat"
+publish = false
+
+[workspace.dependencies]
+soat-core = { path = "crates/soat-core" }
+# Tracks Zapline main (newer than the crates.io release); Cargo.lock pins the exact commit.
+zapline = { git = "https://github.com/samsamurai301/zapline", features = ["sqlite"] }
+serde = { version = "1", features = ["derive"] }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

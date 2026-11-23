@@ -1,0 +1,18 @@
+[package]
+name = "soat"
+description = "SOAT commerce server: one binary for API, admin, storefront and jobs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+zapline.workspace = true
+serde.workspace = true
+sqlx = { version = "0.8", default-features = false, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
