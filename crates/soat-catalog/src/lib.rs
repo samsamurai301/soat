@@ -1,10 +1,13 @@
 //! Catalog: products of the request's tenant.
 //!
-//! Variants, collections, categories and media follow (milestones B1 to B12).
+//! Products have options and variants ([`variants`]). Collections,
+//! categories and media follow (milestones B2 to B12).
 //!
 //! Every query runs in a tenant transaction (row-level security) and filters
 //! on `tenant_id`, so one tenant can never read or change
 //! another's products: a foreign id is simply "not found".
+
+pub mod variants;
 
 use soat_core::{id_kind, Currency, Permission};
 use soat_module::Module;
@@ -43,6 +46,7 @@ impl Module for Catalog {
 
     fn mount(&self, app: App) -> App {
         app.mount((list_products, create_product, get_product))
+            .plugin(variants::mount)
     }
 }
 

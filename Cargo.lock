@@ -1427,6 +1427,7 @@ name = "soat-catalog"
 version = "0.0.1"
 dependencies = [
  "serde",
+ "serde_json",
  "soat-core",
  "soat-events",
  "soat-module",

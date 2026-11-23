@@ -6,6 +6,7 @@
 mod domain;
 mod id;
 mod money;
+pub mod options;
 mod permission;
 mod tenant;
 
