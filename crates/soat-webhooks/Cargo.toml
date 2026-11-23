@@ -30,5 +30,6 @@ tokio = { version = "1", features = ["time"] }
 [dev-dependencies]
 soat-auth.workspace = true
 soat-catalog.workspace = true
+soat-fields.workspace = true
 soat-testing.workspace = true
 tokio = { version = "1", features = ["full"] }

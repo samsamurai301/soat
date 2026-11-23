@@ -7,6 +7,7 @@
 pub use soat_auth::Auth;
 use soat_catalog::Catalog;
 use soat_events::Events;
+use soat_fields::Fields;
 use soat_module::Modules;
 use soat_tenancy::Tenancy;
 use soat_webhooks::Webhooks;
@@ -22,6 +23,7 @@ pub fn modules(auth: Auth) -> Modules {
         .with(Events::new())
         .with(Tenancy)
         .with(Webhooks::new())
+        .with(Fields)
         .with(Catalog)
 }
 

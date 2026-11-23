@@ -1403,6 +1403,7 @@ dependencies = [
  "soat-auth",
  "soat-catalog",
  "soat-events",
+ "soat-fields",
  "soat-module",
  "soat-tenancy",
  "soat-testing",
@@ -1430,6 +1431,7 @@ dependencies = [
  "serde_json",
  "soat-core",
  "soat-events",
+ "soat-fields",
  "soat-module",
  "soat-tenancy",
  "sqlx",
@@ -1459,6 +1461,19 @@ dependencies = [
  "soat-testing",
  "sqlx",
  "tokio",
+ "zapline",
+]
+
+[[package]]
+name = "soat-fields"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
  "zapline",
 ]
 
@@ -1512,6 +1527,7 @@ dependencies = [
  "soat-catalog",
  "soat-core",
  "soat-events",
+ "soat-fields",
  "soat-module",
  "soat-tenancy",
  "soat-testing",

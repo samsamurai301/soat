@@ -11,7 +11,7 @@ Lines marked **alpha** are in the public alpha (week of 2027-01-04).
 
 Each layer may use only the layers below it. Siblings in one layer talk
 through events, never by importing each other. Foundation crates are a stack
-(core, module, db, auth, events, tenancy, webhooks, bottom up).
+(core, module, db, auth, events, tenancy, webhooks, fields, bottom up).
 `crates/soat/tests/layers.rs` enforces this and fails for a crate without a
 layer.
 
@@ -21,8 +21,8 @@ layer.
 | Extensions (Cargo features) | `soat-apps`, `soat-plugin-api`, `soat-plugin-host`, `soat-cli`, `soat-onboarding`, `soat-import`, `soat-ai`, `soat-analytics`, `soat-marketing`, `soat-subscriptions`, `soat-b2b`, `soat-channels`, `soat-compliance` |
 | Content | `soat-cms`, `soat-i18n`, `soat-seo`, `soat-search`, `soat-theme` |
 | Selling | `soat-customers`, `soat-cart`, `soat-tax`, `soat-shipping`, `soat-payments`, `soat-checkout`, `soat-orders`, `soat-promotions`, `soat-notify` |
-| Catalog | `soat-catalog`, `soat-fields`, `soat-inventory`, `soat-pricing`, `soat-files` |
-| Foundation | `soat-core`, `soat-module`, `soat-tenancy`, `soat-db`, `soat-events`, `soat-auth`, `soat-webhooks` |
+| Catalog | `soat-catalog`, `soat-inventory`, `soat-pricing`, `soat-files` |
+| Foundation | `soat-core`, `soat-module`, `soat-tenancy`, `soat-db`, `soat-events`, `soat-auth`, `soat-webhooks`, `soat-fields` |
 | Zapline + Postgres | gains tenancy, outbox, webhooks, plugin host and MCP as SOAT needs them |
 
 ## A. Foundation
@@ -46,7 +46,7 @@ layer.
 - [x] B2 Collections: hand-picked, ordered, unique handles per shop **alpha**
 - [ ] B3 Smart collections
 - [x] B4 Categories (a tree, up to 8 deep, listing includes subtrees) and product tags (`?tag=`) **alpha**
-- [ ] B5 Custom fields **alpha**
+- [x] B5 Custom fields: `soat-fields` (foundation), typed definitions per resource type, product values at `/api/products/{id}/fields` **alpha**
 - [ ] B6 Files and media **alpha**
 - [ ] B7 Image pipeline
 - [ ] B8 Inventory and locations **alpha**

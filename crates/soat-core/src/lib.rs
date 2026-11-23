@@ -4,6 +4,7 @@
 //! the server, plugins and SDKs alike.
 
 mod domain;
+pub mod fields;
 pub mod handle;
 mod id;
 mod money;

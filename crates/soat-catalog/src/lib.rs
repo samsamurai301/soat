@@ -37,7 +37,7 @@ impl Module for Catalog {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy", "events"]
+        &["tenancy", "events", "fields"]
     }
 
     fn migrations(&self) -> Option<Dir> {
@@ -62,6 +62,8 @@ impl Module for Catalog {
             get_product,
             update_product,
             delete_product,
+            get_product_fields,
+            set_product_fields,
         ))
         .plugin(variants::mount)
         .plugin(collections::mount)
@@ -232,6 +234,7 @@ async fn delete_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Resul
     if deleted.rows_affected() == 0 {
         return Err(Error::not_found());
     }
+    soat_fields::delete_values(&mut tx, &tenant, "product", id.as_str()).await?;
     tenant
         .publish(
             &mut tx,
@@ -241,4 +244,54 @@ async fn delete_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Resul
         .await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The product's custom field values, by key (`products:read`). Define
+/// fields with `PUT /api/fields/product/{key}`.
+#[get("/api/products/{id}/fields", tag = "catalog")]
+async fn get_product_fields(
+    db: Db,
+    tenant: Tenant,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Map<String, serde_json::Value>>> {
+    let mut tx = tenant.begin_for(&db, &PRODUCTS_READ).await?;
+    let id = existing(&mut tx, &tenant, &id).await?;
+    let values = soat_fields::values(&mut tx, &tenant, "product", &id).await?;
+    tx.commit().await?;
+    Ok(Json(values))
+}
+
+/// Set some of the product's custom field values; `null` clears one
+/// (`products:write`). Publishes `product.fields_changed` with every value.
+#[patch("/api/products/{id}/fields", tag = "catalog")]
+async fn set_product_fields(
+    db: Db,
+    tenant: Tenant,
+    Path(id): Path<String>,
+    Json(changes): Json<serde_json::Map<String, serde_json::Value>>,
+) -> Result<Json<serde_json::Map<String, serde_json::Value>>> {
+    let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
+    let id = existing(&mut tx, &tenant, &id).await?;
+    let values = soat_fields::set_values(&mut tx, &tenant, "product", &id, &changes).await?;
+    tenant
+        .publish(
+            &mut tx,
+            "product.fields_changed",
+            &serde_json::json!({ "product_id": id, "fields": values }),
+        )
+        .await?;
+    tx.commit().await?;
+    Ok(Json(values))
+}
+
+/// The id of one of the shop's products, or 404.
+async fn existing(tx: &mut soat_tenancy::TenantTx, tenant: &Tenant, id: &str) -> Result<String> {
+    let id = ProductId::parse(id).map_err(|_| Error::not_found())?;
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM products WHERE tenant_id = $1 AND id = $2")
+            .bind(tenant.id())
+            .bind(id.as_str())
+            .fetch_optional(&mut **tx)
+            .await?;
+    row.map(|(id,)| id).ok_or_else(Error::not_found)
 }

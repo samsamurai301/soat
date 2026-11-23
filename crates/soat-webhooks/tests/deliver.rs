@@ -80,6 +80,7 @@ async fn app() -> (TestClient, String) {
         .with(Events::manual())
         .with(Tenancy)
         .with(Webhooks::new().manual().allow_private_targets())
+        .with(soat_fields::Fields)
         .with(Catalog);
     let client = modules.build(App::new(), Database::postgres(url)).test();
     let session: Value = client
