@@ -5,12 +5,14 @@
 //! Every query filters on `tenant_id`, so one tenant can never read or change
 //! another's products: a foreign id is simply "not found".
 
-use soat_core::Currency;
+use soat_core::{id_kind, Currency};
 use soat_module::Module;
 use soat_tenancy::Tenant;
-use zapline::db::{sqlx, Db};
+use zapline::db::{sqlx, Db, ListParams, Listing, Paged};
 use zapline::embed::Dir;
 use zapline::prelude::*;
+
+id_kind!(ProductId, ProductKind, "prod");
 
 /// The catalog module. Needs `tenancy`.
 pub struct Catalog;
@@ -37,7 +39,8 @@ impl Module for Catalog {
 #[model]
 #[derive(sqlx::FromRow)]
 pub struct Product {
-    pub id: i64,
+    /// Public id, e.g. `prod_01jdx3k9q8m2v4t6w7y0z1a2b3`.
+    pub id: String,
     pub sku: String,
     pub title: String,
     /// Price in minor units (cents).
@@ -61,17 +64,23 @@ pub struct NewProduct {
 
 const COLUMNS: &str = "id, sku, title, price_minor, currency";
 
-/// List the tenant's products.
+/// List the tenant's products, 50 per page (at most 200).
+///
+/// `?q=` searches SKU and title, `?currency=EUR` filters, `?sort=-price_minor`
+/// sorts (by `id`, `sku`, `title` or `price_minor`), `?limit=&offset=` pages.
+/// Ids are time-ordered, so the default sort is oldest first.
 #[get("/api/products", tag = "catalog")]
-async fn list_products(db: Db, tenant: Tenant) -> Result<Json<Vec<Product>>> {
+async fn list_products(db: Db, tenant: Tenant, params: ListParams) -> Result<Json<Paged<Product>>> {
     tenant.verify(&db).await?;
-    let products = sqlx::query_as::<_, Product>(&format!(
-        "SELECT {COLUMNS} FROM products WHERE tenant_id = $1 ORDER BY id"
-    ))
-    .bind(tenant.id())
-    .fetch_all(&*db)
-    .await?;
-    Ok(Json(products))
+    let page = Listing::new("products", COLUMNS)
+        .scope("tenant_id", tenant.id())
+        .sortable(["id", "sku", "title", "price_minor"])
+        .search(["sku", "title"])
+        .filter_text("currency")
+        .page_size(50, 200)
+        .fetch(&db, &params)
+        .await?;
+    Ok(Json(page))
 }
 
 /// Create a product. A SKU already used by this tenant is a 409.
@@ -85,9 +94,10 @@ async fn create_product(
     let currency = Currency::parse(&p.currency)
         .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))?;
     let product = sqlx::query_as::<_, Product>(&format!(
-        "INSERT INTO products (tenant_id, sku, title, price_minor, currency) \
-         VALUES ($1, $2, $3, $4, $5) RETURNING {COLUMNS}"
+        "INSERT INTO products (id, tenant_id, sku, title, price_minor, currency) \
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING {COLUMNS}"
     ))
+    .bind(ProductId::new().as_str())
     .bind(tenant.id())
     .bind(&p.sku)
     .bind(&p.title)
@@ -98,15 +108,16 @@ async fn create_product(
     Ok((StatusCode::CREATED, Json(product)))
 }
 
-/// Get one of the tenant's products.
+/// Get one of the tenant's products. A malformed or foreign id is a 404.
 #[get("/api/products/{id}", tag = "catalog")]
-async fn get_product(db: Db, tenant: Tenant, Path(id): Path<i64>) -> Result<Json<Product>> {
+async fn get_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<Json<Product>> {
     tenant.verify(&db).await?;
+    let id = ProductId::parse(&id).map_err(|_| Error::not_found())?;
     sqlx::query_as::<_, Product>(&format!(
         "SELECT {COLUMNS} FROM products WHERE tenant_id = $1 AND id = $2"
     ))
     .bind(tenant.id())
-    .bind(id)
+    .bind(id.as_str())
     .fetch_optional(&*db)
     .await?
     .map(Json)

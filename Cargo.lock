@@ -1295,6 +1295,7 @@ dependencies = [
 name = "soat"
 version = "0.0.1"
 dependencies = [
+ "serde",
  "serde_json",
  "soat-catalog",
  "soat-module",
@@ -1319,6 +1320,7 @@ dependencies = [
 name = "soat-core"
 version = "0.0.1"
 dependencies = [
+ "getrandom",
  "serde",
  "serde_json",
 ]

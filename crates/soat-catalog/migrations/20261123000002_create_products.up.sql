@@ -1,6 +1,7 @@
--- Products belong to one tenant. Prices are integer minor units (cents).
+-- Products belong to one tenant. Ids are public typed ids (`prod_...`).
+-- Prices are integer minor units (cents).
 CREATE TABLE products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL REFERENCES tenants (id) ON DELETE CASCADE,
     sku TEXT NOT NULL,
     title TEXT NOT NULL,
