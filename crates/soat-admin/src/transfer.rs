@@ -12,7 +12,7 @@ use zapline::prelude::*;
 
 use crate::settings::amount;
 use crate::util::encode;
-use crate::{Ctx, Shared};
+use crate::{Ctx, Page, Shared};
 
 /// Rows one import takes at most.
 const MAX_ROWS: usize = 5000;
@@ -89,7 +89,7 @@ fn csv_file(name: &str, rows: &[Vec<String>]) -> Response {
 }
 
 /// Every item of a paged list, 200 at a time.
-async fn all(cx: &Ctx, path: &str) -> std::result::Result<Vec<Value>, Response> {
+async fn all(cx: &Ctx, path: &str) -> Page<Vec<Value>> {
     let mut out = Vec::new();
     loop {
         let sep = if path.contains('?') { '&' } else { '?' };

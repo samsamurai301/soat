@@ -14,7 +14,7 @@ macro_rules! page {
     ($e:expr) => {
         match $e {
             Ok(v) => v,
-            Err(res) => return Ok(res),
+            Err(res) => return Ok(*res),
         }
     };
 }
@@ -24,7 +24,7 @@ macro_rules! page_or {
     ($e:expr) => {
         match $e {
             Ok(v) => v,
-            Err(res) => return res,
+            Err(res) => return *res,
         }
     };
 }
@@ -230,7 +230,8 @@ pub(crate) struct Ctx {
 }
 
 /// The page or a response that replaces it (sign in, not found).
-pub(crate) type Page<T> = std::result::Result<T, Response>;
+/// A value, or the page to show instead (boxed: a response is large).
+pub(crate) type Page<T> = std::result::Result<T, Box<Response>>;
 
 impl Ctx {
     /// Opens shop `shop` for the signed-in staff member: their shops for
@@ -245,7 +246,7 @@ impl Ctx {
         section: &str,
     ) -> Page<Self> {
         let Some(token) = token(headers) else {
-            return Err(to_login());
+            return Err(Box::new(to_login()));
         };
         let (status, shops) = s
             .api
@@ -260,13 +261,14 @@ impl Ctx {
             )
             .await;
         if status == 401 {
-            return Err(to_login());
+            return Err(Box::new(to_login()));
         }
         let list = shops.as_array().cloned().unwrap_or_default();
         let Some(current) = list.iter().find(|t| t["id"] == shop).cloned() else {
-            return Err(s
-                .pages
-                .error(StatusCode::NOT_FOUND, "There is no such shop here."));
+            return Err(Box::new(
+                s.pages
+                    .error(StatusCode::NOT_FOUND, "There is no such shop here."),
+            ));
         };
         let mut data = serde_json::Map::new();
         data.insert("shop".into(), current);
@@ -308,8 +310,8 @@ impl Ctx {
         let (status, body) = self.call(Method::GET, path, None).await;
         match status {
             200..=299 => Ok(body),
-            401 => Err(to_login()),
-            _ => Err(self.failed(status, &body)),
+            401 => Err(Box::new(to_login())),
+            _ => Err(Box::new(self.failed(status, &body))),
         }
     }
 
