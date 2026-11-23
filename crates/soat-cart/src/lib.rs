@@ -208,6 +208,36 @@ pub async fn view(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) ->
     })
 }
 
+/// Marks an open cart completed (it became an order) and publishes
+/// `cart.completed`. Run it in the shop's transaction, after
+/// [`storefront::CartToken::open`] locked it.
+pub async fn complete(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    cart_id: &str,
+    order_id: &str,
+) -> Result<()> {
+    let done = sqlx::query(
+        "UPDATE carts SET status = 'completed', updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2 AND status = 'open'",
+    )
+    .bind(scope.tenant_id())
+    .bind(cart_id)
+    .execute(&mut *conn)
+    .await?;
+    if done.rows_affected() == 0 {
+        return Err(Error::conflict("this cart is already checked out").with_code("cart_completed"));
+    }
+    scope
+        .publish(
+            conn,
+            "cart.completed",
+            &serde_json::json!({ "id": cart_id, "order_id": order_id }),
+        )
+        .await?;
+    Ok(())
+}
+
 /// The shop's carts, most recently changed first (`carts:read`). Filter
 /// with `?status=open` or `?customer_id=`; `?q=` searches emails.
 #[get("/api/carts", tag = "carts")]

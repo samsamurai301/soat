@@ -21,7 +21,8 @@ fn module_list_is_valid_and_ordered() {
             "tax",
             "shipping",
             "payments",
-            "orders"
+            "orders",
+            "checkout"
         ]
     );
 }

@@ -109,6 +109,26 @@ pub struct ProviderList {
     pub items: Vec<ProviderInfo>,
 }
 
+/// One of the shop's active payment methods. Run it in the shop's
+/// transaction.
+pub async fn active_method(
+    conn: &mut zapline::db::sqlx::PgConnection,
+    scope: &impl soat_tenancy::Scope,
+    id: &str,
+) -> Result<Option<PaymentMethod>> {
+    let Ok(id) = PaymentMethodId::parse(id) else {
+        return Ok(None);
+    };
+    let row = sqlx::query_as::<_, MethodRow>(&format!(
+        "SELECT {METHOD_COLUMNS} FROM payment_methods WHERE tenant_id = $1 AND id = $2 AND active"
+    ))
+    .bind(scope.tenant_id())
+    .bind(id.as_str())
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok(row.map(Into::into))
+}
+
 pub(crate) fn mount(app: App) -> App {
     app.mount((
         list_providers,

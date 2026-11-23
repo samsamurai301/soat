@@ -172,6 +172,20 @@ pub async fn reserve(
     Ok(reservation)
 }
 
+/// Keeps every reservation of `reference` until released, e.g. once its
+/// order is paid. Returns how many there are.
+pub async fn keep(tx: &mut TenantTx, scope: &impl Scope, reference: &str) -> Result<u64> {
+    let kept = sqlx::query(
+        "UPDATE inventory_reservations SET expires_at = NULL \
+         WHERE tenant_id = $1 AND reference = $2 AND (expires_at IS NULL OR expires_at > now())",
+    )
+    .bind(scope.tenant_id())
+    .bind(reference)
+    .execute(&mut **tx)
+    .await?;
+    Ok(kept.rows_affected())
+}
+
 /// Releases every reservation of `reference` and returns how many units
 /// were freed. Publishes `inventory.released` when any were.
 pub async fn release(tx: &mut TenantTx, scope: &impl Scope, reference: &str) -> Result<i64> {

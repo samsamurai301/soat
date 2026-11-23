@@ -60,6 +60,7 @@ curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-te
 | `crates/soat-payments` | Payment provider trait, payment methods, payments and refunds, manual payment |
 | `crates/soat-stripe` | Stripe provider: PaymentIntents, Connect accounts, refunds, signed webhooks (feature `stripe`) |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, cancellation, buyer views |
+| `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
 | `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
 
@@ -84,7 +85,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Payments core and manual payment
 - [x] Stripe
 - [x] Orders
-- [ ] Checkout
+- [x] Checkout
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline
 
