@@ -25,6 +25,7 @@
 //! assert_eq!(modules.names(), ["hello"]);
 //! ```
 
+pub mod events;
 mod migrations;
 
 use std::collections::HashSet;
@@ -34,6 +35,7 @@ use soat_core::{is_permission_name, Permission};
 use zapline::embed::Dir;
 use zapline::prelude::App;
 
+pub use events::{Event, HandlerFuture, Subscriber, Subscribers};
 pub use migrations::merge_migrations;
 
 /// One SOAT module.
@@ -63,6 +65,11 @@ pub trait Module: Send + Sync + 'static {
     /// API keys and AI tools are all scoped by these names.
     fn permissions(&self) -> &'static [Permission] {
         &[]
+    }
+
+    /// Subscribers that react to domain events.
+    fn subscribers(&self) -> Vec<std::sync::Arc<dyn Subscriber>> {
+        Vec::new()
     }
 
     /// Mounts the module's routes and plugins.
@@ -193,6 +200,14 @@ impl Modules {
                 }
             }
         }
+        let mut subscribers = HashSet::new();
+        for module in &self.0 {
+            for sub in module.subscribers() {
+                if !subscribers.insert(sub.name()) {
+                    return Err(ModuleError::DuplicateName(sub.name()));
+                }
+            }
+        }
         self.migrations().map(|_| ())
     }
 
@@ -216,10 +231,33 @@ impl Modules {
         merge_migrations(&dirs)
     }
 
-    /// Mounts every module on `app`, in order, and makes the permission
-    /// list available as `State<Permissions>`.
+    /// Validates the set, runs its merged migrations on `db` and mounts
+    /// every module on `app`.
+    ///
+    /// # Panics
+    ///
+    /// When the set is inconsistent: a build mistake that tests catch.
+    pub fn build(&self, app: App, db: zapline::db::Database) -> App {
+        self.validate()
+            .unwrap_or_else(|e| panic!("invalid module list: {e}"));
+        let migrations = self
+            .migrations()
+            .unwrap_or_else(|e| panic!("invalid module list: {e}"));
+        self.install(app.database(db.migrations(migrations)))
+    }
+
+    /// Every module's event subscribers, in module order.
+    pub fn subscribers(&self) -> Subscribers {
+        Subscribers(std::sync::Arc::new(
+            self.0.iter().flat_map(|m| m.subscribers()).collect(),
+        ))
+    }
+
+    /// Mounts every module on `app`, in order, and makes the permission and
+    /// subscriber lists available as `State<Permissions>` and
+    /// `State<Subscribers>`.
     pub fn install(&self, app: App) -> App {
-        let app = app.state(self.permissions());
+        let app = app.state(self.permissions()).state(self.subscribers());
         self.0.iter().fold(app, |app, module| module.mount(app))
     }
 }

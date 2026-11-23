@@ -28,6 +28,12 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   permissions (`Module::permissions`, `Permission::new(..).for_staff()` when
   the built-in staff role should have it). Roles, API keys and Claude's tools
   are all scoped by these names, so a new endpoint without one is a hole.
+- **Changes publish events.** Every create, update or delete calls
+  `soat_events::publish(&mut tx, tenant.id(), "resource.verb", &resource)` in
+  the same transaction. Modules react to each other through `Subscriber`s
+  (at-least-once, so handlers must be idempotent), never by importing each
+  other. Webhooks, audit and Claude build on these events.
+- **Shared test helpers** live in `soat-testing` (fresh schema per test).
 - **Postgres only.** Integer columns that map to `i64` are `BIGINT`. Ids are
   `TEXT` typed ids (`soat_core::Id`), generated in Rust.
 - **Money is integer minor units plus a `Currency`.** Never `f32`/`f64` for prices.

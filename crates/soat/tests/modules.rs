@@ -4,7 +4,7 @@
 fn module_list_is_valid_and_ordered() {
     let modules = soat::modules(soat::Auth::with_setup_token("t"));
     assert_eq!(modules.validate(), Ok(()));
-    assert_eq!(modules.names(), ["auth", "tenancy", "catalog"]);
+    assert_eq!(modules.names(), ["auth", "tenancy", "events", "catalog"]);
 }
 
 #[test]

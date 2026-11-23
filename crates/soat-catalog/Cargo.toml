@@ -11,6 +11,7 @@ publish.workspace = true
 soat-core.workspace = true
 soat-module.workspace = true
 soat-tenancy.workspace = true
+soat-events.workspace = true
 zapline.workspace = true
 serde.workspace = true
 sqlx.workspace = true

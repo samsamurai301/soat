@@ -30,7 +30,7 @@ impl Module for Catalog {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy"]
+        &["tenancy", "events"]
     }
 
     fn migrations(&self) -> Option<Dir> {
@@ -94,7 +94,8 @@ async fn list_products(db: Db, tenant: Tenant, params: ListParams) -> Result<Jso
     Ok(Json(page))
 }
 
-/// Create a product. A SKU already used by this tenant is a 409.
+/// Create a product (`products:write`). A SKU already used by this shop is a
+/// 409. Publishes `product.created`.
 #[post("/api/products", tag = "catalog", status = 201)]
 async fn create_product(
     db: Db,
@@ -116,6 +117,7 @@ async fn create_product(
     .bind(currency.as_str())
     .fetch_one(&mut *tx)
     .await?;
+    soat_events::publish(&mut tx, tenant.id(), "product.created", &product).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(product)))
 }

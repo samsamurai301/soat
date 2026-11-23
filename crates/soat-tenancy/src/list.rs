@@ -18,6 +18,7 @@ pub struct TenantListing {
     table: &'static str,
     columns: &'static str,
     key: &'static str,
+    default_sort: &'static str,
     sortable: Vec<&'static str>,
     search: Vec<&'static str>,
     text_filters: Vec<&'static str>,
@@ -32,6 +33,7 @@ impl TenantListing {
             table,
             columns,
             key: "id",
+            default_sort: "id",
             sortable: Vec::new(),
             search: Vec::new(),
             text_filters: Vec::new(),
@@ -43,6 +45,12 @@ impl TenantListing {
     /// Columns callers may sort by (`?sort=-price_minor,title`).
     pub fn sortable(mut self, columns: impl IntoIterator<Item = &'static str>) -> Self {
         self.sortable.extend(columns);
+        self
+    }
+
+    /// The sort when the request names none, e.g. `-id` for newest first.
+    pub fn default_sort(mut self, sort: &'static str) -> Self {
+        self.default_sort = sort;
         self
     }
 
@@ -135,7 +143,7 @@ impl TenantListing {
     fn order_by(&self, sort: Option<&str>) -> Result<String> {
         let mut parts = Vec::new();
         let mut has_key = false;
-        for item in sort.unwrap_or(self.key).split(',').map(str::trim) {
+        for item in sort.unwrap_or(self.default_sort).split(',').map(str::trim) {
             if item.is_empty() {
                 continue;
             }

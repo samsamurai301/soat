@@ -11,10 +11,12 @@ publish.workspace = true
 soat-module.workspace = true
 soat-auth.workspace = true
 soat-tenancy.workspace = true
+soat-events.workspace = true
 soat-catalog.workspace = true
 zapline.workspace = true
 
 [dev-dependencies]
+soat-testing.workspace = true
 serde = { workspace = true }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

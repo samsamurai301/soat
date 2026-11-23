@@ -216,3 +216,27 @@ async fn malformed_or_wrong_kind_ids_are_not_found() {
             .assert_status(404);
     }
 }
+
+#[tokio::test]
+async fn creating_a_product_publishes_an_event() {
+    let (client, token) = common::with_tenants(&["acme"]).await;
+    let created: Product = client
+        .post("/api/products")
+        .header("x-soat-tenant", "acme")
+        .bearer(&token)
+        .json(&shoe())
+        .send()
+        .await
+        .assert_status(201)
+        .json();
+    let events: serde_json::Value = client
+        .get("/api/events?kind=product.created")
+        .header("x-soat-tenant", "acme")
+        .bearer(&token)
+        .send()
+        .await
+        .assert_status(200)
+        .json();
+    assert_eq!(events["total"], 1);
+    assert_eq!(events["items"][0]["payload"]["id"], created.id.as_str());
+}

@@ -31,7 +31,7 @@ through events, never by importing each other.
 - [x] A5 First-run setup token, platform admin, staff accounts and memberships, bearer sessions; shop creation behind auth **alpha**
 - [x] A6 Permissions declared per module, built-in owner and staff roles, custom roles, no granting beyond your own permissions **alpha**
 - [x] A7 Shop API keys (`soat_sk_<shop>_…`) scoped by permissions, shown once, revocable, never beyond their creator **alpha**
-- [ ] A8 Domain events and transactional outbox **alpha**
+- [x] A8 Domain events: transactional outbox, at-least-once subscribers with backoff, `GET /api/events`, `product.created` **alpha**
 - [ ] A9 Webhooks: signed, retried, logged **alpha**
 - [ ] A10 Audit log **alpha**
 - [ ] A11 Shop resolution by domain and API key **alpha**

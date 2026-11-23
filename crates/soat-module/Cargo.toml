@@ -10,3 +10,5 @@ publish.workspace = true
 [dependencies]
 soat-core.workspace = true
 zapline.workspace = true
+serde.workspace = true
+serde_json.workspace = true

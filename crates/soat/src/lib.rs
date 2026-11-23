@@ -6,6 +6,7 @@
 
 pub use soat_auth::Auth;
 use soat_catalog::Catalog;
+use soat_events::Events;
 use soat_module::Modules;
 use soat_tenancy::Tenancy;
 use zapline::db::{Database, DbCheck};
@@ -15,7 +16,11 @@ use zapline::prelude::*;
 
 /// Every module in this build. A module must come after the ones it needs.
 pub fn modules(auth: Auth) -> Modules {
-    Modules::new().with(auth).with(Tenancy).with(Catalog)
+    Modules::new()
+        .with(auth)
+        .with(Tenancy)
+        .with(Events::new())
+        .with(Catalog)
 }
 
 /// Builds the application on top of `db` (Postgres). `main` passes the real
@@ -27,17 +32,9 @@ pub fn modules(auth: Auth) -> Modules {
 /// When the module list is inconsistent (a missing dependency, a duplicate
 /// name or migration version). That is a build mistake, caught by tests.
 pub fn app(db: Database, auth: Auth) -> App {
-    let modules = modules(auth);
-    modules
-        .validate()
-        .unwrap_or_else(|e| panic!("invalid module list: {e}"));
-    let migrations = modules
-        .migrations()
-        .unwrap_or_else(|e| panic!("invalid module list: {e}"));
     let app = App::new()
         .wrap(SecurityHeaders::default())
-        .database(db.migrations(migrations))
         .plugin(Health::new().check("database", DbCheck::new()))
         .openapi(OpenApi::new("SOAT", env!("CARGO_PKG_VERSION")));
-    modules.install(app)
+    modules(auth).build(app, db)
 }

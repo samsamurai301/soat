@@ -15,10 +15,13 @@ soat-core = { path = "crates/soat-core" }
 soat-module = { path = "crates/soat-module" }
 soat-auth = { path = "crates/soat-auth" }
 soat-tenancy = { path = "crates/soat-tenancy" }
+soat-events = { path = "crates/soat-events" }
 soat-catalog = { path = "crates/soat-catalog" }
+soat-testing = { path = "crates/soat-testing" }
 # Tracks Zapline main (newer than the crates.io release); Cargo.lock pins the exact commit.
 zapline = { git = "https://github.com/samsamurai301/zapline", features = ["postgres"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["derive"] }
 
 [profile.dev]
