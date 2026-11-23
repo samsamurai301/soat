@@ -48,6 +48,7 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   (`soat-core`, `soat-module`, `soat-auth`, `soat-tenancy`) and on modules it names in
   `depends_on`. It never imports a sibling in its own layer; siblings talk
   through events. Anything a shop can live without goes behind a Cargo feature.
+  `crates/soat/tests/layers.rs` checks this; give a new crate its rank there.
 - **Migration versions are timestamps, unique across all crates**, because every
   module shares one migrations table. `soat::modules().validate()` rejects
   clashes.

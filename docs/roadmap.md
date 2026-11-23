@@ -10,7 +10,10 @@ Lines marked **alpha** are in the public alpha (week of 2027-01-04).
 ## Layers
 
 Each layer may use only the layers below it. Siblings in one layer talk
-through events, never by importing each other.
+through events, never by importing each other. Foundation crates are a stack
+(core, module, db, auth, events, tenancy, webhooks, bottom up).
+`crates/soat/tests/layers.rs` enforces this and fails for a crate without a
+layer.
 
 | Layer | Crates (created when their milestone starts) |
 | --- | --- |
@@ -35,7 +38,7 @@ through events, never by importing each other.
 - [x] A9 Webhooks: endpoints per shop, HMAC-signed POSTs, retries with backoff, delivery log, public-HTTPS-only targets **alpha**
 - [x] A10 Audit log: every event records its actor (user or API key) and time; staff, roles, keys, webhooks and shops publish events **alpha**
 - [x] A11 Shop resolution: API key, then `x-soat-tenant`, then the `Host` among the shop's domains (`/api/domains`); domain ownership checks (DNS TXT) later **alpha**
-- [ ] A12 CI check for forbidden crate dependencies
+- [x] A12 CI check for forbidden crate dependencies (`tests/layers.rs`, from `cargo metadata`)
 
 ## B. Catalog
 
