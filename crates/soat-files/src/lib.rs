@@ -317,14 +317,14 @@ async fn delete_file(
 /// files. Run it in the tenant transaction.
 pub async fn views(
     conn: &mut PgConnection,
-    tenant: &Tenant,
+    tenant: &impl soat_tenancy::Scope,
     storage: &Storage,
     ids: &[String],
 ) -> Result<Vec<FileView>> {
     let rows: Vec<Row> = sqlx::query_as(&format!(
         "SELECT {COLUMNS} FROM files WHERE tenant_id = $1 AND id = ANY($2)"
     ))
-    .bind(tenant.id())
+    .bind(tenant.tenant_id())
     .bind(ids)
     .fetch_all(&mut *conn)
     .await?;

@@ -6,7 +6,8 @@
 
 use soat_core::id_kind;
 use soat_core::options::{check_options, check_variant, variant_title, MAX_VARIANTS};
-use soat_tenancy::{Tenant, TenantTx};
+use soat_tenancy::{Scope, Tenant, TenantTx};
+use zapline::db::sqlx::PgConnection;
 use zapline::db::{sqlx, Db};
 use zapline::prelude::*;
 
@@ -119,20 +120,24 @@ async fn product(tx: &mut TenantTx, tenant: &Tenant, id: &str) -> Result<(String
     row.ok_or_else(Error::not_found)
 }
 
-async fn load_options(tx: &mut TenantTx, tenant: &Tenant, product_id: &str) -> Result<Options> {
+pub(crate) async fn load_options(
+    tx: &mut PgConnection,
+    tenant: &impl Scope,
+    product_id: &str,
+) -> Result<Options> {
     Ok(sqlx::query_as(
         "SELECT name, option_values FROM product_options \
          WHERE tenant_id = $1 AND product_id = $2 ORDER BY position",
     )
-    .bind(tenant.id())
+    .bind(tenant.tenant_id())
     .bind(product_id)
-    .fetch_all(&mut **tx)
+    .fetch_all(&mut *tx)
     .await?)
 }
 
-async fn load_variants(
-    tx: &mut TenantTx,
-    tenant: &Tenant,
+pub(crate) async fn load_variants(
+    tx: &mut PgConnection,
+    tenant: &impl Scope,
     product_id: &str,
 ) -> Result<Vec<Variant>> {
     let rows: Vec<VariantRow> = sqlx::query_as(&format!(
@@ -140,9 +145,9 @@ async fn load_variants(
          JOIN products p ON p.id = v.product_id \
          WHERE v.tenant_id = $1 AND v.product_id = $2 ORDER BY v.id"
     ))
-    .bind(tenant.id())
+    .bind(tenant.tenant_id())
     .bind(product_id)
-    .fetch_all(&mut **tx)
+    .fetch_all(&mut *tx)
     .await?;
     Ok(rows.into_iter().map(Variant::from).collect())
 }

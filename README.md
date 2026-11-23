@@ -118,6 +118,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Transactional email with editable templates
 - [x] Invoices and credit notes
 - [x] Content pages from blocks, and menus
+- [x] Storefront catalog API: active products and collections by handle
 - [x] Claude runs your shop over MCP, with every change approved by a person
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline

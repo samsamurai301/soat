@@ -11,6 +11,7 @@
 pub mod categories;
 pub mod collections;
 pub mod media;
+pub mod storefront;
 pub mod variants;
 
 use soat_core::tags::normalize_tags;
@@ -70,6 +71,7 @@ impl Module for Catalog {
         .plugin(collections::mount)
         .plugin(categories::mount)
         .plugin(media::mount)
+        .plugin(storefront::mount)
     }
 }
 
@@ -81,6 +83,12 @@ pub struct Product {
     pub id: String,
     pub sku: String,
     pub title: String,
+    /// Its address on the storefront: `/products/<handle>`.
+    pub handle: String,
+    /// Shown on the product page, in Markdown.
+    pub description: String,
+    /// `active` (sold on the storefront), `draft` or `archived`.
+    pub status: String,
     /// Price in minor units (cents).
     pub price_minor: i64,
     /// ISO 4217 code, e.g. `EUR`.
@@ -101,6 +109,13 @@ pub struct NewProduct {
     pub sku: String,
     #[validate(length(min = 1, max = 200))]
     pub title: String,
+    /// Made from the title when absent.
+    pub handle: Option<String>,
+    /// Markdown.
+    #[validate(length(max = 50000))]
+    pub description: Option<String>,
+    /// `active` (the default), `draft` or `archived`.
+    pub status: Option<String>,
     #[validate(range(min = 0))]
     pub price_minor: i64,
     #[validate(length(equal = 3))]
@@ -121,6 +136,10 @@ pub struct ProductChange {
     pub sku: Option<String>,
     #[validate(length(min = 1, max = 200))]
     pub title: Option<String>,
+    pub handle: Option<String>,
+    #[validate(length(max = 50000))]
+    pub description: Option<String>,
+    pub status: Option<String>,
     #[validate(range(min = 0))]
     pub price_minor: Option<i64>,
     /// Replaces all tags.
@@ -145,11 +164,70 @@ fn tags(raw: Option<&[String]>) -> Result<Option<Vec<String>>> {
         .transpose()
 }
 
-const COLUMNS: &str = "id, sku, title, price_minor, currency, tags, tax_class, weight_grams";
+const COLUMNS: &str =
+    "id, sku, title, handle, description, status, price_minor, currency, tags, tax_class, weight_grams";
+
+/// Product statuses.
+pub const STATUSES: &[&str] = &["active", "draft", "archived"];
+
+fn status(raw: Option<&str>) -> Result<()> {
+    match raw {
+        Some(s) if !STATUSES.contains(&s) => {
+            Err(Error::unprocessable("status is active, draft or archived")
+                .with_code("invalid_status"))
+        }
+        _ => Ok(()),
+    }
+}
+
+fn handle(raw: Option<&str>) -> Result<()> {
+    match raw {
+        Some(h) if !soat_core::handle::is_handle(h) => Err(Error::unprocessable(format!(
+            "{h} is not a handle: lowercase letters, digits and single dashes"
+        ))
+        .with_code("invalid_handle")),
+        _ => Ok(()),
+    }
+}
+
+/// A free handle for a new product titled `title`: the title's, or with a
+/// piece of the id when another product has it.
+async fn free_handle(
+    tx: &mut soat_tenancy::TenantTx,
+    tenant: &Tenant,
+    title: &str,
+    id: &str,
+) -> Result<String> {
+    let base = soat_core::handle::handleize(title);
+    let taken: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM products WHERE tenant_id = $1 AND handle = $2")
+            .bind(tenant.id())
+            .bind(&base)
+            .fetch_optional(&mut **tx)
+            .await?;
+    if taken.is_none() {
+        return Ok(base);
+    }
+    let tail: String = id
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    let mut base = base;
+    base.truncate(soat_core::handle::MAX_HANDLE - 9);
+    Ok(format!(
+        "{}-{}",
+        base.trim_end_matches('-'),
+        tail.to_ascii_lowercase()
+    ))
+}
 
 /// List the tenant's products, 50 per page (at most 200).
 ///
-/// `?q=` searches SKU and title, `?currency=EUR` and `?tag=summer` filter, `?sort=-price_minor`
+/// `?q=` searches SKU, title and handle; `?currency=EUR`, `?status=draft` and `?tag=summer` filter, `?sort=-price_minor`
 /// sorts (by `id`, `sku`, `title` or `price_minor`), `?limit=&offset=` pages.
 /// Ids are time-ordered, so the default sort is oldest first.
 #[get("/api/products", tag = "catalog")]
@@ -157,8 +235,9 @@ async fn list_products(db: Db, tenant: Tenant, params: ListParams) -> Result<Jso
     let mut tx = tenant.begin_for(&db, &PRODUCTS_READ).await?;
     let page = TenantListing::new("products", COLUMNS)
         .sortable(["id", "sku", "title", "price_minor"])
-        .search(["sku", "title"])
+        .search(["sku", "title", "handle"])
         .filter_text("currency")
+        .filter_text("status")
         .filter_array("tag", "tags")
         .page_size(50, 200)
         .fetch(&mut tx, &params)
@@ -179,13 +258,21 @@ async fn create_product(
         .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))?;
     let tags = tags(p.tags.as_deref())?.unwrap_or_default();
     tax_class(p.tax_class.as_deref())?;
+    status(p.status.as_deref())?;
+    handle(p.handle.as_deref())?;
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
+    let id = ProductId::new();
+    let handle = match &p.handle {
+        Some(h) => h.clone(),
+        None => free_handle(&mut tx, &tenant, &p.title, id.as_str()).await?,
+    };
     let product = sqlx::query_as::<_, Product>(&format!(
         "INSERT INTO products \
-         (id, tenant_id, sku, title, price_minor, currency, tags, tax_class, weight_grams) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING {COLUMNS}"
+         (id, tenant_id, sku, title, price_minor, currency, tags, tax_class, weight_grams, \
+          handle, description, status) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING {COLUMNS}"
     ))
-    .bind(ProductId::new().as_str())
+    .bind(id.as_str())
     .bind(tenant.id())
     .bind(&p.sku)
     .bind(&p.title)
@@ -194,6 +281,9 @@ async fn create_product(
     .bind(&tags)
     .bind(p.tax_class.as_deref().unwrap_or(soat_core::tax::STANDARD))
     .bind(p.weight_grams)
+    .bind(&handle)
+    .bind(p.description.as_deref().unwrap_or_default())
+    .bind(p.status.as_deref().unwrap_or("active"))
     .fetch_one(&mut *tx)
     .await?;
     tenant.publish(&mut tx, "product.created", &product).await?;
@@ -217,7 +307,8 @@ async fn get_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<J
     product.map(Json).ok_or_else(Error::not_found)
 }
 
-/// Change a product's SKU, title, price, tags or tax class (`products:write`). Publishes
+/// Change a product's SKU, title, handle, description, status, price, tags
+/// or tax class (`products:write`). A handle another product has is a 409. Publishes
 /// `product.updated`.
 #[patch("/api/products/{id}", tag = "catalog")]
 async fn update_product(
@@ -229,9 +320,13 @@ async fn update_product(
     let id = ProductId::parse(&id).map_err(|_| Error::not_found())?;
     let tags = tags(change.tags.as_deref())?;
     tax_class(change.tax_class.as_deref())?;
+    status(change.status.as_deref())?;
+    handle(change.handle.as_deref())?;
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
     let product = sqlx::query_as::<_, Product>(&format!(
         "UPDATE products SET sku = COALESCE($3, sku), title = COALESCE($4, title), \
+         handle = COALESCE($9, handle), description = COALESCE($10, description), \
+         status = COALESCE($11, status), \
          price_minor = COALESCE($5, price_minor), tags = COALESCE($6, tags), \
          tax_class = COALESCE($7, tax_class), \
          weight_grams = COALESCE($8, weight_grams) WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
@@ -244,6 +339,9 @@ async fn update_product(
     .bind(&tags)
     .bind(&change.tax_class)
     .bind(change.weight_grams)
+    .bind(&change.handle)
+    .bind(&change.description)
+    .bind(&change.status)
     .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(Error::not_found)?;
