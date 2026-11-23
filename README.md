@@ -57,6 +57,7 @@ curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-te
 | `crates/soat-cart` | Carts: storefront carts by token, live prices and stock |
 | `crates/soat-tax` | Tax zones and rates per tax class, EU VAT (OSS, reverse charge), tax quotes |
 | `crates/soat-shipping` | Shipping zones and rates by order value and weight |
+| `crates/soat-payments` | Payment provider trait, payment methods, payments and refunds, manual payment |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
 | `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
 
@@ -78,6 +79,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Cart
 - [x] Tax zones and EU VAT
 - [x] Shipping zones and rates
+- [x] Payments core and manual payment
 - [ ] Checkout, Stripe, orders
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline

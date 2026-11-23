@@ -13,6 +13,7 @@ use soat_fields::Fields;
 use soat_files::Files;
 use soat_inventory::Inventory;
 use soat_module::Modules;
+use soat_payments::Payments;
 use soat_pricing::Pricing;
 use soat_shipping::Shipping;
 use soat_tax::Taxes;
@@ -71,6 +72,7 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Carts)
         .with(Taxes)
         .with(Shipping)
+        .with(Payments::new())
 }
 
 /// Builds the application on top of `db` (Postgres). `main` passes the real

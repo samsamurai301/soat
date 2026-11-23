@@ -19,7 +19,8 @@ fn module_list_is_valid_and_ordered() {
             "customers",
             "cart",
             "tax",
-            "shipping"
+            "shipping",
+            "payments"
         ]
     );
 }

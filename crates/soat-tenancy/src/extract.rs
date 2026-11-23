@@ -111,6 +111,17 @@ pub trait Scope: Sync {
     /// or `None`.
     fn actor_id(&self) -> Option<&str>;
 
+    /// A new transaction that sees only this shop. It checks no
+    /// permission: callers have checked one on the request already.
+    fn begin(&self, db: &Db) -> impl std::future::Future<Output = Result<TenantTx>> + Send {
+        async move {
+            let id = TenantId::parse(self.tenant_id()).map_err(|_| unknown())?;
+            let mut tx = db.begin().await?;
+            enter(&mut tx, &id).await?;
+            Ok(tx)
+        }
+    }
+
     /// Publishes a domain event in the transaction of the change.
     fn publish(
         &self,
