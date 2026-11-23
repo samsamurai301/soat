@@ -225,10 +225,10 @@ async fn list_collection_products(
     access.require(&crate::PRODUCTS_READ)?;
     let collection = load(&mut tx, &tenant, &id).await?;
     let page = TenantListing::new(
-        "(SELECT p.id, p.sku, p.title, p.price_minor, p.currency, p.tags, \
+        "(SELECT p.id, p.sku, p.title, p.price_minor, p.currency, p.tags, p.tax_class, \
           cp.collection_id, cp.position \
           FROM products p JOIN collection_products cp ON cp.product_id = p.id) AS items",
-        "id, sku, title, price_minor, currency, tags",
+        crate::COLUMNS,
     )
     .scope_text("collection_id", collection.id)
     .sortable(["position", "title", "price_minor"])

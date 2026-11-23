@@ -13,6 +13,7 @@ mod money;
 pub mod options;
 mod permission;
 pub mod tags;
+pub mod tax;
 mod tenant;
 
 pub use domain::{Domain, DomainError};

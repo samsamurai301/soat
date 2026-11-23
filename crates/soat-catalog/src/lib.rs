@@ -87,6 +87,9 @@ pub struct Product {
     pub currency: String,
     /// Free-form tags, e.g. `["summer", "organic"]`.
     pub tags: Vec<String>,
+    /// Which tax rates apply, e.g. `standard` or `reduced`; see the tax
+    /// zones.
+    pub tax_class: String,
 }
 
 /// Body of a create request.
@@ -102,6 +105,8 @@ pub struct NewProduct {
     pub currency: String,
     /// Trimmed, deduplicated; at most 50.
     pub tags: Option<Vec<String>>,
+    /// Defaults to `standard`; `exempt` is never taxed.
+    pub tax_class: Option<String>,
 }
 
 /// Body of an update request; absent fields stay as they are. The currency
@@ -116,6 +121,17 @@ pub struct ProductChange {
     pub price_minor: Option<i64>,
     /// Replaces all tags.
     pub tags: Option<Vec<String>>,
+    pub tax_class: Option<String>,
+}
+
+fn tax_class(raw: Option<&str>) -> Result<()> {
+    match raw {
+        Some(c) if !soat_core::tax::is_tax_class(c) => Err(Error::unprocessable(
+            "a tax class is 1 to 32 of a-z, 0-9, - and _, starting with a letter",
+        )
+        .with_code("invalid_tax_class")),
+        _ => Ok(()),
+    }
 }
 
 fn tags(raw: Option<&[String]>) -> Result<Option<Vec<String>>> {
@@ -123,7 +139,7 @@ fn tags(raw: Option<&[String]>) -> Result<Option<Vec<String>>> {
         .transpose()
 }
 
-const COLUMNS: &str = "id, sku, title, price_minor, currency, tags";
+const COLUMNS: &str = "id, sku, title, price_minor, currency, tags, tax_class";
 
 /// List the tenant's products, 50 per page (at most 200).
 ///
@@ -156,10 +172,11 @@ async fn create_product(
     let currency = Currency::parse(&p.currency)
         .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))?;
     let tags = tags(p.tags.as_deref())?.unwrap_or_default();
+    tax_class(p.tax_class.as_deref())?;
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
     let product = sqlx::query_as::<_, Product>(&format!(
-        "INSERT INTO products (id, tenant_id, sku, title, price_minor, currency, tags) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {COLUMNS}"
+        "INSERT INTO products (id, tenant_id, sku, title, price_minor, currency, tags, tax_class) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING {COLUMNS}"
     ))
     .bind(ProductId::new().as_str())
     .bind(tenant.id())
@@ -168,6 +185,7 @@ async fn create_product(
     .bind(p.price_minor)
     .bind(currency.as_str())
     .bind(&tags)
+    .bind(p.tax_class.as_deref().unwrap_or(soat_core::tax::STANDARD))
     .fetch_one(&mut *tx)
     .await?;
     tenant.publish(&mut tx, "product.created", &product).await?;
@@ -191,7 +209,7 @@ async fn get_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<J
     product.map(Json).ok_or_else(Error::not_found)
 }
 
-/// Change a product's SKU, title or price (`products:write`). Publishes
+/// Change a product's SKU, title, price, tags or tax class (`products:write`). Publishes
 /// `product.updated`.
 #[patch("/api/products/{id}", tag = "catalog")]
 async fn update_product(
@@ -202,11 +220,12 @@ async fn update_product(
 ) -> Result<Json<Product>> {
     let id = ProductId::parse(&id).map_err(|_| Error::not_found())?;
     let tags = tags(change.tags.as_deref())?;
+    tax_class(change.tax_class.as_deref())?;
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
     let product = sqlx::query_as::<_, Product>(&format!(
         "UPDATE products SET sku = COALESCE($3, sku), title = COALESCE($4, title), \
-         price_minor = COALESCE($5, price_minor), tags = COALESCE($6, tags) \
-         WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
+         price_minor = COALESCE($5, price_minor), tags = COALESCE($6, tags), \
+         tax_class = COALESCE($7, tax_class) WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
     ))
     .bind(tenant.id())
     .bind(id.as_str())
@@ -214,6 +233,7 @@ async fn update_product(
     .bind(&change.title)
     .bind(change.price_minor)
     .bind(&tags)
+    .bind(&change.tax_class)
     .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(Error::not_found)?;
@@ -320,6 +340,8 @@ pub struct StockItem {
     /// Its own price, in minor units of `currency`.
     pub price_minor: i64,
     pub currency: String,
+    /// Its product's tax class.
+    pub tax_class: String,
 }
 
 /// Looks up a stock item of the shop. A product that has variants is not
@@ -331,8 +353,10 @@ pub async fn stock_item(
     id: &str,
 ) -> Result<Option<StockItem>> {
     if let Ok(vid) = variants::VariantId::parse(id) {
-        let row: Option<(String, String, i64, String, String, Vec<String>)> = sqlx::query_as(
-            "SELECT v.product_id, v.sku, v.price_minor, p.currency, p.title, v.option_values \
+        type VariantRow = (String, String, i64, String, String, Vec<String>, String);
+        let row: Option<VariantRow> = sqlx::query_as(
+            "SELECT v.product_id, v.sku, v.price_minor, p.currency, p.title, v.option_values, \
+             p.tax_class \
              FROM product_variants v \
              JOIN products p ON p.id = v.product_id WHERE v.tenant_id = $1 AND v.id = $2",
         )
@@ -341,21 +365,22 @@ pub async fn stock_item(
         .fetch_optional(&mut *conn)
         .await?;
         return Ok(row.map(
-            |(product_id, sku, price_minor, currency, title, values)| StockItem {
+            |(product_id, sku, price_minor, currency, title, values, tax_class)| StockItem {
                 id: vid.to_string(),
                 product_id,
                 sku,
                 title: format!("{title} - {}", soat_core::options::variant_title(&values)),
                 price_minor,
                 currency,
+                tax_class,
             },
         ));
     }
     let Ok(pid) = ProductId::parse(id) else {
         return Ok(None);
     };
-    let row: Option<(String, String, i64, String, bool)> = sqlx::query_as(
-        "SELECT sku, title, price_minor, currency, \
+    let row: Option<(String, String, i64, String, String, bool)> = sqlx::query_as(
+        "SELECT sku, title, price_minor, currency, tax_class, \
          EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id) \
          FROM products p WHERE tenant_id = $1 AND id = $2",
     )
@@ -365,17 +390,18 @@ pub async fn stock_item(
     .await?;
     match row {
         None => Ok(None),
-        Some((_, _, _, _, true)) => Err(Error::unprocessable(
+        Some((.., true)) => Err(Error::unprocessable(
             "this product has variants: stock each variant instead",
         )
         .with_code("has_variants")),
-        Some((sku, title, price_minor, currency, false)) => Ok(Some(StockItem {
+        Some((sku, title, price_minor, currency, tax_class, false)) => Ok(Some(StockItem {
             id: pid.to_string(),
             product_id: pid.to_string(),
             sku,
             title,
             price_minor,
             currency,
+            tax_class,
         })),
     }
 }

@@ -17,7 +17,8 @@ fn module_list_is_valid_and_ordered() {
             "inventory",
             "pricing",
             "customers",
-            "cart"
+            "cart",
+            "tax"
         ]
     );
 }
