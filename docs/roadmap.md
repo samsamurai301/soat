@@ -122,7 +122,7 @@ layer.
 
 - [x] G1 Setup wizard **alpha**
 - [x] G2 Sample data and store templates **alpha**
-- [ ] G3 Launch checklist
+- [x] G3 Launch checklist
 - [x] G4 CSV import and export **alpha**
 - [x] G5 Shopify importer **alpha** (from Shopify's product and customer CSV exports; images not yet)
 - [ ] G6 Shopify delta sync and cutover

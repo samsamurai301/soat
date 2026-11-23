@@ -407,3 +407,65 @@ async fn sample_products_come_and_go() {
         .assert_status(303);
     assert_eq!(api("/api/products".into()).await["total"], 1);
 }
+
+#[tokio::test]
+async fn the_launch_checklist_says_what_is_left() {
+    let (client, t) = common::with_tenants(&["acme"]).await;
+    let res = client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let me = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let html = get(&client, &me, "/admin/acme/launch").await.text();
+    // Basics, products, payments, shipping, taxes and four legal pages.
+    assert!(
+        html.contains("9 needed before your shop takes real orders"),
+        "{html}"
+    );
+    assert!(html.contains("action=\"/admin/acme/launch/page/imprint\""));
+
+    // A legal page starts as a draft to write.
+    let res = post(&client, &me, "/admin/acme/launch/page/imprint", json!({})).await;
+    res.assert_status(303);
+    let edit = res.header("location").unwrap().to_owned();
+    assert!(edit.starts_with("/admin/acme/pages/page_"), "{edit}");
+    post(&client, &me, "/admin/acme/launch/page/nonsense", json!({}))
+        .await
+        .assert_status(404);
+    let html = get(&client, &me, "/admin/acme/launch").await.text();
+    assert!(
+        html.contains("9 needed") && html.contains(&format!("href=\"{edit}\"")),
+        "{html}"
+    );
+
+    // Published, it counts; so does a page under its German handle.
+    let api = |method: &str, path: String, body: Value| {
+        let req = match method {
+            "PUT" => client.put(&path),
+            _ => client.post(&path),
+        }
+        .header("x-soat-tenant", "acme")
+        .bearer(&t);
+        async move {
+            let res = req.json(&body).send().await;
+            assert!(res.status().is_success(), "{}", res.text());
+        }
+    };
+    let id = edit.rsplit('/').next().unwrap();
+    api(
+        "PUT",
+        format!("/api/pages/{id}"),
+        json!({ "title": "Imprint", "handle": "imprint", "published": true }),
+    )
+    .await;
+    api(
+        "POST",
+        "/api/pages".into(),
+        json!({ "title": "Datenschutz", "handle": "datenschutz", "published": true }),
+    )
+    .await;
+    let html = get(&client, &me, "/admin/acme/launch").await.text();
+    assert!(html.contains("7 needed"), "{html}");
+    assert!(!html.contains("launch/page/privacy"));
+}

@@ -1,0 +1,26 @@
+<h1>Launch checklist</h1>
+{{#if ready }}<p class="notice" role="status">Everything a shop needs is in place. Check the recommendations below, then share your shop.</p>
+{{else}}<p>{{ open }} needed before your shop takes real orders.</p>{{/if}}
+
+<section class="panel">
+  <h2>Needed</h2>
+  <ul class="checks">
+    {{#each needed }}<li class="check{{#if done }} done{{/if}}">
+      <span class="badge{{#if done }} on{{/if}}">{{#if done }}Done{{else}}To do{{/if}}</span>
+      <div><strong>{{ label }}</strong> <span class="muted">{{ why }}</span>
+      {{#if post }}<form method="post" action="{{ fix }}"><p><button class="link">Start this page</button></p></form>
+      {{else}}<p><a href="{{ fix }}">{{#if done }}See it{{else}}Set it up{{/if}}</a></p>{{/if}}</div>
+    </li>{{/each}}
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Recommended</h2>
+  <ul class="checks">
+    {{#each recommended }}<li class="check{{#if done }} done{{/if}}">
+      <span class="badge{{#if done }} on{{/if}}">{{#if done }}Done{{else}}To do{{/if}}</span>
+      <div><strong>{{ label }}</strong> <span class="muted">{{ why }}</span>
+      <p><a href="{{ fix }}">{{#if done }}See it{{else}}Set it up{{/if}}</a></p></div>
+    </li>{{/each}}
+  </ul>
+</section>

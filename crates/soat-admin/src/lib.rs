@@ -33,6 +33,7 @@ mod api;
 mod content;
 mod customers;
 mod dashboard;
+mod launch;
 mod onboarding;
 mod orders;
 mod pages;
@@ -112,6 +113,8 @@ impl Module for Admin {
             onboarding::create_shop,
             onboarding::welcome,
             onboarding::welcome_step,
+            launch::show,
+            launch::start_page,
         ))
         .mount((
             transfer::show,

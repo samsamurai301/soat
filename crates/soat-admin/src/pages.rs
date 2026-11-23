@@ -18,6 +18,7 @@ const FILES: &[(&str, &str)] = &[
     ("setup", include_str!("../admin/setup.html")),
     ("new_shop", include_str!("../admin/new_shop.html")),
     ("welcome", include_str!("../admin/welcome.html")),
+    ("launch", include_str!("../admin/launch.html")),
     ("transfer", include_str!("../admin/transfer.html")),
     ("products", include_str!("../admin/products.html")),
     ("product", include_str!("../admin/product.html")),

@@ -1,6 +1,6 @@
 <h1>Set up {{ progress.shop.name }}</h1>
 <p class="muted">{{ progress.done }} of {{ progress.total }} steps done. Each one can be changed later in Settings.</p>
-{{#if progress.ready }}<p class="notice" role="status">Your shop is ready to sell. <a href="{{ base }}">Go to the dashboard</a></p>{{/if}}
+{{#if progress.ready }}<p class="notice" role="status">Your shop is ready to sell. Next, go through the <a href="{{ base }}/launch">launch checklist</a>: legal pages and the last details.</p>{{/if}}
 {{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
 
 <section class="panel step" id="basics">
