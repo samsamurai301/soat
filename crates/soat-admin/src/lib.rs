@@ -9,9 +9,31 @@
 //! `/admin`, and every form post must come from this site (Zapline's
 //! [`SameOrigin`] check), so other sites cannot act for a signed-in user.
 
+/// The page, or the response that replaces it (sign in, not found).
+macro_rules! page {
+    ($e:expr) => {
+        match $e {
+            Ok(v) => v,
+            Err(res) => return Ok(res),
+        }
+    };
+}
+
+/// Like `page!`, in a function that answers a plain response.
+macro_rules! page_or {
+    ($e:expr) => {
+        match $e {
+            Ok(v) => v,
+            Err(res) => return res,
+        }
+    };
+}
+
 mod api;
+mod orders;
 mod pages;
 mod products;
+mod util;
 
 use std::sync::Arc;
 
@@ -75,6 +97,14 @@ impl Module for Admin {
             products::edit_page,
             products::update,
             products::delete,
+        ))
+        .mount((
+            orders::list,
+            orders::show,
+            orders::ship,
+            orders::cancel,
+            orders::refund,
+            orders::item_action,
         ))
     }
 }

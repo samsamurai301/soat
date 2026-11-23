@@ -1,0 +1,26 @@
+<div class="head">
+  <h1>Orders <span class="muted">{{ total }}</span></h1>
+</div>
+<nav class="tabs" aria-label="Views">
+  <a href="{{ base }}/orders"{{#if view.all }} aria-current="page"{{/if}}>All</a>
+  <a href="{{ base }}/orders?view=unpaid"{{#if view.unpaid }} aria-current="page"{{/if}}>Unpaid</a>
+  <a href="{{ base }}/orders?view=unfulfilled"{{#if view.unfulfilled }} aria-current="page"{{/if}}>To ship</a>
+  <a href="{{ base }}/orders?view=open"{{#if view.open }} aria-current="page"{{/if}}>Open</a>
+  <a href="{{ base }}/orders?view=canceled"{{#if view.canceled }} aria-current="page"{{/if}}>Canceled</a>
+</nav>
+<form class="filters" method="get" action="{{ base }}/orders" hx-get="{{ base }}/orders" hx-trigger="input changed delay:300ms from:input" hx-target="#results" hx-select="#results" hx-push-url="true">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search by email" aria-label="Search">
+  <noscript><button class="button">Search</button></noscript>
+</form>
+<div id="results">
+{{#if orders }}
+<table class="table">
+  <thead><tr><th>Order</th><th>Placed</th><th>Customer</th><th>Payment</th><th>Shipping</th><th class="num">Total</th></tr></thead>
+  <tbody>
+  {{#each orders }}<tr{{#if canceled }} class="muted"{{/if}}><td><a href="{{ base }}/orders/{{ id }}">#{{ number }}</a>{{#if canceled }} <span class="badge">Canceled</span>{{/if}}</td><td>{{ placed }}</td><td>{{ email }}</td><td><span class="badge{{#if paid }} on{{/if}}">{{ financial }}</span></td><td><span class="badge{{#if shipped }} on{{/if}}">{{ fulfillment }}</span></td><td class="num">{{ total }}</td></tr>{{/each}}
+  </tbody>
+</table>
+{{else}}<p class="muted">No orders here{{#if q }} for “{{ q }}”{{/if}}.</p>
+{{/if}}
+<nav class="pager">{{#if prev_url }}<a href="{{ prev_url }}">← Newer</a>{{/if}} {{#if next_url }}<a href="{{ next_url }}">Older →</a>{{/if}}</nav>
+</div>

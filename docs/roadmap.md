@@ -100,7 +100,7 @@ layer.
 
 - [x] E1 Admin shell **alpha**: `/admin` sign-in (HttpOnly, `SameSite=Strict` session cookie, same-origin form posts, no framing), shop picker (`GET /api/tenants`), sidebar layout with htmx; every page calls the shop API in process as the signed-in staff member
 - [x] E2 Products screens **alpha**: list with live search and status filter, create, edit (price, status, tags, description, SEO), delete; variants and media screens follow
-- [ ] E3 Orders screens **alpha**
+- [x] E3 Orders screens **alpha**: list with views (unpaid, to ship, open, canceled) and email search; an order's items, totals, addresses, payments (mark paid, capture), shipments (ship with tracking, delivered, cancel), refunds and cancel
 - [ ] E4 Customers screens **alpha**
 - [ ] E5 Content and theme screens **alpha**
 - [ ] E6 Settings screens **alpha**

@@ -15,6 +15,7 @@
     <a class="brand" href="{{ base }}">{{ shop.name }}</a>
     <nav aria-label="Admin">
       <a href="{{ base }}"{{#if section.home }} aria-current="page"{{/if}}>Home</a>
+      <a href="{{ base }}/orders"{{#if section.orders }} aria-current="page"{{/if}}>Orders</a>
       <a href="{{ base }}/products"{{#if section.products }} aria-current="page"{{/if}}>Products</a>
     </nav>
     <details class="switch"><summary>Shops</summary>

@@ -258,3 +258,241 @@ async fn roles_limit_what_the_admin_shows() {
     res.assert_status(403);
     assert!(res.text().contains("Your role does not allow this."));
 }
+
+struct In(&'static str);
+
+impl soat_tenancy::Scope for In {
+    fn tenant_id(&self) -> &str {
+        self.0
+    }
+    fn actor_id(&self) -> Option<&str> {
+        None
+    }
+}
+
+/// An order of two tees, placed directly.
+async fn placed(url: &str, item: &str) -> String {
+    use soat_orders::{place, NewOrder, NewOrderLine, NewShipping, PostalAddress};
+    use zapline::db::sqlx::{self, PgPool};
+    let pool = PgPool::connect(url).await.unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SELECT set_config('soat.tenant', 'acme', true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let order = NewOrder {
+        cart_id: None,
+        customer_id: None,
+        email: "ada@example.com".into(),
+        currency: soat_core::Currency::parse("EUR").unwrap(),
+        lines: vec![NewOrderLine {
+            item_id: item.into(),
+            product_id: Some(item.into()),
+            sku: "TEE".into(),
+            title: "Tee".into(),
+            quantity: 2,
+            unit_price_minor: 1190,
+            tax_class: "standard".into(),
+            tax_rate_bps: 1900,
+            tax_minor: 380,
+            discount_minor: 0,
+        }],
+        shipping: Some(NewShipping {
+            rate_id: "shr_x".into(),
+            name: "Standard".into(),
+            price_minor: 495,
+            discount_minor: 0,
+            tax_minor: 79,
+            tax_rate_bps: 1900,
+        }),
+        shipping_address: Some(PostalAddress {
+            first_name: "Ada".into(),
+            line1: "Hauptstr. 1".into(),
+            postal_code: "10115".into(),
+            city: "Berlin".into(),
+            country: "DE".into(),
+            ..Default::default()
+        }),
+        billing_address: None,
+        prices_include_tax: true,
+        tax_country: Some("DE".into()),
+        reverse_charge: false,
+        vat_number: None,
+        note: String::new(),
+        discount_code: None,
+    };
+    let (o, _) = place(&mut tx, &In("acme"), &order).await.unwrap();
+    tx.commit().await.unwrap();
+    o.id
+}
+
+#[tokio::test]
+async fn staff_take_orders_through() {
+    let (client, url) = common::client_and_url().await;
+    let t = common::setup_admin(&client).await;
+    common::create_tenants(&client, &t, &["acme", "globex"]).await;
+    let api = |method: &str, path: &str, body: serde_json::Value| {
+        let req = match method {
+            "POST" => client.post(path),
+            _ => client.get(path),
+        }
+        .header("x-soat-tenant", "acme")
+        .bearer(&t);
+        let path = path.to_owned();
+        async move {
+            let res = req.json(&body).send().await;
+            assert!(res.status().is_success(), "{path}: {}", res.text());
+            res.json::<serde_json::Value>()
+        }
+    };
+    let loc = api(
+        "POST",
+        "/api/locations",
+        json!({ "name": "A", "country": "DE" }),
+    )
+    .await;
+    let tee = api(
+        "POST",
+        "/api/products",
+        json!({ "sku": "TEE", "title": "Tee", "price_minor": 1190, "currency": "EUR" }),
+    )
+    .await["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    api(
+        "POST",
+        &format!("/api/inventory/{tee}/adjustments"),
+        json!({ "location_id": loc["id"], "delta": 5, "reason": "received" }),
+    )
+    .await;
+    let order = placed(&url, &tee).await;
+    let m = api(
+        "POST",
+        "/api/payment-methods",
+        json!({ "provider": "manual", "name": "Invoice" }),
+    )
+    .await;
+    let pay = api(
+        "POST",
+        "/api/payments",
+        json!({ "method_id": m["id"], "reference": order, "amount_minor": 2875, "currency": "EUR" }),
+    )
+    .await["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let admin = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+    let html = get(&client, &admin, "/admin/acme/orders?view=unpaid")
+        .await
+        .text();
+    assert!(
+        html.contains("#1001") && html.contains("28.75 EUR"),
+        "{html}"
+    );
+    let html = get(&client, &admin, "/admin/acme/orders?view=canceled")
+        .await
+        .text();
+    assert!(!html.contains("#1001"));
+
+    let page = format!("/admin/acme/orders/{order}");
+    let html = get(&client, &admin, &page).await.text();
+    assert!(
+        html.contains("Hauptstr. 1<br>") && html.contains("Germany"),
+        "{html}"
+    );
+    assert!(html.contains("Mark paid") && html.contains("Ship what is left"));
+    // Nothing paid, nothing to refund.
+    assert!(!html.contains("/refund\""));
+
+    // Another order's payment is not this order's to touch.
+    post(
+        &client,
+        &admin,
+        &format!("{page}/payments/pay_nope/mark-paid"),
+        json!({}),
+    )
+    .await
+    .assert_status(404);
+    let res = post(
+        &client,
+        &admin,
+        &format!("{page}/payments/{pay}/mark-paid"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(
+        res.header("location"),
+        Some(format!("{page}?done=paid").as_str())
+    );
+    let html = get(&client, &admin, &format!("{page}?done=paid"))
+        .await
+        .text();
+    assert!(
+        html.contains("Payment marked paid.") && html.contains("/refund\""),
+        "{html}"
+    );
+
+    let res = post(
+        &client,
+        &admin,
+        &format!("{page}/ship"),
+        json!({ "carrier": "DHL", "tracking_number": "123", "tracking_url": "https://dhl.example/123" }),
+    )
+    .await;
+    assert_eq!(
+        res.header("location"),
+        Some(format!("{page}?done=shipped").as_str())
+    );
+    let html = get(&client, &admin, &page).await.text();
+    assert!(html.contains("href=\"https://dhl.example/123\"") && html.contains("2 units"));
+    assert!(!html.contains("Ship what is left") && !html.contains("Cancel order"));
+
+    // A bad amount and too much are both shown on the page.
+    let res = post(
+        &client,
+        &admin,
+        &format!("{page}/refund"),
+        json!({ "amount": "abc" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("The amount is a sum in EUR"));
+    let res = post(
+        &client,
+        &admin,
+        &format!("{page}/refund"),
+        json!({ "amount": "99.00" }),
+    )
+    .await;
+    assert!(res.status().is_client_error());
+    assert!(res.text().contains("class=\"error\""));
+    let res = post(
+        &client,
+        &admin,
+        &format!("{page}/refund"),
+        json!({ "amount": "10.00", "reason": "Scratched" }),
+    )
+    .await;
+    assert_eq!(
+        res.header("location"),
+        Some(format!("{page}?done=refunded").as_str())
+    );
+    // The order follows its payments through an event subscriber.
+    soat_events::dispatch_resources(&client.resources().await)
+        .await
+        .unwrap();
+    let o = api(
+        "GET",
+        &format!("/api/orders/{order}"),
+        serde_json::Value::Null,
+    )
+    .await;
+    assert_eq!(o["financial_status"], "partially_refunded");
+
+    // Another shop's admin does not find the order.
+    get(&client, &admin, &format!("/admin/globex/orders/{order}"))
+        .await
+        .assert_status(404);
+}
