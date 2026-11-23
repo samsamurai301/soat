@@ -5,7 +5,7 @@ use zapline::db::Database;
 use zapline::test::TestClient;
 
 use soat::app;
-use soat::routes::catalog::Product;
+use soat_catalog::Product;
 
 async fn with_tenants(ids: &[&str]) -> TestClient {
     let client = app(Database::sqlite_memory()).test();

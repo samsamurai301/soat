@@ -1,0 +1,11 @@
+[package]
+name = "soat-module"
+description = "The Module trait every SOAT domain crate implements, and the set that wires them into one app."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+zapline.workspace = true

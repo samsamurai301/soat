@@ -1,13 +1,37 @@
 //! Catalog: products of the request's tenant.
 //!
+//! Variants, collections, categories and media follow (milestones B1 to B12).
+//!
 //! Every query filters on `tenant_id`, so one tenant can never read or change
 //! another's products: a foreign id is simply "not found".
 
 use soat_core::Currency;
+use soat_module::Module;
+use soat_tenancy::Tenant;
 use zapline::db::{sqlx, Db};
+use zapline::embed::Dir;
 use zapline::prelude::*;
 
-use crate::tenant::Tenant;
+/// The catalog module. Needs `tenancy`.
+pub struct Catalog;
+
+impl Module for Catalog {
+    fn name(&self) -> &'static str {
+        "catalog"
+    }
+
+    fn depends_on(&self) -> &'static [&'static str] {
+        &["tenancy"]
+    }
+
+    fn migrations(&self) -> Option<Dir> {
+        Some(zapline::embed!("migrations"))
+    }
+
+    fn mount(&self, app: App) -> App {
+        app.mount((list_products, create_product, get_product))
+    }
+}
 
 /// A product.
 #[model]
@@ -33,10 +57,6 @@ pub struct NewProduct {
     pub price_minor: i64,
     #[validate(length(equal = 3))]
     pub currency: String,
-}
-
-pub fn mount(app: App) -> App {
-    app.mount((list_products, create_product, get_product))
 }
 
 const COLUMNS: &str = "id, sku, title, price_minor, currency";

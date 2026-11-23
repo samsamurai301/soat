@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/soat-core", "crates/soat"]
+members = ["crates/*"]
 
 [workspace.package]
 version = "0.0.1"
@@ -12,9 +12,13 @@ publish = false
 
 [workspace.dependencies]
 soat-core = { path = "crates/soat-core" }
+soat-module = { path = "crates/soat-module" }
+soat-tenancy = { path = "crates/soat-tenancy" }
+soat-catalog = { path = "crates/soat-catalog" }
 # Tracks Zapline main (newer than the crates.io release); Cargo.lock pins the exact commit.
 zapline = { git = "https://github.com/samsamurai301/zapline", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
+sqlx = { version = "0.8", default-features = false, features = ["derive"] }
 
 [profile.dev]
 debug = "line-tables-only"

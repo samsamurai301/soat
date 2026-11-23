@@ -20,7 +20,18 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   every new tenant-owned resource.
 - **Money is integer minor units plus a `Currency`.** Never `f32`/`f64` for prices.
 - **Domain logic goes in `soat-core`** when it needs no HTTP or SQL, with unit tests.
-- **One module per file** in `crates/soat/src/routes/`, mounted in `routes::install`.
+- **One domain = one crate.** Each domain is `crates/soat-<name>`, exports one
+  value implementing `soat_module::Module` (name, `depends_on`, migrations in
+  its own `migrations/`, routes) and is listed in `soat::modules()`. The `soat`
+  crate holds no domain code. Create a crate when its milestone starts, never
+  as an empty placeholder.
+- **Dependencies point down.** A module may depend on foundation crates
+  (`soat-core`, `soat-module`, `soat-tenancy`) and on modules it names in
+  `depends_on`. It never imports a sibling in its own layer; siblings talk
+  through events. Anything a shop can live without goes behind a Cargo feature.
+- **Migration versions are timestamps, unique across all crates**, because every
+  module shares one migrations table. `soat::modules().validate()` rejects
+  clashes.
 - **Migrations are reversible:** each `*.up.sql` has a `*.down.sql`. Never edit a
   migration that has shipped; add a new one.
 - Handlers carry a doc comment: it becomes the OpenAPI description.
@@ -29,6 +40,8 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
 ## Architecture
 
 The plan, competitor analysis and MVP scope live in the SOAT architecture doc.
+The module map and milestone list live in `docs/roadmap.md`: tick a milestone
+there in the PR that finishes it.
 In short: one binary (API, admin, storefront, jobs), Postgres as the only
 required service, WASM plugins with declared permissions, commerce and CMS in
 one model, multi-tenant from day one.

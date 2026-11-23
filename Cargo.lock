@@ -1295,11 +1295,23 @@ dependencies = [
 name = "soat"
 version = "0.0.1"
 dependencies = [
- "serde",
  "serde_json",
- "soat-core",
- "sqlx",
+ "soat-catalog",
+ "soat-module",
+ "soat-tenancy",
  "tokio",
+ "zapline",
+]
+
+[[package]]
+name = "soat-catalog"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "soat-core",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
  "zapline",
 ]
 
@@ -1309,6 +1321,24 @@ version = "0.0.1"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "soat-module"
+version = "0.0.1"
+dependencies = [
+ "zapline",
+]
+
+[[package]]
+name = "soat-tenancy"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "soat-core",
+ "soat-module",
+ "sqlx",
+ "zapline",
 ]
 
 [[package]]

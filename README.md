@@ -29,7 +29,12 @@ curl localhost:8080/api/products -H 'x-soat-tenant: acme'
 | Path | What |
 | --- | --- |
 | `crates/soat-core` | Domain types with no HTTP or SQL: `Money`, `Currency`, `TenantId` |
-| `crates/soat` | The server: Zapline app, routes per module, SQL migrations, tests |
+| `crates/soat-module` | The `Module` trait and the `Modules` set that wires modules into one app |
+| `crates/soat-tenancy` | Shops: the tenants table, `POST /api/tenants`, the `Tenant` extractor |
+| `crates/soat-catalog` | Products of a shop |
+| `crates/soat` | The server binary: lists the modules, end-to-end tests |
+
+The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 
 ## What exists, what is next
 
