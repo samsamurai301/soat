@@ -90,7 +90,7 @@ layer.
 - [x] D5 CMS pages and blocks **alpha**
 - [x] D6 Menus **alpha**
 - [ ] D7 Blog
-- [ ] D8 SEO basics **alpha**
+- [x] D8 SEO basics: SEO title and description for products and collections, canonical and Open Graph tags, product structured data, robots.txt, sitemap.xml, noindex on private pages, URL redirects (automatic when a handle changes) **alpha**
 - [ ] D9 Search with facets **alpha**
 - [ ] D10 Translations and markets **alpha**
 - [ ] D11 Headless Storefront API

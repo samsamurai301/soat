@@ -5,7 +5,8 @@
 //! buttons, product grids, video, spacers, columns; see
 //! [`soat_core::content`]). It is a draft until published; the storefront
 //! only shows published pages. A menu (`main`, `footer`) is a tree of
-//! links, three levels deep. Themes render both.
+//! links, three levels deep. Themes render both. [`redirects`] send old
+//! addresses on.
 
 use serde_json::Value;
 use soat_core::content::{check_blocks, check_menu};
@@ -19,16 +20,23 @@ use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::embed::Dir;
 use zapline::prelude::*;
 
+pub mod redirects;
+
+pub use redirects::redirect_for;
+
 id_kind!(PageId, PageKind, "page");
 id_kind!(MenuId, MenuKind, "menu");
 
-/// See pages and menus, drafts included.
-pub const CONTENT_READ: Permission =
-    Permission::new("content:read", "See pages and menus, drafts included").for_staff();
-/// Create, change, publish and delete pages and menus.
+/// See pages, menus and redirects, drafts included.
+pub const CONTENT_READ: Permission = Permission::new(
+    "content:read",
+    "See pages, menus and redirects, drafts included",
+)
+.for_staff();
+/// Create, change, publish and delete pages, menus and redirects.
 pub const CONTENT_WRITE: Permission = Permission::new(
     "content:write",
-    "Create, change, publish and delete pages and menus",
+    "Create, change, publish and delete pages, menus and redirects",
 )
 .for_staff();
 
@@ -52,7 +60,12 @@ impl Module for Cms {
         &[CONTENT_READ, CONTENT_WRITE]
     }
 
+    fn subscribers(&self) -> Vec<std::sync::Arc<dyn soat_module::Subscriber>> {
+        vec![std::sync::Arc::new(redirects::FollowHandles)]
+    }
+
     fn mount(&self, app: App) -> App {
+        let app = redirects::mount(app);
         app.mount((
             list_pages,
             create_page,
@@ -512,6 +525,19 @@ pub async fn published_page(
     .fetch_optional(&mut *conn)
     .await?;
     Ok(row.map(Page::from))
+}
+
+/// The handles of the shop's published pages, for a sitemap (at most
+/// 10 000).
+pub async fn published_handles(conn: &mut PgConnection, scope: &impl Scope) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT handle FROM pages WHERE tenant_id = $1 AND published_at IS NOT NULL \
+         ORDER BY handle LIMIT 10000",
+    )
+    .bind(scope.tenant_id())
+    .fetch_all(conn)
+    .await?;
+    Ok(rows.into_iter().map(|(h,)| h).collect())
 }
 
 /// A menu by handle, for themes.

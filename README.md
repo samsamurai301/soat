@@ -86,7 +86,7 @@ changes run at once with `PUT /api/assistant/settings {"approval":"off"}`.
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |
 | `crates/soat-notify` | Transactional email: order, shipping, cancel and refund emails, staff notices, editable templates, sent log |
-| `crates/soat-cms` | Content: pages built from blocks (drafts and published), menus, read by the storefront |
+| `crates/soat-cms` | Content: pages built from blocks (drafts and published), menus and URL redirects, read by the storefront |
 | `crates/soat-theme` | Themes: a default theme, per-shop template and style edits, settings; safe templates with Markdown |
 | `crates/soat-storefront` | The storefront: server-rendered pages from the theme, cart in a cookie, checkout, order and account pages, htmx |
 | `crates/soat-mcp` | MCP server at `/mcp`: Claude runs a shop through a tool per API operation, scoped by API key, changes held for approval |
@@ -123,6 +123,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Storefront catalog API: active products and collections by handle
 - [x] Claude runs your shop over MCP, with every change approved by a person
 - [x] Storefront in Rust from an editable theme (server-rendered with htmx)
+- [x] SEO basics: SEO fields, Open Graph, structured data, sitemap, robots.txt, redirects
 - [x] Checkout, order confirmation and customer account pages
 - [ ] Admin UI (htmx)
 - [ ] WASM plugin host, built into Zapline

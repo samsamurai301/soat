@@ -156,6 +156,34 @@ impl Scope for Shop {
     }
 }
 
+/// The shop an event belongs to, for an event subscriber: the
+/// system acts.
+pub struct EventShop(pub String);
+
+impl Scope for EventShop {
+    fn tenant_id(&self) -> &str {
+        &self.0
+    }
+
+    fn actor_id(&self) -> Option<&str> {
+        None
+    }
+}
+
+impl EventShop {
+    /// A transaction on `pool` that sees only this shop.
+    ///
+    /// # Errors
+    ///
+    /// A malformed shop id; database errors.
+    pub async fn begin_on(&self, pool: &zapline::db::sqlx::PgPool) -> Result<TenantTx> {
+        let id = TenantId::parse(&self.0).map_err(|_| unknown())?;
+        let mut tx = pool.begin().await?;
+        enter(&mut tx, &id).await?;
+        Ok(tx)
+    }
+}
+
 /// A shop and who acts in it on a public request, e.g. a signed-in
 /// customer (`cus_...`).
 pub struct Acting<'a> {

@@ -9,6 +9,7 @@ async fn admin(client: &TestClient, t: &str, method: &str, path: &str, body: Val
     let req = match method {
         "POST" => client.post(path),
         "PUT" => client.put(path),
+        "PATCH" => client.patch(path),
         _ => client.get(path),
     }
     .header("x-soat-tenant", "acme")
@@ -676,4 +677,218 @@ async fn customers_have_accounts() {
     .await;
     let me = cookies(&res, &["soat_customer"]).remove(0);
     page(&client, "acme", "/account", Some(&me), 200).await;
+}
+
+async fn on_host(
+    client: &TestClient,
+    host: &str,
+    path: &str,
+    status: u16,
+) -> zapline::test::TestResponse {
+    let res = client.get(path).header("host", host).send().await;
+    res.assert_status(status);
+    res
+}
+
+#[tokio::test]
+async fn search_engines_find_the_shop() {
+    let (client, t) = common::with_tenants(&["acme", "globex"]).await;
+    shop_with_products(&client, &t).await;
+    admin(
+        &client,
+        &t,
+        "POST",
+        "/api/domains",
+        json!({ "domain": "acme.example" }),
+    )
+    .await;
+    let shoe =
+        admin(&client, &t, "GET", "/api/products?q=trail", Value::Null).await["items"][0].clone();
+    let id = shoe["id"].as_str().unwrap();
+    assert_eq!(shoe["seo_title"], "");
+
+    // Without SEO fields: the title, and the description as plain text.
+    let page1 = on_host(&client, "acme.example", "/products/trail-shoe", 200)
+        .await
+        .text();
+    assert!(
+        page1.contains("<title>Trail Shoe · acme</title>"),
+        "{page1}"
+    );
+    assert!(page1.contains(
+        "<meta name=\"description\" content=\"Light and grippy. &lt;script&gt;alert(1)&lt;/script&gt;\">"
+    ), "{page1}");
+    assert!(page1
+        .contains("<link rel=\"canonical\" href=\"https://acme.example/products/trail-shoe\">"));
+    assert!(page1.contains("<meta property=\"og:type\" content=\"product\">"));
+    let ld = page1
+        .split("<script type=\"application/ld+json\">")
+        .nth(1)
+        .unwrap()
+        .split("</script>")
+        .next()
+        .unwrap();
+    let ld: Value = serde_json::from_str(ld).unwrap();
+    assert_eq!(ld["@type"], "Product");
+    assert_eq!(ld["name"], "Trail Shoe");
+    assert_eq!(
+        ld["description"],
+        "Light and grippy. <script>alert(1)</script>"
+    );
+    assert_eq!(ld["url"], "https://acme.example/products/trail-shoe");
+    assert_eq!(ld["offers"]["price"], "129.99");
+    assert_eq!(ld["offers"]["priceCurrency"], "EUR");
+
+    // With them.
+    admin(
+        &client,
+        &t,
+        "PATCH",
+        &format!("/api/products/{id}"),
+        json!({ "seo_title": "Trail shoes for wet rock", "seo_description": "Grip that holds." }),
+    )
+    .await;
+    let page2 = on_host(&client, "acme.example", "/products/trail-shoe", 200)
+        .await
+        .text();
+    assert!(page2.contains("<title>Trail shoes for wet rock · acme</title>"));
+    assert!(page2.contains("<meta name=\"description\" content=\"Grip that holds.\">"));
+    let cart = page(&client, "acme", "/cart", None, 200).await;
+    assert!(cart.contains("<meta name=\"robots\" content=\"noindex\">"));
+    assert!(!page2.contains("noindex"));
+
+    let robots = on_host(&client, "acme.example", "/robots.txt", 200).await;
+    assert_eq!(
+        robots.header("content-type"),
+        Some("text/plain; charset=utf-8")
+    );
+    let robots = robots.text();
+    assert!(robots.contains("Disallow: /checkout"));
+    assert!(
+        robots.contains("Sitemap: https://acme.example/sitemap.xml"),
+        "{robots}"
+    );
+    admin(
+        &client,
+        &t,
+        "POST",
+        "/api/pages",
+        json!({ "title": "About", "published": true, "blocks": [] }),
+    )
+    .await;
+    admin(
+        &client,
+        &t,
+        "POST",
+        "/api/pages",
+        json!({ "title": "Draft", "blocks": [] }),
+    )
+    .await;
+    let map = on_host(&client, "acme.example", "/sitemap.xml", 200)
+        .await
+        .text();
+    for loc in ["/", "/pages/about", "/products/trail-shoe"] {
+        assert!(
+            map.contains(&format!("<loc>https://acme.example{loc}</loc>")),
+            "{loc}: {map}"
+        );
+    }
+    assert!(
+        !map.contains("wool-hat") && !map.contains("/pages/draft"),
+        "{map}"
+    );
+
+    // A new handle keeps the old link working, without chains.
+    for handle in ["trail-shoe-2", "trail-runner"] {
+        admin(
+            &client,
+            &t,
+            "PATCH",
+            &format!("/api/products/{id}"),
+            json!({ "handle": handle }),
+        )
+        .await;
+    }
+    soat_events::dispatch_resources(&client.resources().await)
+        .await
+        .unwrap();
+    for old in ["/products/trail-shoe", "/products/trail-shoe-2"] {
+        let res = on_host(&client, "acme.example", old, 301).await;
+        assert_eq!(
+            res.header("location"),
+            Some("/products/trail-runner"),
+            "{old}"
+        );
+    }
+    on_host(&client, "acme.example", "/products/trail-runner", 200).await;
+    let list = admin(&client, &t, "GET", "/api/redirects", Value::Null).await;
+    assert_eq!(list["total"], 2, "{list}");
+
+    // Redirects staff add work for any path; others are the theme's 404.
+    let made = admin(
+        &client,
+        &t,
+        "POST",
+        "/api/redirects",
+        json!({ "from_path": "/old-blog/", "to_url": "/pages/about" }),
+    )
+    .await;
+    assert_eq!(made["from_path"], "/old-blog");
+    let res = on_host(&client, "acme.example", "/old-blog", 301).await;
+    assert_eq!(res.header("location"), Some("/pages/about"));
+    let missing = on_host(&client, "acme.example", "/nothing/here", 404)
+        .await
+        .text();
+    assert!(missing.contains("<!doctype html>") && missing.contains("Not found"));
+    for (body, status) in [
+        (json!({ "from_path": "/old-blog", "to_url": "/x" }), 409),
+        (json!({ "from_path": "nope", "to_url": "/x" }), 422),
+        (
+            json!({ "from_path": "/a", "to_url": "javascript:alert(1)" }),
+            422,
+        ),
+        (json!({ "from_path": "/a", "to_url": "/a/" }), 422),
+    ] {
+        client
+            .post("/api/redirects")
+            .header("x-soat-tenant", "acme")
+            .bearer(&t)
+            .json(&body)
+            .send()
+            .await
+            .assert_status(status);
+    }
+    // The API's unknown routes stay JSON.
+    let res = client
+        .get("/api/nope")
+        .header("x-soat-tenant", "acme")
+        .send()
+        .await;
+    res.assert_status(404);
+    assert!(res.text().starts_with('{'));
+    // Another shop sees none of it.
+    page(&client, "globex", "/old-blog", None, 404).await;
+    let theirs = client
+        .get("/api/redirects")
+        .header("x-soat-tenant", "globex")
+        .bearer(&t)
+        .send()
+        .await;
+    theirs.assert_status(200);
+    assert_eq!(theirs.json::<Value>()["total"], 0);
+    client
+        .delete(&format!("/api/redirects/{}", made["id"].as_str().unwrap()))
+        .header("x-soat-tenant", "globex")
+        .bearer(&t)
+        .send()
+        .await
+        .assert_status(404);
+    client
+        .delete(&format!("/api/redirects/{}", made["id"].as_str().unwrap()))
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .send()
+        .await
+        .assert_status(204);
+    on_host(&client, "acme.example", "/old-blog", 404).await;
 }

@@ -10,6 +10,10 @@
 //!
 //! - `{{ product.description | markdown }}` writes Markdown as safe HTML
 //!   (see [`crate::markdown`]); outside HTML it writes the text.
+//! - `{{ product_ld | json }}` writes the value as JSON, e.g. for a
+//!   `<script type="application/ld+json">`. In HTML every character of a
+//!   string that could end a tag, attribute or script is written as a
+//!   `\uXXXX` escape, so the values cannot break out.
 //! - `{{> header }}` writes another template (a partial) with the same
 //!   values, when the caller supplies partials ([`Template::render_with`]).
 //!
@@ -42,6 +46,7 @@ enum Node {
     Text(String),
     Var(String),
     Markdown(String),
+    Json(String),
     Partial(String),
     Each(String, Vec<Node>),
     If(String, Vec<Node>, Vec<Node>),
@@ -218,12 +223,15 @@ fn parse_block(rest: &mut &str, depth: usize) -> Result<(Vec<Node>, End), Templa
             if !is_path(path) {
                 return Err(err(format!("`{path}` is not a name")));
             }
-            if filter != "markdown" {
-                return Err(err(format!(
-                    "`{filter}` is not a filter; there is markdown"
-                )));
+            match filter {
+                "markdown" => nodes.push(Node::Markdown(path.to_owned())),
+                "json" => nodes.push(Node::Json(path.to_owned())),
+                _ => {
+                    return Err(err(format!(
+                        "`{filter}` is not a filter; there are markdown and json"
+                    )))
+                }
             }
-            nodes.push(Node::Markdown(path.to_owned()));
         } else if is_path(tag) {
             nodes.push(Node::Var(tag.to_owned()));
         } else {
@@ -266,6 +274,53 @@ fn escape_into(s: &str, out: &mut String) {
     }
 }
 
+/// `v` as JSON that is safe anywhere in HTML: in strings, everything but
+/// letters, digits and `-_.,:@` (and non-ASCII text) is a `\uXXXX` escape.
+pub fn json_for_html(v: &Value, out: &mut String) {
+    match v {
+        Value::String(s) => {
+            out.push('"');
+            for c in s.chars() {
+                if c.is_ascii_alphanumeric()
+                    || matches!(c, '-' | '_' | '.' | ',' | ':' | '@')
+                    || (!c.is_ascii() && !c.is_control() && !matches!(c, '\u{2028}' | '\u{2029}'))
+                {
+                    out.push(c);
+                } else {
+                    let mut buf = [0u16; 2];
+                    for unit in c.encode_utf16(&mut buf) {
+                        out.push_str(&format!("\\u{unit:04x}"));
+                    }
+                }
+            }
+            out.push('"');
+        }
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                json_for_html(item, out);
+            }
+            out.push(']');
+        }
+        Value::Object(map) => {
+            out.push('{');
+            for (i, (k, item)) in map.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                json_for_html(&Value::String(k.clone()), out);
+                out.push(':');
+                json_for_html(item, out);
+            }
+            out.push('}');
+        }
+        other => out.push_str(&other.to_string()),
+    }
+}
+
 struct Cx<'p, 't> {
     html: bool,
     partials: &'p dyn Fn(&str) -> Option<&'t Template>,
@@ -284,6 +339,14 @@ fn render_nodes(nodes: &[Node], scopes: &mut Vec<&Value>, cx: &Cx<'_, '_>, out: 
                     } else {
                         out.push_str(s);
                     }
+                }
+            }
+            Node::Json(path) => {
+                let v = lookup(scopes, path).unwrap_or(&Value::Null);
+                if html {
+                    json_for_html(v, out);
+                } else {
+                    out.push_str(&v.to_string());
                 }
             }
             Node::Partial(name) => {
@@ -364,6 +427,19 @@ mod tests {
         ] {
             assert!(Template::parse(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn json_cannot_break_out() {
+        let data = json!({ "ld": { "@type": "Product", "name": "</script><b x=\"1\">Café\u{2028}", "n": 1.5, "tags": [true, null] } });
+        let out = render("{{ ld | json }}", &data, true).unwrap();
+        assert_eq!(
+            out,
+            "{\"@type\":\"Product\",\"n\":1.5,\"name\":\"\\u003c\\u002fscript\\u003e\\u003cb\\u0020x\\u003d\\u00221\\u0022\\u003eCafé\\u2028\",\"tags\":[true,null]}"
+        );
+        let back: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(back, data["ld"]);
+        assert_eq!(render("{{ x | json }}", &data, false).unwrap(), "null");
     }
 
     #[test]

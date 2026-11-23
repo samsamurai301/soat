@@ -100,6 +100,11 @@ pub struct Product {
     pub tax_class: String,
     /// Shipping weight in grams; its variants share it.
     pub weight_grams: Option<i64>,
+    /// The title search engines show; empty uses the title.
+    pub seo_title: String,
+    /// The description search engines show; empty uses the start of the
+    /// description.
+    pub seo_description: String,
 }
 
 /// Body of a create request.
@@ -126,6 +131,10 @@ pub struct NewProduct {
     pub tax_class: Option<String>,
     #[validate(range(min = 0, max = 10_000_000))]
     pub weight_grams: Option<i64>,
+    #[validate(length(max = 200))]
+    pub seo_title: Option<String>,
+    #[validate(length(max = 500))]
+    pub seo_description: Option<String>,
 }
 
 /// Body of an update request; absent fields stay as they are. The currency
@@ -147,6 +156,11 @@ pub struct ProductChange {
     pub tax_class: Option<String>,
     #[validate(range(min = 0, max = 10_000_000))]
     pub weight_grams: Option<i64>,
+    /// An empty string goes back to the title.
+    #[validate(length(max = 200))]
+    pub seo_title: Option<String>,
+    #[validate(length(max = 500))]
+    pub seo_description: Option<String>,
 }
 
 fn tax_class(raw: Option<&str>) -> Result<()> {
@@ -164,8 +178,8 @@ fn tags(raw: Option<&[String]>) -> Result<Option<Vec<String>>> {
         .transpose()
 }
 
-const COLUMNS: &str =
-    "id, sku, title, handle, description, status, price_minor, currency, tags, tax_class, weight_grams";
+const COLUMNS: &str = "id, sku, title, handle, description, status, price_minor, currency, tags, \
+     tax_class, weight_grams, seo_title, seo_description";
 
 /// Product statuses.
 pub const STATUSES: &[&str] = &["active", "draft", "archived"];
@@ -269,8 +283,8 @@ async fn create_product(
     let product = sqlx::query_as::<_, Product>(&format!(
         "INSERT INTO products \
          (id, tenant_id, sku, title, price_minor, currency, tags, tax_class, weight_grams, \
-          handle, description, status) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING {COLUMNS}"
+          handle, description, status, seo_title, seo_description) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING {COLUMNS}"
     ))
     .bind(id.as_str())
     .bind(tenant.id())
@@ -284,6 +298,8 @@ async fn create_product(
     .bind(&handle)
     .bind(p.description.as_deref().unwrap_or_default())
     .bind(p.status.as_deref().unwrap_or("active"))
+    .bind(p.seo_title.as_deref().unwrap_or_default().trim())
+    .bind(p.seo_description.as_deref().unwrap_or_default().trim())
     .fetch_one(&mut *tx)
     .await?;
     tenant.publish(&mut tx, "product.created", &product).await?;
@@ -307,9 +323,11 @@ async fn get_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<J
     product.map(Json).ok_or_else(Error::not_found)
 }
 
-/// Change a product's SKU, title, handle, description, status, price, tags
-/// or tax class (`products:write`). A handle another product has is a 409. Publishes
-/// `product.updated`.
+/// Change a product's SKU, title, handle, description, status, price, tags,
+/// tax class or SEO title and description (`products:write`). A handle
+/// another product has is a 409. Publishes `product.updated`, and
+/// `product.handle_changed` (`id`, `from`, `to`) when the handle changes, so
+/// old links can redirect.
 #[patch("/api/products/{id}", tag = "catalog")]
 async fn update_product(
     db: Db,
@@ -323,13 +341,23 @@ async fn update_product(
     status(change.status.as_deref())?;
     handle(change.handle.as_deref())?;
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
+    let before: Option<(String,)> =
+        sqlx::query_as("SELECT handle FROM products WHERE tenant_id = $1 AND id = $2 FOR UPDATE")
+            .bind(tenant.id())
+            .bind(id.as_str())
+            .fetch_optional(&mut *tx)
+            .await?;
+    let (before,) = before.ok_or_else(Error::not_found)?;
     let product = sqlx::query_as::<_, Product>(&format!(
         "UPDATE products SET sku = COALESCE($3, sku), title = COALESCE($4, title), \
          handle = COALESCE($9, handle), description = COALESCE($10, description), \
          status = COALESCE($11, status), \
          price_minor = COALESCE($5, price_minor), tags = COALESCE($6, tags), \
          tax_class = COALESCE($7, tax_class), \
-         weight_grams = COALESCE($8, weight_grams) WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
+         weight_grams = COALESCE($8, weight_grams), \
+         seo_title = COALESCE($12, seo_title), \
+         seo_description = COALESCE($13, seo_description) \
+         WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
     ))
     .bind(tenant.id())
     .bind(id.as_str())
@@ -342,10 +370,20 @@ async fn update_product(
     .bind(&change.handle)
     .bind(&change.description)
     .bind(&change.status)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or_else(Error::not_found)?;
+    .bind(change.seo_title.as_deref().map(str::trim))
+    .bind(change.seo_description.as_deref().map(str::trim))
+    .fetch_one(&mut *tx)
+    .await?;
     tenant.publish(&mut tx, "product.updated", &product).await?;
+    if before != product.handle {
+        tenant
+            .publish(
+                &mut tx,
+                "product.handle_changed",
+                &serde_json::json!({ "id": product.id, "from": before, "to": product.handle }),
+            )
+            .await?;
+    }
     tx.commit().await?;
     Ok(Json(product))
 }

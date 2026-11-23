@@ -213,6 +213,41 @@ pub fn to_html(source: &str) -> String {
     out
 }
 
+/// `source` as plain text on one line, at most `max` characters (cut at a
+/// word, with `…`): for meta descriptions and structured data.
+pub fn to_text(source: &str, max: usize) -> String {
+    let html = to_html(source);
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => {
+                in_tag = false;
+                text.push(' ');
+            }
+            c if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let text = unescape(&words.join(" "));
+    let text = text
+        .replace(" .", ".")
+        .replace(" ,", ",")
+        .replace(" !", "!")
+        .replace(" ?", "?");
+    if text.chars().count() <= max {
+        return text;
+    }
+    let cut: String = text.chars().take(max.saturating_sub(1)).collect();
+    let cut = match cut.rfind(' ') {
+        Some(i) if i > max / 2 => &cut[..i],
+        _ => cut.as_str(),
+    };
+    format!("{}…", cut.trim_end_matches([',', '.', ';', ':']))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,6 +271,16 @@ mod tests {
              <a href=\"https://a.example/?a=1&amp;b=2\" rel=\"noopener nofollow\">x</a> <code>a*b*</code></p>\n"
         );
         assert_eq!(to_html("2 * 3 * 4"), "<p>2 * 3 * 4</p>\n");
+    }
+
+    #[test]
+    fn plain_text() {
+        assert_eq!(
+            to_text("# Shoes\n\nLight and *grippy*. [More](/a) & <b>", 200),
+            "Shoes Light and grippy. More & <b>"
+        );
+        assert_eq!(to_text("one two three four", 12), "one two…");
+        assert_eq!(to_text("", 10), "");
     }
 
     #[test]

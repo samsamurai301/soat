@@ -4,7 +4,9 @@
 //! `/` (the `home` content page if published, and new products),
 //! `/products/{handle}`, `/collections/{handle}`, `/pages/{handle}`,
 //! `/search?q=`, `/cart`, `/checkout`, `/order` (the buyer's last order),
-//! `/account` (sign in, register, profile and orders) and `/theme.css`. The shop comes from the request's
+//! `/account` (sign in, register, profile and orders), `/theme.css`,
+//! `/robots.txt` and `/sitemap.xml`. Paths that match nothing get the
+//! shop's redirect or its themed not-found page. The shop comes from the request's
 //! `Host` (one of the shop's domains) or the `x-soat-tenant` header. The
 //! cart lives in a cookie; adding to it and changing it are plain form
 //! posts that htmx upgrades in place, so every page works without
@@ -30,6 +32,7 @@ use zapline::prelude::*;
 use zapline::storage::Storage;
 
 mod account;
+mod seo;
 
 /// The cookie holding the buyer's cart: `<cart id>.<token>`.
 pub const CART_COOKIE: &str = "soat_cart";
@@ -85,7 +88,10 @@ impl Module for Storefront {
             account::account_page,
             account::update_account,
             account::account_order,
+            seo::robots,
+            seo::sitemap,
         ))
+        .fallback(seo::fallback)
     }
 }
 
@@ -151,6 +157,59 @@ fn is_htmx(headers: &HeaderMap) -> bool {
     headers.get("hx-request").is_some()
 }
 
+/// The shop's address, e.g. `https://shop.example`: the request's host when
+/// it is one of the shop's domains, else the shop's first domain, else the
+/// request's host; empty when there is none. `http` only for local hosts.
+async fn origin(conn: &mut PgConnection, shop: &Shop, headers: &HeaderMap) -> Result<String> {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .map(str::to_ascii_lowercase)
+        .filter(|h| {
+            !h.is_empty()
+                && h.len() <= 255
+                && h.bytes().all(|b| {
+                    b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b':' | b'[' | b']')
+                })
+        });
+    let domains: Vec<(String,)> = sqlx::query_as(
+        "SELECT domain FROM tenant_domains WHERE tenant_id = $1 ORDER BY created_at, domain",
+    )
+    .bind(shop.tenant_id())
+    .fetch_all(conn)
+    .await?;
+    let bare = |h: &str| h.split(':').next().unwrap_or_default().to_owned();
+    let chosen = match host {
+        Some(h) if domains.iter().any(|(d,)| *d == bare(&h)) => Some(h),
+        _ => domains.into_iter().next().map(|(d,)| d).or(host),
+    };
+    Ok(chosen.map_or_else(String::new, |h| {
+        let local = h.starts_with("localhost") || h.starts_with("127.") || h.starts_with('[');
+        format!("{}://{h}", if local { "http" } else { "https" })
+    }))
+}
+
+/// `url` made absolute on `origin` when it is a path.
+fn absolute(origin: &str, url: &str) -> String {
+    if url.starts_with('/') && !url.starts_with("//") {
+        format!("{origin}{url}")
+    } else {
+        url.to_owned()
+    }
+}
+
+/// Pages search engines should not list.
+const NOINDEX: &[&str] = &[
+    "cart",
+    "checkout",
+    "order",
+    "login",
+    "register",
+    "account",
+    "search",
+    "not_found",
+];
+
 /// One page being rendered: the shop's transaction, theme and the values
 /// every page has.
 struct View {
@@ -181,8 +240,9 @@ impl View {
                 .map_or(0, |c| c.item_count),
             None => 0,
         };
+        let url = origin(&mut tx, shop, headers).await?;
         let mut data = Map::new();
-        data.insert("shop".to_owned(), json!({ "name": name }));
+        data.insert("shop".to_owned(), json!({ "name": name, "url": url }));
         data.insert("menus".to_owned(), Value::Object(menus));
         data.insert("cart".to_owned(), json!({ "count": count }));
         let mut customer = None;
@@ -209,7 +269,10 @@ impl View {
         self.data.insert(key.to_owned(), value);
     }
 
-    async fn render(self, page: &str, status: StatusCode) -> Result<Response> {
+    async fn render(mut self, page: &str, status: StatusCode) -> Result<Response> {
+        if NOINDEX.contains(&page) {
+            self.set("noindex", json!(true));
+        }
         self.tx.commit().await?;
         let html = self.theme.render(page, &Value::Object(self.data));
         let mut res = (status, Html(html)).into_response();
@@ -218,6 +281,22 @@ impl View {
             HeaderValue::from_static("private, no-cache"),
         );
         Ok(res)
+    }
+
+    /// Where the shop now sends `path` (a `301`), or the not-found page.
+    async fn missing(mut self, shop: &Shop, path: &str) -> Result<Response> {
+        match soat_cms::redirect_for(&mut self.tx, shop, path).await? {
+            Some(to) => match HeaderValue::from_str(&to) {
+                Ok(location) => {
+                    self.tx.commit().await?;
+                    let mut res = StatusCode::MOVED_PERMANENTLY.into_response();
+                    res.headers_mut().insert(header::LOCATION, location);
+                    Ok(res)
+                }
+                Err(_) => self.not_found().await,
+            },
+            None => self.not_found().await,
+        }
     }
 
     async fn not_found(mut self) -> Result<Response> {
@@ -325,7 +404,7 @@ async fn product_page(
 ) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
     let Some(p) = catalog::product_by_handle(&mut v.tx, &shop, &storage, &handle).await? else {
-        return v.not_found().await;
+        return v.missing(&shop, &format!("/products/{handle}")).await;
     };
     let mut product = serde_json::to_value(&p).unwrap_or_default();
     product["price"] = json!(money(p.price_minor, &p.currency));
@@ -334,14 +413,71 @@ async fn product_page(
             value["price"] = json!(money(variant.price_minor, &variant.currency));
         }
     }
-    v.set("page_title", json!(p.title));
-    let summary: String = p.description.chars().take(160).collect();
-    if !summary.is_empty() {
-        v.set("meta_description", json!(summary));
+    let origin = v.data["shop"]["url"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    let path = format!("/products/{}", p.handle);
+    let summary = soat_core::markdown::to_text(&p.description, 160);
+    v.set("page_title", json!(or(&p.seo_title, &p.title)));
+    let description = or(&p.seo_description, &summary);
+    if !description.is_empty() {
+        v.set("meta_description", json!(description));
     }
-    v.set("canonical", json!(format!("/products/{}", p.handle)));
+    v.set("canonical", json!(path));
+    v.set("og_type", json!("product"));
+    let images: Vec<String> = p.images.iter().map(|i| absolute(&origin, &i.url)).collect();
+    if let Some(first) = images.first() {
+        v.set("og_image", json!(first));
+    }
+    v.set("product_ld", product_ld(&p, &origin, &path, images));
     v.set("product", product);
     v.render("product", StatusCode::OK).await
+}
+
+/// `own` unless it is empty, else `fallback`.
+fn or<'a>(own: &'a str, fallback: &'a str) -> &'a str {
+    if own.trim().is_empty() {
+        fallback
+    } else {
+        own
+    }
+}
+
+/// A product as schema.org structured data, for search results.
+fn product_ld(p: &catalog::ShopProduct, origin: &str, path: &str, images: Vec<String>) -> Value {
+    let decimal = |minor: i64, currency: &str| {
+        Currency::parse(currency).map_or_else(|_| minor.to_string(), |c| c.decimal(minor))
+    };
+    let url = absolute(origin, path);
+    let offers = if p.variants.is_empty() {
+        json!({
+            "@type": "Offer",
+            "url": url,
+            "price": decimal(p.price_minor, &p.currency),
+            "priceCurrency": p.currency,
+        })
+    } else {
+        let prices = p.variants.iter().map(|v| v.price_minor);
+        let (low, high) = (prices.clone().min().unwrap_or(0), prices.max().unwrap_or(0));
+        json!({
+            "@type": "AggregateOffer",
+            "url": url,
+            "lowPrice": decimal(low, &p.currency),
+            "highPrice": decimal(high, &p.currency),
+            "offerCount": p.variants.len(),
+            "priceCurrency": p.currency,
+        })
+    };
+    json!({
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": p.title,
+        "description": soat_core::markdown::to_text(&p.description, 5000),
+        "url": url,
+        "image": images,
+        "offers": offers,
+    })
 }
 
 /// Sets `products`, `prev_url` and `next_url` from a page of cards.
@@ -383,7 +519,7 @@ async fn collection_page(
 ) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
     let Some(c) = catalog::collection_by_handle(&mut v.tx, &shop, &handle).await? else {
-        return v.not_found().await;
+        return v.missing(&shop, &format!("/collections/{handle}")).await;
     };
     let query = format!(
         "collection={}&offset={}&sort={}",
@@ -396,7 +532,15 @@ async fn collection_page(
     );
     let page =
         catalog::product_cards(&mut v.tx, &shop, &storage, &ListParams::from_query(&query)).await?;
-    v.set("page_title", json!(c.title));
+    v.set("page_title", json!(or(&c.seo_title, &c.title)));
+    let description = or(
+        &c.seo_description,
+        &soat_core::markdown::to_text(&c.description, 160),
+    )
+    .to_owned();
+    if !description.is_empty() {
+        v.set("meta_description", json!(description));
+    }
     v.set("canonical", json!(format!("/collections/{}", c.handle)));
     list(&mut v, &page, &format!("/collections/{}", c.handle));
     v.set("collection", serde_json::to_value(&c).unwrap_or_default());
@@ -414,7 +558,7 @@ async fn content_page(
 ) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
     let Some(p) = soat_cms::published_page(&mut v.tx, &shop, &handle).await? else {
-        return v.not_found().await;
+        return v.missing(&shop, &format!("/pages/{handle}")).await;
     };
     let b = blocks(&mut v.tx, &shop, &storage, &p.blocks).await?;
     v.set(

@@ -64,6 +64,10 @@ pub struct ShopProduct {
     pub title: String,
     /// Markdown.
     pub description: String,
+    /// Empty: use the title.
+    pub seo_title: String,
+    /// Empty: use the start of the description.
+    pub seo_description: String,
     pub price_minor: i64,
     pub currency: String,
     pub tags: Vec<String>,
@@ -81,10 +85,24 @@ pub struct ShopCollection {
     pub title: String,
     /// Markdown.
     pub description: String,
+    /// Empty: use the title.
+    pub seo_title: String,
+    /// Empty: use the start of the description.
+    pub seo_description: String,
 }
 
-/// `(id, handle, title, description, price_minor, currency, tags)`.
-type ProductRow = (String, String, String, String, i64, String, Vec<String>);
+#[derive(sqlx::FromRow)]
+struct ProductRow {
+    id: String,
+    handle: String,
+    title: String,
+    description: String,
+    seo_title: String,
+    seo_description: String,
+    price_minor: i64,
+    currency: String,
+    tags: Vec<String>,
+}
 
 const CARD_COLUMNS: &str = "id, handle, title, price_minor, currency, tags";
 
@@ -155,16 +173,17 @@ pub async fn product_by_handle(
     handle: &str,
 ) -> Result<Option<ShopProduct>> {
     let row: Option<ProductRow> = sqlx::query_as(
-        "SELECT id, handle, title, description, price_minor, currency, tags FROM products \
-         WHERE tenant_id = $1 AND handle = $2 AND status = 'active'",
+        "SELECT id, handle, title, description, seo_title, seo_description, price_minor, \
+         currency, tags FROM products WHERE tenant_id = $1 AND handle = $2 AND status = 'active'",
     )
     .bind(scope.tenant_id())
     .bind(handle)
     .fetch_optional(&mut *conn)
     .await?;
-    let Some((id, handle, title, description, price_minor, currency, tags)) = row else {
+    let Some(row) = row else {
         return Ok(None);
     };
+    let id = row.id;
     let media: Vec<(String,)> = sqlx::query_as(
         "SELECT file_id FROM product_media WHERE tenant_id = $1 AND product_id = $2 \
          ORDER BY position",
@@ -197,12 +216,14 @@ pub async fn product_by_handle(
         .collect();
     Ok(Some(ShopProduct {
         id,
-        handle,
-        title,
-        description,
-        price_minor,
-        currency,
-        tags,
+        handle: row.handle,
+        title: row.title,
+        description: row.description,
+        seo_title: row.seo_title,
+        seo_description: row.seo_description,
+        price_minor: row.price_minor,
+        currency: row.currency,
+        tags: row.tags,
         images,
         options,
         variants,
@@ -215,19 +236,56 @@ pub async fn collection_by_handle(
     scope: &impl Scope,
     handle: &str,
 ) -> Result<Option<ShopCollection>> {
-    let row: Option<(String, String, String, String)> = sqlx::query_as(
-        "SELECT id, handle, title, description FROM collections WHERE tenant_id = $1 AND handle = $2",
+    type Row = (String, String, String, String, String, String);
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT id, handle, title, description, seo_title, seo_description FROM collections \
+         WHERE tenant_id = $1 AND handle = $2",
     )
     .bind(scope.tenant_id())
     .bind(handle)
     .fetch_optional(&mut *conn)
     .await?;
-    Ok(row.map(|(id, handle, title, description)| ShopCollection {
-        id,
-        handle,
-        title,
-        description,
-    }))
+    Ok(row.map(
+        |(id, handle, title, description, seo_title, seo_description)| ShopCollection {
+            id,
+            handle,
+            title,
+            description,
+            seo_title,
+            seo_description,
+        },
+    ))
+}
+
+/// Most addresses one sitemap lists.
+pub const SITEMAP_LIMIT: i64 = 50_000;
+
+/// The handles of the shop's active products and of its collections, for a
+/// sitemap; together at most [`SITEMAP_LIMIT`].
+pub async fn sitemap_handles(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+) -> Result<(Vec<String>, Vec<String>)> {
+    let products: Vec<(String,)> = sqlx::query_as(
+        "SELECT handle FROM products WHERE tenant_id = $1 AND status = 'active' \
+         ORDER BY handle LIMIT $2",
+    )
+    .bind(scope.tenant_id())
+    .bind(SITEMAP_LIMIT)
+    .fetch_all(&mut *conn)
+    .await?;
+    let left = SITEMAP_LIMIT - products.len() as i64;
+    let collections: Vec<(String,)> = sqlx::query_as(
+        "SELECT handle FROM collections WHERE tenant_id = $1 ORDER BY handle LIMIT $2",
+    )
+    .bind(scope.tenant_id())
+    .bind(left)
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok((
+        products.into_iter().map(|(h,)| h).collect(),
+        collections.into_iter().map(|(h,)| h).collect(),
+    ))
 }
 
 /// The shop's active products (no sign-in). `?q=` searches titles,

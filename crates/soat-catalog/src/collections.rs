@@ -28,6 +28,10 @@ pub struct Collection {
     pub handle: String,
     pub title: String,
     pub description: String,
+    /// The title search engines show; empty uses the title.
+    pub seo_title: String,
+    /// The description search engines show; empty uses the description.
+    pub seo_description: String,
 }
 
 /// Body of a create request.
@@ -39,6 +43,10 @@ pub struct NewCollection {
     pub handle: Option<String>,
     #[validate(length(max = 20000))]
     pub description: Option<String>,
+    #[validate(length(max = 200))]
+    pub seo_title: Option<String>,
+    #[validate(length(max = 500))]
+    pub seo_description: Option<String>,
 }
 
 /// Body of an update request; absent fields stay as they are.
@@ -49,6 +57,10 @@ pub struct CollectionChange {
     pub handle: Option<String>,
     #[validate(length(max = 20000))]
     pub description: Option<String>,
+    #[validate(length(max = 200))]
+    pub seo_title: Option<String>,
+    #[validate(length(max = 500))]
+    pub seo_description: Option<String>,
 }
 
 /// Body of a reorder request: every product of the collection, in the new
@@ -74,7 +86,7 @@ pub(crate) fn mount(app: App) -> App {
     ))
 }
 
-const COLUMNS: &str = "id, handle, title, description";
+const COLUMNS: &str = "id, handle, title, description, seo_title, seo_description";
 
 fn check_handle(handle: &str) -> Result<()> {
     if is_handle(handle) {
@@ -129,14 +141,16 @@ async fn create_collection(
     check_handle(&handle)?;
     let mut tx = tenant.begin_for(&db, &COLLECTIONS_WRITE).await?;
     let collection = sqlx::query_as::<_, Collection>(&format!(
-        "INSERT INTO collections (id, tenant_id, handle, title, description) \
-         VALUES ($1, $2, $3, $4, $5) RETURNING {COLUMNS}"
+        "INSERT INTO collections (id, tenant_id, handle, title, description, seo_title, \
+         seo_description) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {COLUMNS}"
     ))
     .bind(CollectionId::new().as_str())
     .bind(tenant.id())
     .bind(&handle)
     .bind(&body.title)
     .bind(body.description.unwrap_or_default())
+    .bind(body.seo_title.as_deref().unwrap_or_default().trim())
+    .bind(body.seo_description.as_deref().unwrap_or_default().trim())
     .fetch_one(&mut *tx)
     .await?;
     tenant
@@ -160,7 +174,8 @@ async fn get_collection(
 }
 
 /// Change a collection (`collections:write`). Publishes
-/// `collection.updated`.
+/// `collection.updated`, and `collection.handle_changed` (`id`, `from`,
+/// `to`) when the handle changes, so old links can redirect.
 #[patch("/api/collections/{id}", tag = "collections")]
 async fn update_collection(
     db: Db,
@@ -175,7 +190,8 @@ async fn update_collection(
     let current = load(&mut tx, &tenant, &id).await?;
     let collection = sqlx::query_as::<_, Collection>(&format!(
         "UPDATE collections SET handle = COALESCE($3, handle), title = COALESCE($4, title), \
-         description = COALESCE($5, description) \
+         description = COALESCE($5, description), seo_title = COALESCE($6, seo_title), \
+         seo_description = COALESCE($7, seo_description) \
          WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
     ))
     .bind(tenant.id())
@@ -183,11 +199,24 @@ async fn update_collection(
     .bind(&change.handle)
     .bind(&change.title)
     .bind(&change.description)
+    .bind(change.seo_title.as_deref().map(str::trim))
+    .bind(change.seo_description.as_deref().map(str::trim))
     .fetch_one(&mut *tx)
     .await?;
     tenant
         .publish(&mut tx, "collection.updated", &collection)
         .await?;
+    if current.handle != collection.handle {
+        tenant
+            .publish(
+                &mut tx,
+                "collection.handle_changed",
+                &serde_json::json!({
+                    "id": collection.id, "from": current.handle, "to": collection.handle
+                }),
+            )
+            .await?;
+    }
     tx.commit().await?;
     Ok(Json(collection))
 }
@@ -226,7 +255,7 @@ async fn list_collection_products(
     let collection = load(&mut tx, &tenant, &id).await?;
     let page = TenantListing::new(
         "(SELECT p.id, p.sku, p.title, p.handle, p.description, p.status, p.price_minor, \
-          p.currency, p.tags, p.tax_class, p.weight_grams, \
+          p.currency, p.tags, p.tax_class, p.weight_grams, p.seo_title, p.seo_description, \
           cp.collection_id, cp.position \
           FROM products p JOIN collection_products cp ON cp.product_id = p.id) AS items",
         crate::COLUMNS,
