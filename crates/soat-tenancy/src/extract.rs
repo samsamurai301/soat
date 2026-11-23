@@ -1,14 +1,14 @@
 //! Resolves the shop a request acts for, and who acts.
 //!
-//! For now the shop comes from the `x-soat-tenant` header and the person from
-//! a bearer token. Later the shop will also come from the request's domain or
-//! an API key (A7, A11), behind the same `Tenant` extractor, so handlers do
-//! not change.
+//! The shop comes, in order, from an API key (`soat_sk_<shop>_…`, which
+//! names it), the `x-soat-tenant` header, or the request's `Host` when it is
+//! one of the shop's domains. The person comes from a bearer token. Handlers
+//! only see [`Tenant`].
 
 use std::collections::HashSet;
 
 use soat_auth::Staff;
-use soat_core::{Permission, TenantId};
+use soat_core::{Domain, Permission, TenantId};
 use soat_module::Permissions;
 use zapline::auth::password::hash_token;
 use zapline::auth::BearerToken;
@@ -78,9 +78,12 @@ impl FromRequestParts for Tenant {
             let token_hash = hash_token(bearer.as_ref().map(|b| b.token()).unwrap_or_default());
             (shop, Actor::ApiKey { token_hash })
         } else {
-            let id = header.ok_or_else(|| {
-                Error::bad_request("missing x-soat-tenant header").with_code("missing_tenant")
-            })?;
+            let id = match header {
+                Some(id) => id,
+                None => from_host(req).await?.ok_or_else(|| {
+                    Error::bad_request("missing x-soat-tenant header").with_code("missing_tenant")
+                })?,
+            };
             (id, Actor::Staff(Staff::from_request_parts(req).await?))
         };
         let permissions = State::<Permissions>::from_request_parts(req)
@@ -94,6 +97,20 @@ impl FromRequestParts for Tenant {
             actor_id: std::sync::OnceLock::new(),
         })
     }
+}
+
+/// The shop whose domain the request's `Host` is, if any.
+async fn from_host(req: &mut Request) -> Result<Option<TenantId>> {
+    let Some(domain) = req
+        .headers()
+        .get(zapline::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| Domain::from_host(h).ok())
+    else {
+        return Ok(None);
+    };
+    let db = Db::from_request_parts(req).await?;
+    crate::domains::tenant_for_domain(&db, &domain).await
 }
 
 /// The built-in role with every permission.

@@ -19,6 +19,7 @@
 //! ```
 
 pub mod api_keys;
+pub mod domains;
 pub mod event_log;
 mod extract;
 mod list;
@@ -65,6 +66,7 @@ impl Module for Tenancy {
             STAFF_READ,
             STAFF_MANAGE,
             api_keys::API_KEYS_MANAGE,
+            domains::DOMAINS_MANAGE,
             event_log::EVENTS_READ,
         ]
     }
@@ -73,6 +75,7 @@ impl Module for Tenancy {
         app.plugin(routes::mount)
             .plugin(staff::mount)
             .plugin(api_keys::mount)
+            .plugin(domains::mount)
             .plugin(event_log::mount)
     }
 }

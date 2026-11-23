@@ -34,7 +34,7 @@ through events, never by importing each other.
 - [x] A8 Domain events: transactional outbox, at-least-once subscribers with backoff, `GET /api/events`, `product.created` **alpha**
 - [x] A9 Webhooks: endpoints per shop, HMAC-signed POSTs, retries with backoff, delivery log, public-HTTPS-only targets **alpha**
 - [x] A10 Audit log: every event records its actor (user or API key) and time; staff, roles, keys, webhooks and shops publish events **alpha**
-- [ ] A11 Shop resolution by domain and API key **alpha**
+- [x] A11 Shop resolution: API key, then `x-soat-tenant`, then the `Host` among the shop's domains (`/api/domains`); domain ownership checks (DNS TXT) later **alpha**
 - [ ] A12 CI check for forbidden crate dependencies
 
 ## B. Catalog
