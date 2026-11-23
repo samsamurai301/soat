@@ -1,0 +1,13 @@
+<div class="head">
+  <h1>{{ file.name }}</h1>
+  <a href="{{ base }}/theme">Theme</a>
+</div>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/theme/files/{{ file.name }}" class="form">
+  <textarea name="source" rows="28" class="code" spellcheck="false">{{ file.source }}</textarea>
+  <button class="button">Save</button>
+</form>
+{{#if file.customized }}
+<form method="post" action="{{ base }}/theme/files/{{ file.name }}/reset" class="danger" hx-confirm="Go back to the default file?"><button class="link">Back to the default</button></form>
+{{/if}}

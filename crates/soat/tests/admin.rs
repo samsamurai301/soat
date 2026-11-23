@@ -572,3 +572,173 @@ async fn staff_look_after_customers() {
     assert_eq!(res.header("location"), Some("/admin/acme/customers"));
     get(&client, &admin, &page).await.assert_status(404);
 }
+
+#[tokio::test]
+async fn staff_edit_content_and_theme() {
+    let (client, _) = common::with_tenants(&["acme"]).await;
+    let admin = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+    let shop_page = |path: &'static str| {
+        let client = &client;
+        async move {
+            let res = client
+                .get(path)
+                .header("x-soat-tenant", "acme")
+                .send()
+                .await;
+            res.text()
+        }
+    };
+
+    // A page: bad JSON is kept and explained; a good one is published.
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/pages",
+        json!({ "title": "About us", "blocks": "[{ nope" }),
+    )
+    .await;
+    res.assert_status(422);
+    let html = res.text();
+    assert!(
+        html.contains("not valid JSON") && html.contains("[{ nope"),
+        "{html}"
+    );
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/pages",
+        json!({ "title": "About us", "published": "1",
+                "blocks": "[{\"type\":\"text\",\"body\":\"We make *shoes*.\"}]" }),
+    )
+    .await;
+    res.assert_status(303);
+    let page = res
+        .header("location")
+        .unwrap()
+        .trim_end_matches("?saved=1")
+        .to_owned();
+    assert!(shop_page("/pages/about-us")
+        .await
+        .contains("<em>shoes</em>"));
+    let html = get(&client, &admin, "/admin/acme/pages").await.text();
+    assert!(html.contains("/pages/about-us") && html.contains("Published"));
+    // An unknown block type is the API's 422, shown on the form.
+    let res = post(
+        &client,
+        &admin,
+        &page,
+        json!({ "title": "About us", "blocks": "[{\"type\":\"script\"}]" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("class=\"error\""));
+
+    // A menu written as lines.
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/menus",
+        json!({ "title": "Main", "handle": "main",
+                "items": "Shop | /collections/all\r\n- Shoes | /collections/shoes\r\nAbout | /pages/about-us" }),
+    )
+    .await;
+    res.assert_status(303);
+    let menu = res.header("location").unwrap().to_owned();
+    let html = get(&client, &admin, &menu).await.text();
+    assert!(
+        html.contains(
+            "Shop | /collections/all\n- Shoes | /collections/shoes\nAbout | /pages/about-us"
+        ),
+        "{html}"
+    );
+    let html = shop_page("/").await;
+    assert!(html.contains("href=\"/collections/shoes\"") && html.contains(">About</a>"));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/menus",
+        json!({ "title": "Footer", "items": "-- Deep | /x" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("nested too deep"));
+
+    // Redirects.
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/redirects",
+        json!({ "from_path": "/old-about", "to_url": "/pages/about-us" }),
+    )
+    .await;
+    assert_eq!(res.header("location"), Some("/admin/acme/redirects"));
+    let res = client
+        .get("/old-about")
+        .header("x-soat-tenant", "acme")
+        .send()
+        .await;
+    res.assert_status(301);
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/redirects",
+        json!({ "from_path": "nope", "to_url": "/x" }),
+    )
+    .await;
+    res.assert_status(422);
+
+    // Theme settings and a file.
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/theme",
+        json!({ "accent_color": "#ff0000", "announcement": "Free shipping over €50" }),
+    )
+    .await;
+    assert_eq!(res.header("location"), Some("/admin/acme/theme?saved=1"));
+    assert!(shop_page("/").await.contains("Free shipping over €50"));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/theme",
+        json!({ "accent_color": "red" }),
+    )
+    .await;
+    res.assert_status(422);
+    let html = get(&client, &admin, "/admin/acme/theme/files/footer")
+        .await
+        .text();
+    assert!(html.contains("site-footer"));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/theme/files/footer",
+        json!({ "source": "<footer>{{#if x }}</footer>" }),
+    )
+    .await;
+    res.assert_status(422);
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/theme/files/footer",
+        json!({ "source": "<footer>Made by hand in {{ shop.name }}</footer>" }),
+    )
+    .await;
+    res.assert_status(303);
+    assert!(shop_page("/").await.contains("Made by hand in acme"));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/theme/files/footer/reset",
+        json!({}),
+    )
+    .await;
+    assert_eq!(res.header("location"), Some("/admin/acme/theme"));
+    assert!(!shop_page("/").await.contains("Made by hand"));
+
+    let res = post(&client, &admin, &format!("{page}/delete"), json!({})).await;
+    assert_eq!(res.header("location"), Some("/admin/acme/pages"));
+    post(&client, &admin, "/admin/acme/nothing/x/delete", json!({}))
+        .await
+        .assert_status(404);
+}

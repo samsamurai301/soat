@@ -52,3 +52,6 @@ td form { display: inline; }
 @media (max-width: 720px) { .columns { grid-template-columns: 1fr; } }
 .filters .short { flex: 0 1 140px; }
 .form label.check { flex-direction: row; align-items: center; gap: .5rem; font-weight: normal; }
+.code { font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+pre.code { background: var(--bg); padding: .75rem; border-radius: 6px; overflow: auto; }
+code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); padding: 0 .25rem; border-radius: 4px; }

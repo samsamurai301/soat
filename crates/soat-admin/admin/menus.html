@@ -1,0 +1,13 @@
+<div class="head">
+  <h1>Content</h1>
+  <a class="button" href="{{ base }}/menus/new">Add menu</a>
+</div>
+{{> content_tabs }}
+{{#if menus }}
+<table class="table">
+  <thead><tr><th>Title</th><th>Handle</th><th class="num">Links</th></tr></thead>
+  <tbody>{{#each menus }}<tr><td><a href="{{ base }}/menus/{{ id }}">{{ title }}</a></td><td>{{ handle }}</td><td class="num">{{ count }}</td></tr>{{/each}}</tbody>
+</table>
+{{else}}<p class="muted">No menus yet.</p>
+{{/if}}
+<p class="muted">The theme shows the menus with the handles <code>main</code> (header) and <code>footer</code>.</p>

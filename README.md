@@ -128,8 +128,8 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Checkout, order confirmation and customer account pages
 - [x] Storefront in more languages: translated products, collections, pages, menus and theme texts under `/de/...`, hreflang, a language switcher
 - [x] Markets: prices in more currencies by country, with exchange rates and rounding
-- [x] Admin in the browser (htmx): sign in, pick a shop, manage products, orders and customers
-- [ ] Admin screens for content and settings
+- [x] Admin in the browser (htmx): sign in, pick a shop, manage products, orders, customers, content and the theme
+- [ ] Admin screens for settings, and a dashboard
 - [ ] WASM plugin host, built into Zapline
 
 ## License

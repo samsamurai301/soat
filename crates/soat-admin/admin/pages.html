@@ -1,0 +1,13 @@
+<div class="head">
+  <h1>Content</h1>
+  <a class="button" href="{{ base }}/pages/new">Add page</a>
+</div>
+{{> content_tabs }}
+{{#if pages }}
+<table class="table">
+  <thead><tr><th>Title</th><th>Address</th><th>Status</th><th>Changed</th></tr></thead>
+  <tbody>{{#each pages }}<tr><td><a href="{{ base }}/pages/{{ id }}">{{ title }}</a></td><td>/pages/{{ handle }}</td><td><span class="badge{{#if published }} on{{/if}}">{{#if published }}Published{{else}}Draft{{/if}}</span></td><td>{{ updated }}</td></tr>{{/each}}</tbody>
+</table>
+<p class="muted">The page with the address <code>home</code> is the shop's home page.</p>
+{{else}}<p class="muted">No pages yet. A page with the address <code>home</code> becomes the home page.</p>
+{{/if}}

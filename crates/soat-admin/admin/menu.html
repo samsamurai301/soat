@@ -1,0 +1,18 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/menus">All menus</a>
+</div>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/menus{{#if menu.id }}/{{ menu.id }}{{/if}}" class="form">
+  <div class="row">
+    <label>Title <input name="title" value="{{ menu.title }}" required maxlength="100"></label>
+    <label>Handle <input name="handle" value="{{ menu.handle }}" placeholder="main, footer, …"></label>
+  </div>
+  <label>Links <span class="muted">(one per line: Title | /address; start a line with - to nest it under the one above, -- for a third level)</span>
+    <textarea name="items" rows="12" class="code" spellcheck="false">{{ menu.items }}</textarea></label>
+  <button class="button">{{#if creating }}Create menu{{else}}Save{{/if}}</button>
+</form>
+{{#if menu.id }}
+<form method="post" action="{{ base }}/menus/{{ menu.id }}/delete" class="danger" hx-confirm="Delete this menu?"><button class="link">Delete menu</button></form>
+{{/if}}

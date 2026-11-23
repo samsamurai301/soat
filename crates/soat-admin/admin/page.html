@@ -1,0 +1,23 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/pages">All pages</a>
+</div>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/pages{{#if page.id }}/{{ page.id }}{{/if}}" class="form">
+  <label>Title <input name="title" value="{{ page.title }}" required maxlength="200"></label>
+  <div class="row">
+    <label>Address <input name="handle" value="{{ page.handle }}" placeholder="from the title"></label>
+    <label class="check"><input type="checkbox" name="published" value="1"{{#if page.published }} checked{{/if}}> Published</label>
+  </div>
+  <label>Blocks <span class="muted">(JSON)</span> <textarea name="blocks" rows="16" class="code" spellcheck="false">{{ page.blocks }}</textarea></label>
+  <details><summary>Block types</summary><pre class="code">{{ block_help }}</pre></details>
+  <fieldset><legend>Search engines</legend>
+    <label>SEO title <input name="seo_title" value="{{ page.seo_title }}" maxlength="200"></label>
+    <label>SEO description <textarea name="seo_description" rows="2" maxlength="400">{{ page.seo_description }}</textarea></label>
+  </fieldset>
+  <button class="button">{{#if creating }}Create page{{else}}Save{{/if}}</button>
+</form>
+{{#if page.id }}
+<form method="post" action="{{ base }}/pages/{{ page.id }}/delete" class="danger" hx-confirm="Delete this page?"><button class="link">Delete page</button></form>
+{{/if}}

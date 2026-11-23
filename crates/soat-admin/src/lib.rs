@@ -30,10 +30,12 @@ macro_rules! page_or {
 }
 
 mod api;
+mod content;
 mod customers;
 mod orders;
 mod pages;
 mod products;
+mod theme;
 mod util;
 
 use std::sync::Arc;
@@ -114,6 +116,28 @@ impl Module for Admin {
             customers::edit_page,
             customers::update,
             customers::delete,
+        ))
+        .mount((
+            content::pages,
+            content::new_page,
+            content::create_page,
+            content::edit_page,
+            content::update_page,
+            content::delete,
+            content::menus,
+            content::new_menu,
+            content::edit_menu,
+            content::create_menu,
+            content::update_menu,
+            content::redirects,
+            content::add_redirect,
+        ))
+        .mount((
+            theme::show,
+            theme::save_settings,
+            theme::edit_file,
+            theme::save_file,
+            theme::reset_file,
         ))
     }
 }

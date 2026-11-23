@@ -102,7 +102,7 @@ layer.
 - [x] E2 Products screens **alpha**: list with live search and status filter, create, edit (price, status, tags, description, SEO), delete; variants and media screens follow
 - [x] E3 Orders screens **alpha**: list with views (unpaid, to ship, open, canceled) and email search; an order's items, totals, addresses, payments (mark paid, capture), shipments (ship with tracking, delivered, cancel), refunds and cancel
 - [x] E4 Customers screens **alpha**: list with search and tag filter, add, edit (details, marketing consent, tags, staff note), delete; a customer's orders and addresses
-- [ ] E5 Content and theme screens **alpha**
+- [x] E5 Content and theme screens **alpha**: pages (blocks as JSON for now), menus written as indented lines, redirects, theme settings, theme files to edit or reset; a visual block editor follows
 - [ ] E6 Settings screens **alpha**
 - [ ] E7 Dashboard **alpha**
 - [ ] E8 Command palette and shortcuts
