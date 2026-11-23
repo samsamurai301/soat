@@ -240,3 +240,61 @@ async fn creating_a_product_publishes_an_event() {
     assert_eq!(events["total"], 1);
     assert_eq!(events["items"][0]["payload"]["id"], created.id.as_str());
 }
+
+#[tokio::test]
+async fn products_can_be_changed_and_deleted_only_in_their_shop() {
+    let (client, token) = common::with_tenants(&["acme", "globex"]).await;
+    let created: Product = client
+        .post("/api/products")
+        .header("x-soat-tenant", "acme")
+        .bearer(&token)
+        .json(&shoe())
+        .send()
+        .await
+        .assert_status(201)
+        .json();
+    let path = format!("/api/products/{}", created.id);
+    for shop in ["globex", "acme"] {
+        let status = if shop == "acme" { 200 } else { 404 };
+        client
+            .patch(&path)
+            .header("x-soat-tenant", shop)
+            .bearer(&token)
+            .json(&serde_json::json!({ "title": "Boot" }))
+            .send()
+            .await
+            .assert_status(status);
+    }
+    let got: Product = client
+        .get(&path)
+        .header("x-soat-tenant", "acme")
+        .bearer(&token)
+        .send()
+        .await
+        .assert_status(200)
+        .json();
+    assert_eq!(got.title, "Boot");
+    assert_eq!(got.price_minor, created.price_minor);
+
+    client
+        .delete(&path)
+        .header("x-soat-tenant", "globex")
+        .bearer(&token)
+        .send()
+        .await
+        .assert_status(404);
+    client
+        .delete(&path)
+        .header("x-soat-tenant", "acme")
+        .bearer(&token)
+        .send()
+        .await
+        .assert_status(204);
+    client
+        .get(&path)
+        .header("x-soat-tenant", "acme")
+        .bearer(&token)
+        .send()
+        .await
+        .assert_status(404);
+}

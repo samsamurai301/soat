@@ -45,8 +45,14 @@ impl Module for Catalog {
     }
 
     fn mount(&self, app: App) -> App {
-        app.mount((list_products, create_product, get_product))
-            .plugin(variants::mount)
+        app.mount((
+            list_products,
+            create_product,
+            get_product,
+            update_product,
+            delete_product,
+        ))
+        .plugin(variants::mount)
     }
 }
 
@@ -75,6 +81,18 @@ pub struct NewProduct {
     pub price_minor: i64,
     #[validate(length(equal = 3))]
     pub currency: String,
+}
+
+/// Body of an update request; absent fields stay as they are. The currency
+/// is fixed once a product exists.
+#[model]
+pub struct ProductChange {
+    #[validate(length(min = 1, max = 64))]
+    pub sku: Option<String>,
+    #[validate(length(min = 1, max = 200))]
+    pub title: Option<String>,
+    #[validate(range(min = 0))]
+    pub price_minor: Option<i64>,
 }
 
 const COLUMNS: &str = "id, sku, title, price_minor, currency";
@@ -140,4 +158,58 @@ async fn get_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<J
     .await?;
     tx.commit().await?;
     product.map(Json).ok_or_else(Error::not_found)
+}
+
+/// Change a product's SKU, title or price (`products:write`). Publishes
+/// `product.updated`.
+#[patch("/api/products/{id}", tag = "catalog")]
+async fn update_product(
+    db: Db,
+    tenant: Tenant,
+    Path(id): Path<String>,
+    Valid(Json(change)): Valid<Json<ProductChange>>,
+) -> Result<Json<Product>> {
+    let id = ProductId::parse(&id).map_err(|_| Error::not_found())?;
+    let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
+    let product = sqlx::query_as::<_, Product>(&format!(
+        "UPDATE products SET sku = COALESCE($3, sku), title = COALESCE($4, title), \
+         price_minor = COALESCE($5, price_minor) \
+         WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
+    ))
+    .bind(tenant.id())
+    .bind(id.as_str())
+    .bind(&change.sku)
+    .bind(&change.title)
+    .bind(change.price_minor)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(Error::not_found)?;
+    tenant.publish(&mut tx, "product.updated", &product).await?;
+    tx.commit().await?;
+    Ok(Json(product))
+}
+
+/// Delete a product with its options and variants (`products:write`).
+/// Publishes `product.deleted`.
+#[delete("/api/products/{id}", tag = "catalog", status = 204)]
+async fn delete_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<StatusCode> {
+    let id = ProductId::parse(&id).map_err(|_| Error::not_found())?;
+    let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
+    let deleted = sqlx::query("DELETE FROM products WHERE tenant_id = $1 AND id = $2")
+        .bind(tenant.id())
+        .bind(id.as_str())
+        .execute(&mut *tx)
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(Error::not_found());
+    }
+    tenant
+        .publish(
+            &mut tx,
+            "product.deleted",
+            &serde_json::json!({ "id": id.as_str() }),
+        )
+        .await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
