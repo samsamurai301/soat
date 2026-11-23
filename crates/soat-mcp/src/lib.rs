@@ -14,11 +14,13 @@
 //! off (`assistant:manage`).
 
 mod approval;
+pub mod keys;
 mod tools;
 
 use std::sync::{Arc, OnceLock};
 
 use serde_json::{json, Map, Value};
+use soat_core::secret::Sealer;
 use soat_core::{id_kind, Permission};
 use soat_module::Module;
 use soat_tenancy::Tenant;
@@ -48,7 +50,7 @@ pub const ASSISTANT_APPROVE: Permission = Permission::new(
 /// Choose whether an assistant's changes wait for approval.
 pub const ASSISTANT_MANAGE: Permission = Permission::new(
     "assistant:manage",
-    "Choose whether an assistant's changes wait for approval",
+    "Choose whether an assistant's changes wait for approval, and set the shop's Anthropic key",
 );
 
 /// The MCP protocol versions this server speaks, newest first.
@@ -116,6 +118,7 @@ impl Api {
 pub struct Mcp {
     api: Api,
     tools: Arc<Vec<Tool>>,
+    sealer: Option<Sealer>,
 }
 
 impl Mcp {
@@ -138,7 +141,16 @@ impl Mcp {
         Self {
             api: Api { client, pool },
             tools: Arc::new(tools::from_spec(&spec)),
+            sealer: None,
         }
+    }
+
+    /// Lets shops store their own Anthropic key, sealed with `sealer`.
+    /// Without one, storing a key is a 409 `no_secret_key`.
+    #[must_use]
+    pub fn with_sealer(mut self, sealer: Option<Sealer>) -> Self {
+        self.sealer = sealer;
+        self
     }
 
     /// The tools on offer.
@@ -151,6 +163,7 @@ impl Mcp {
 pub(crate) struct Shared {
     api: Api,
     tools: Arc<Vec<Tool>>,
+    sealer: Option<Sealer>,
 }
 
 impl Module for Mcp {
@@ -175,9 +188,10 @@ impl Module for Mcp {
             .state(Shared {
                 api: self.api.clone(),
                 tools: self.tools.clone(),
+                sealer: self.sealer.clone(),
             })
             .mount((rpc, rpc_get));
-        approval::mount(app)
+        keys::mount(approval::mount(app))
     }
 }
 

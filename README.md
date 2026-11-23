@@ -29,6 +29,8 @@ set `STORAGE_SECRET` so file links survive restarts.
 Email goes out over SMTP (`SMTP_URL`, e.g. `smtps://user:pass@smtp.example.com`)
 from `MAIL_FROM`, shown with each shop's name. Without `SMTP_URL` a debug build
 keeps mail in a dev inbox at `/_dev/mail`; a release build refuses to start.
+Set `SOAT_SECRET_KEY` (32 characters or more, the same on every restart) so
+shops can store their own Anthropic key; it is kept encrypted with it.
 
 ```sh
 TOKEN=$(curl -s -X POST localhost:8080/api/setup -H 'content-type: application/json' \
@@ -135,6 +137,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] CSV import and export of products (a row per variant, with stock) and customers, as spreadsheets save it (`;` or `,`, decimal commas)
 - [x] Moving from Shopify: its product and customer exports import as they are (descriptions turned into Markdown; images not yet)
 - [x] Launch checklist: what a shop still needs before real orders, including the EU's legal pages (started as drafts to write)
+- [x] Each shop's own Anthropic key, encrypted at rest (`SOAT_SECRET_KEY`)
 - [ ] WASM plugin host, built into Zapline
 
 ## License

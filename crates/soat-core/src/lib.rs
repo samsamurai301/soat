@@ -20,6 +20,7 @@ pub mod options;
 pub mod order;
 pub mod payment;
 mod permission;
+pub mod secret;
 pub mod shopify;
 pub mod tags;
 pub mod tax;

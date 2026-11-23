@@ -1812,9 +1812,11 @@ dependencies = [
 name = "soat-core"
 version = "0.0.1"
 dependencies = [
+ "aes-gcm",
  "getrandom",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

@@ -10,6 +10,7 @@ use soat_cart::Carts;
 use soat_catalog::Catalog;
 use soat_checkout::Checkout;
 use soat_cms::Cms;
+use soat_core::secret::Sealer;
 use soat_customers::Customers;
 use soat_events::Events;
 use soat_fields::Fields;
@@ -47,6 +48,9 @@ pub struct Settings {
     pub mailer: Mailer,
     /// The address shops' email is sent from, with each shop's name.
     pub mail_from: String,
+    /// Seals secrets shops store, such as their own Anthropic key; none
+    /// when `SOAT_SECRET_KEY` is unset, and then shops cannot store them.
+    pub sealer: Option<Sealer>,
     /// Stripe, when configured.
     #[cfg(feature = "stripe")]
     pub stripe: Option<soat_stripe::StripeConfig>,
@@ -67,12 +71,14 @@ impl Settings {
     /// `SOAT_PAYPAL_CLIENT_ID`, `SOAT_PAYPAL_CLIENT_SECRET` and
     /// `SOAT_PAYPAL_WEBHOOK_ID` for PayPal;
     /// `SMTP_URL` and `MAIL_FROM` for email (without `SMTP_URL`, a debug
-    /// build keeps mail in the dev inbox at `/_dev/mail`).
+    /// build keeps mail in the dev inbox at `/_dev/mail`);
+    /// `SOAT_SECRET_KEY` (32 characters or more, kept across restarts) to
+    /// seal the keys shops store.
     ///
     /// # Errors
     ///
-    /// When the storage settings are inconsistent, or `SMTP_URL` is invalid
-    /// or missing in a release build.
+    /// When the storage settings are inconsistent, `SMTP_URL` is invalid
+    /// or missing in a release build, or `SOAT_SECRET_KEY` is too short.
     pub fn from_env() -> zapline::Result<Self> {
         Ok(Self {
             auth: Auth::from_env(),
@@ -82,6 +88,13 @@ impl Settings {
                 .ok()
                 .filter(|v| !v.trim().is_empty())
                 .unwrap_or_else(|| "no-reply@localhost".to_owned()),
+            sealer: match std::env::var("SOAT_SECRET_KEY") {
+                Ok(s) if !s.is_empty() => Some(
+                    Sealer::from_secret(&s)
+                        .map_err(|e| zapline::Error::internal(format!("SOAT_SECRET_KEY: {e}")))?,
+                ),
+                _ => None,
+            },
             #[cfg(feature = "stripe")]
             stripe: soat_stripe::StripeConfig::from_env(),
             #[cfg(feature = "mollie")]
@@ -98,6 +111,7 @@ impl Settings {
             storage: Storage::memory(),
             mailer: Mailer::outbox(),
             mail_from: "shops@soat.test".to_owned(),
+            sealer: Sealer::from_secret("the test server's secret, long enough to use").ok(),
             #[cfg(feature = "stripe")]
             stripe: None,
             #[cfg(feature = "mollie")]
@@ -121,7 +135,9 @@ pub fn modules(settings: Settings) -> Modules {
 /// approvals included.
 fn with_mcp(settings: Settings, events: Events) -> Modules {
     let api = settings.clone();
-    let mcp = Mcp::new(move |app| shop_modules(api, Events::manual()).install(app));
+    let sealer = settings.sealer.clone();
+    let mcp =
+        Mcp::new(move |app| shop_modules(api, Events::manual()).install(app)).with_sealer(sealer);
     shop_modules(settings, events).with(mcp)
 }
 

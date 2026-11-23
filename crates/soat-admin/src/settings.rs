@@ -242,6 +242,11 @@ async fn page(mut cx: Ctx, area: &str, error: Option<String>, status: StatusCode
             cx.set("permissions", perms);
         }
         _ => {
+            // Staff who may not manage the assistant do not see its key.
+            let (status, key) = cx.call(Method::GET, "/api/assistant/key", None).await;
+            if status == 200 {
+                cx.set("key", key);
+            }
             let settings = page_or!(cx.get("/api/assistant/settings").await);
             let pending = page_or!(
                 cx.get("/api/assistant/proposals?status=pending&limit=50")
@@ -570,6 +575,14 @@ async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Field
             "/api/assistant/settings".into(),
             Some(json!({ "approval": if f.get("review").is_empty() { "off" } else { "writes" } })),
         ),
+        ("assistant", "key", None) => Call::Plain(
+            Method::PUT,
+            "/api/assistant/key".into(),
+            Some(json!({ "api_key": f.get("api_key"), "model": f.get("model") })),
+        ),
+        ("assistant", "remove-key", None) => {
+            Call::Plain(Method::DELETE, "/api/assistant/key".into(), None)
+        }
         ("assistant", verdict @ ("approve" | "reject"), Some(p)) => Call::Plain(
             Method::POST,
             format!("/api/assistant/proposals/{p}/{verdict}"),
