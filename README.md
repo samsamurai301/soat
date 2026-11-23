@@ -60,6 +60,11 @@ Claude reads freely. A change waits for a person until someone with
 it then runs with the approver's permissions) or rejects it. Owners can let
 changes run at once with `PUT /api/assistant/settings {"approval":"off"}`.
 
+Staff can also chat with Claude in the admin (Assistant): SOAT calls Claude
+with the shop's own Anthropic key (Settings, Assistant), offers it the same
+tools, and shows proposed changes in the chat to approve. The chat API is
+`/api/assistant/chats`; `SOAT_ANTHROPIC_API_BASE` points it at a proxy.
+
 ## Layout
 
 | Path | What |
@@ -91,7 +96,7 @@ changes run at once with `PUT /api/assistant/settings {"approval":"off"}`.
 | `crates/soat-cms` | Content: pages built from blocks (drafts and published), menus and URL redirects, read by the storefront |
 | `crates/soat-theme` | Themes: a default theme, per-shop template and style edits, settings; safe templates with Markdown |
 | `crates/soat-storefront` | The storefront: server-rendered pages from the theme, cart in a cookie, checkout, order and account pages, htmx |
-| `crates/soat-mcp` | MCP server at `/mcp`: Claude runs a shop through a tool per API operation, scoped by API key, changes held for approval |
+| `crates/soat-mcp` | MCP server at `/mcp`: Claude runs a shop through a tool per API operation, scoped by API key, changes held for approval; the admin's chat with Claude on the shop's own key |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
 | `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
 
@@ -138,6 +143,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Moving from Shopify: its product and customer exports import as they are (descriptions turned into Markdown; images not yet)
 - [x] Launch checklist: what a shop still needs before real orders, including the EU's legal pages (started as drafts to write)
 - [x] Each shop's own Anthropic key, encrypted at rest (`SOAT_SECRET_KEY`)
+- [x] Assistant in the admin: chat with Claude about the shop, approve its changes in the chat
 - [ ] WASM plugin host, built into Zapline
 
 ## License

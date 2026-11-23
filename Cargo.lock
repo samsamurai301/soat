@@ -1923,12 +1923,19 @@ dependencies = [
 name = "soat-mcp"
 version = "0.0.1"
 dependencies = [
+ "bytes",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
  "serde",
  "serde_json",
  "soat-core",
  "soat-module",
  "soat-tenancy",
  "sqlx",
+ "tokio",
  "zapline",
 ]
 

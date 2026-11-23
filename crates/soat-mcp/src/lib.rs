@@ -14,6 +14,8 @@
 //! off (`assistant:manage`).
 
 mod approval;
+mod chat;
+mod claude;
 pub mod keys;
 mod tools;
 
@@ -56,7 +58,8 @@ pub const ASSISTANT_MANAGE: Permission = Permission::new(
 /// The MCP protocol versions this server speaks, newest first.
 const PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
-const INSTRUCTIONS: &str = "Tools for running one SOAT shop: catalog, prices, stock, customers, \
+pub(crate) const INSTRUCTIONS: &str =
+    "Tools for running one SOAT shop: catalog, prices, stock, customers, \
 orders, payments, shipping, tax, discounts, invoices and email. Each tool is one API operation; \
 money is in minor units (cents) with a currency. Read before you change. A change may wait for \
 a person's approval: the tool then answers with a proposal id, and proposal_status tells you \
@@ -119,7 +122,11 @@ pub struct Mcp {
     api: Api,
     tools: Arc<Vec<Tool>>,
     sealer: Option<Sealer>,
+    anthropic: Arc<str>,
 }
+
+/// Where Anthropic's API is, unless a test points elsewhere.
+pub const ANTHROPIC_API: &str = "https://api.anthropic.com";
 
 impl Mcp {
     /// Serves the API that `build` mounts on a fresh app (the same modules
@@ -142,6 +149,7 @@ impl Mcp {
             api: Api { client, pool },
             tools: Arc::new(tools::from_spec(&spec)),
             sealer: None,
+            anthropic: ANTHROPIC_API.into(),
         }
     }
 
@@ -150,6 +158,13 @@ impl Mcp {
     #[must_use]
     pub fn with_sealer(mut self, sealer: Option<Sealer>) -> Self {
         self.sealer = sealer;
+        self
+    }
+
+    /// Calls Anthropic's API at `base` instead of [`ANTHROPIC_API`].
+    #[must_use]
+    pub fn with_anthropic_api(mut self, base: &str) -> Self {
+        self.anthropic = base.into();
         self
     }
 
@@ -164,6 +179,7 @@ pub(crate) struct Shared {
     api: Api,
     tools: Arc<Vec<Tool>>,
     sealer: Option<Sealer>,
+    anthropic: Arc<str>,
 }
 
 impl Module for Mcp {
@@ -189,9 +205,10 @@ impl Module for Mcp {
                 api: self.api.clone(),
                 tools: self.tools.clone(),
                 sealer: self.sealer.clone(),
+                anthropic: self.anthropic.clone(),
             })
             .mount((rpc, rpc_get));
-        keys::mount(approval::mount(app))
+        chat::mount(keys::mount(approval::mount(app)))
     }
 }
 
@@ -317,36 +334,76 @@ async fn call(
     headers: &HeaderMap,
     conn: ConnInfo,
 ) -> Result<Value> {
+    let reason = args
+        .get("reason")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let o = outcome(db, tenant, api, tool, args, reason, headers, conn).await?;
+    Ok(answer(o.text, o.is_error))
+}
+
+/// What a tool call came to.
+pub(crate) struct Outcome {
+    pub text: String,
+    pub is_error: bool,
+    /// The proposal it became, when it waits for approval.
+    pub proposal: Option<String>,
+}
+
+/// Runs `tool` with `args` as the caller, or records it as a proposal
+/// (with `reason`) when it changes something and the shop wants changes
+/// approved.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn outcome(
+    db: &Db,
+    tenant: &Tenant,
+    api: &Api,
+    tool: &Tool,
+    args: &Map<String, Value>,
+    reason: &str,
+    headers: &HeaderMap,
+    conn: ConnInfo,
+) -> Result<Outcome> {
     let (method, path, body) = match tool.request(args) {
         Ok(r) => r,
-        Err(e) => return Ok(answer(e, true)),
+        Err(text) => {
+            return Ok(Outcome {
+                text,
+                is_error: true,
+                proposal: None,
+            })
+        }
     };
     if tool.writes() && approval::required(db, tenant).await? {
-        let reason = args
-            .get("reason")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
         let p = approval::propose(db, tenant, tool, &method, &path, body.as_ref(), reason).await?;
-        return Ok(answer(
-            format!(
+        return Ok(Outcome {
+            text: format!(
                 "This change waits for a person's approval. Proposal {} ({} {}). \
                  Call proposal_status with its id to see what became of it.",
                 p.id, p.method, p.path
             ),
-            false,
-        ));
+            is_error: false,
+            proposal: Some(p.id),
+        });
     }
     let (status, out) = api
         .send(db, method, &path, body.as_ref(), headers, conn)
         .await;
-    if (200..300).contains(&status) {
-        let text = if out.is_null() || out == "" {
-            format!("Done ({status}).")
-        } else {
-            pretty(&out)
-        };
-        Ok(answer(text, false))
+    Ok(if (200..300).contains(&status) {
+        Outcome {
+            text: if out.is_null() || out == "" {
+                format!("Done ({status}).")
+            } else {
+                pretty(&out)
+            },
+            is_error: false,
+            proposal: None,
+        }
     } else {
-        Ok(answer(format!("HTTP {status}: {}", pretty(&out)), true))
-    }
+        Outcome {
+            text: format!("HTTP {status}: {}", pretty(&out)),
+            is_error: true,
+            proposal: None,
+        }
+    })
 }

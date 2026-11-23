@@ -30,6 +30,7 @@ macro_rules! page_or {
 }
 
 mod api;
+mod assistant;
 mod content;
 mod customers;
 mod dashboard;
@@ -115,6 +116,13 @@ impl Module for Admin {
             onboarding::welcome_step,
             launch::show,
             launch::start_page,
+        ))
+        .mount((
+            assistant::index,
+            assistant::show,
+            assistant::start,
+            assistant::send,
+            assistant::act,
         ))
         .mount((
             transfer::show,

@@ -51,6 +51,9 @@ pub struct Settings {
     /// Seals secrets shops store, such as their own Anthropic key; none
     /// when `SOAT_SECRET_KEY` is unset, and then shops cannot store them.
     pub sealer: Option<Sealer>,
+    /// Where Anthropic's API is: `soat_mcp::ANTHROPIC_API` unless a test
+    /// or a proxy says otherwise.
+    pub anthropic_api: String,
     /// Stripe, when configured.
     #[cfg(feature = "stripe")]
     pub stripe: Option<soat_stripe::StripeConfig>,
@@ -73,7 +76,8 @@ impl Settings {
     /// `SMTP_URL` and `MAIL_FROM` for email (without `SMTP_URL`, a debug
     /// build keeps mail in the dev inbox at `/_dev/mail`);
     /// `SOAT_SECRET_KEY` (32 characters or more, kept across restarts) to
-    /// seal the keys shops store.
+    /// seal the keys shops store; `SOAT_ANTHROPIC_API_BASE` to reach
+    /// Anthropic's API elsewhere (a proxy).
     ///
     /// # Errors
     ///
@@ -95,6 +99,10 @@ impl Settings {
                 ),
                 _ => None,
             },
+            anthropic_api: std::env::var("SOAT_ANTHROPIC_API_BASE")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| soat_mcp::ANTHROPIC_API.to_owned()),
             #[cfg(feature = "stripe")]
             stripe: soat_stripe::StripeConfig::from_env(),
             #[cfg(feature = "mollie")]
@@ -112,6 +120,8 @@ impl Settings {
             mailer: Mailer::outbox(),
             mail_from: "shops@soat.test".to_owned(),
             sealer: Sealer::from_secret("the test server's secret, long enough to use").ok(),
+            // Nothing listens here: tests that call Claude set a fake.
+            anthropic_api: "http://127.0.0.1:9".to_owned(),
             #[cfg(feature = "stripe")]
             stripe: None,
             #[cfg(feature = "mollie")]
@@ -136,8 +146,10 @@ pub fn modules(settings: Settings) -> Modules {
 fn with_mcp(settings: Settings, events: Events) -> Modules {
     let api = settings.clone();
     let sealer = settings.sealer.clone();
-    let mcp =
-        Mcp::new(move |app| shop_modules(api, Events::manual()).install(app)).with_sealer(sealer);
+    let anthropic = settings.anthropic_api.clone();
+    let mcp = Mcp::new(move |app| shop_modules(api, Events::manual()).install(app))
+        .with_sealer(sealer)
+        .with_anthropic_api(&anthropic);
     shop_modules(settings, events).with(mcp)
 }
 

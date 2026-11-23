@@ -136,7 +136,7 @@ layer.
 - [x] H4 Bring your own Anthropic key per shop
 - [ ] H5 Shop builder from a description
 - [ ] H6 Content helpers: copy, translations, alt text, SEO
-- [ ] H7 Admin assistant panel
+- [x] H7 Admin assistant panel: chats with Claude in the admin on the shop's own key, every API tool found by tool search and run as the staff member, changes approved in the chat
 
 ## I. Growth (after alpha)
 
