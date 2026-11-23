@@ -14,6 +14,7 @@ use soat_fields::Fields;
 use soat_files::Files;
 use soat_inventory::Inventory;
 use soat_module::Modules;
+use soat_notify::Notify;
 use soat_orders::Orders;
 use soat_payments::Payments;
 use soat_pricing::Pricing;
@@ -23,6 +24,7 @@ use soat_tax::Taxes;
 use soat_tenancy::Tenancy;
 use soat_webhooks::Webhooks;
 use zapline::db::{Database, DbCheck};
+use zapline::mail::Mailer;
 use zapline::middleware::SecurityHeaders;
 use zapline::openapi::OpenApi;
 use zapline::prelude::*;
@@ -33,6 +35,10 @@ pub struct Settings {
     pub auth: Auth,
     /// Where uploaded files go.
     pub storage: Storage,
+    /// Sends transactional email.
+    pub mailer: Mailer,
+    /// The address shops' email is sent from, with each shop's name.
+    pub mail_from: String,
     /// Stripe, when configured.
     #[cfg(feature = "stripe")]
     pub stripe: Option<soat_stripe::StripeConfig>,
@@ -42,25 +48,35 @@ impl Settings {
     /// From the environment: `SOAT_SETUP_TOKEN`, and `STORAGE_DIR`
     /// (default `./storage`), or `S3_BUCKET` and friends, and
     /// `STORAGE_SECRET` to keep file links valid across restarts;
-    /// `SOAT_STRIPE_SECRET_KEY` and `SOAT_STRIPE_WEBHOOK_SECRET` for Stripe.
+    /// `SOAT_STRIPE_SECRET_KEY` and `SOAT_STRIPE_WEBHOOK_SECRET` for Stripe;
+    /// `SMTP_URL` and `MAIL_FROM` for email (without `SMTP_URL`, a debug
+    /// build keeps mail in the dev inbox at `/_dev/mail`).
     ///
     /// # Errors
     ///
-    /// When the storage settings are inconsistent.
+    /// When the storage settings are inconsistent, or `SMTP_URL` is invalid
+    /// or missing in a release build.
     pub fn from_env() -> zapline::Result<Self> {
         Ok(Self {
             auth: Auth::from_env(),
             storage: Storage::from_env()?,
+            mailer: Mailer::from_env()?,
+            mail_from: std::env::var("MAIL_FROM")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "no-reply@localhost".to_owned()),
             #[cfg(feature = "stripe")]
             stripe: soat_stripe::StripeConfig::from_env(),
         })
     }
 
-    /// For tests: a fixed setup token and files kept in memory.
+    /// For tests: a fixed setup token, files and email kept in memory.
     pub fn for_tests(setup_token: &str) -> Self {
         Self {
             auth: Auth::with_setup_token(setup_token),
             storage: Storage::memory(),
+            mailer: Mailer::outbox(),
+            mail_from: "shops@soat.test".to_owned(),
             #[cfg(feature = "stripe")]
             stripe: None,
         }
@@ -92,7 +108,8 @@ pub fn modules(settings: Settings) -> Modules {
         .with(payments)
         .with(Promotions)
         .with(Orders)
-        .with(Checkout);
+        .with(Checkout)
+        .with(Notify::new(settings.mailer, settings.mail_from));
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {
         Some(config) => modules.with(soat_stripe::StripeWebhooks::new(config)),

@@ -26,8 +26,9 @@ soat-payments.workspace = true
 soat-promotions.workspace = true
 soat-orders.workspace = true
 soat-checkout.workspace = true
+soat-notify.workspace = true
 soat-stripe = { workspace = true, optional = true }
-zapline = { workspace = true, features = ["storage"] }
+zapline = { workspace = true, features = ["storage", "mail"] }
 
 [features]
 default = ["stripe"]

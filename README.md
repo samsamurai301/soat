@@ -26,6 +26,9 @@ On first start the server prints a setup token (or set `SOAT_SETUP_TOKEN`).
 Use it once to create the platform admin, then act with the returned token.
 Uploads go to `./storage` (`STORAGE_DIR`), or to S3 when `S3_BUCKET` is set;
 set `STORAGE_SECRET` so file links survive restarts.
+Email goes out over SMTP (`SMTP_URL`, e.g. `smtps://user:pass@smtp.example.com`)
+from `MAIL_FROM`, shown with each shop's name. Without `SMTP_URL` a debug build
+keeps mail in a dev inbox at `/_dev/mail`; a release build refuses to start.
 
 ```sh
 TOKEN=$(curl -s -X POST localhost:8080/api/setup -H 'content-type: application/json' \
@@ -62,6 +65,7 @@ curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-te
 | `crates/soat-promotions` | Discount codes: percentage, fixed amount, free shipping, with dates, minimums and limits |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
+| `crates/soat-notify` | Transactional email: order, shipping, cancel and refund emails, staff notices, editable templates, sent log |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
 | `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
 
@@ -89,6 +93,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Checkout
 - [x] Fulfillment, returns and refunds
 - [x] Discount codes
+- [x] Transactional email with editable templates
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline
 

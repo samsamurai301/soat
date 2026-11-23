@@ -17,6 +17,7 @@ pub mod payment;
 mod permission;
 pub mod tags;
 pub mod tax;
+pub mod template;
 mod tenant;
 
 pub use domain::{Domain, DomainError};

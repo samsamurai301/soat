@@ -75,7 +75,7 @@ layer.
 - [x] C13 Discount codes: percentage, fixed amount or free shipping, with currency, minimum subtotal, start and end dates, a usage limit and once per customer; entered at checkout, shared over the lines before tax, recorded on the order and redeemed with it **alpha**
 - [ ] C14 Automatic discounts, buy X get Y
 - [ ] C15 Gift cards and store credit
-- [ ] C16 Transactional email **alpha**
+- [x] C16 Transactional email: order confirmation, staff new-order notice, payment received (off by default), shipping confirmation with tracking, cancellation and refund emails from order events, sent once per event; shops reword any template (a small safe template language), preview it, turn templates off, set sender name and reply-to; a sent log with resend; SMTP through Zapline's mailer **alpha**
 - [ ] C17 Invoices and credit notes **alpha**
 - [ ] C18 PayPal and Mollie
 - [ ] C19 Carrier adapters and labels

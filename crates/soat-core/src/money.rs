@@ -43,6 +43,36 @@ impl Currency {
         // Only ASCII uppercase letters get in through `parse`.
         std::str::from_utf8(&self.0).expect("currency codes are ASCII")
     }
+
+    /// Digits after the decimal point (ISO 4217): 0 for `JPY`, 3 for
+    /// `KWD`, 2 for most.
+    pub fn decimals(&self) -> u32 {
+        match self.as_str() {
+            "BIF" | "CLP" | "DJF" | "GNF" | "ISK" | "JPY" | "KMF" | "KRW" | "PYG" | "RWF"
+            | "UGX" | "UYI" | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
+            "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
+            _ => 2,
+        }
+    }
+
+    /// `amount_minor` written out with a decimal point and the code, e.g.
+    /// `1999` EUR as `19.99 EUR`, `-500` JPY as `-500 JPY`.
+    pub fn format(&self, amount_minor: i64) -> String {
+        let decimals = self.decimals();
+        let sign = if amount_minor < 0 { "-" } else { "" };
+        let abs = amount_minor.unsigned_abs();
+        if decimals == 0 {
+            return format!("{sign}{abs} {}", self.as_str());
+        }
+        let unit = 10u64.pow(decimals);
+        format!(
+            "{sign}{}.{:0width$} {}",
+            abs / unit,
+            abs % unit,
+            self.as_str(),
+            width = decimals as usize
+        )
+    }
 }
 
 impl TryFrom<String> for Currency {
@@ -171,5 +201,16 @@ mod tests {
             Money::new(i64::MAX, eur()).checked_mul(2),
             Err(MoneyError::Overflow)
         );
+    }
+
+    #[test]
+    fn formats_amounts() {
+        let eur = Currency::parse("EUR").unwrap();
+        assert_eq!(eur.format(1999), "19.99 EUR");
+        assert_eq!(eur.format(5), "0.05 EUR");
+        assert_eq!(eur.format(-250), "-2.50 EUR");
+        assert_eq!(eur.format(i64::MIN), "-92233720368547758.08 EUR");
+        assert_eq!(Currency::parse("JPY").unwrap().format(500), "500 JPY");
+        assert_eq!(Currency::parse("KWD").unwrap().format(1234), "1.234 KWD");
     }
 }
