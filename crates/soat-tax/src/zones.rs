@@ -1,6 +1,6 @@
 //! Tax zones: countries sharing rates per tax class.
 
-use soat_core::address::is_country_code;
+use soat_core::address::country_list;
 use soat_core::id_kind;
 use soat_core::tax::{is_tax_class, MAX_RATE_BPS};
 use soat_tenancy::{Scope, Tenant, TenantTx};
@@ -12,8 +12,6 @@ use crate::{TAX_MANAGE, TAX_READ};
 
 id_kind!(TaxZoneId, TaxZoneKind, "txz");
 
-/// Most countries in one zone.
-pub const MAX_COUNTRIES: usize = 300;
 /// Most rates in one zone.
 pub const MAX_RATES: usize = 50;
 
@@ -72,26 +70,7 @@ pub(crate) fn mount(app: App) -> App {
 }
 
 pub(crate) fn countries(raw: &[String]) -> Result<Vec<String>> {
-    if raw.len() > MAX_COUNTRIES {
-        return Err(
-            Error::unprocessable(format!("at most {MAX_COUNTRIES} countries"))
-                .with_code("invalid_countries"),
-        );
-    }
-    let mut out = Vec::with_capacity(raw.len());
-    for c in raw {
-        let c = c.trim().to_ascii_uppercase();
-        if !is_country_code(&c) {
-            return Err(Error::unprocessable(format!(
-                "{c} is not an ISO 3166-1 alpha-2 country code"
-            ))
-            .with_code("invalid_country"));
-        }
-        out.push(c);
-    }
-    out.sort();
-    out.dedup();
-    Ok(out)
+    country_list(raw).map_err(|e| Error::unprocessable(e).with_code("invalid_country"))
 }
 
 pub(crate) fn rates(raw: &[TaxRate]) -> Result<Vec<TaxRate>> {

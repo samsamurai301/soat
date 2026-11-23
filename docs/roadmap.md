@@ -65,7 +65,7 @@ layer.
 - [x] C3 Cart: token-held storefront carts, live prices and stock per line, customers claim carts, staff list them **alpha**
 - [x] C4 Tax zones and rates, EU VAT: zones per country set, rates per tax class in basis points, products carry a class, EU preset, origin or destination (OSS) VAT, reverse charge, `POST /api/tax/quote` **alpha**
 - [ ] C5 Tax provider trait
-- [ ] C6 Shipping zones and rates **alpha**
+- [x] C6 Shipping zones and rates: zones of countries, rates per currency with inclusive value and weight bounds, delivery estimates, product weights, `POST /api/shipping/options` **alpha**
 - [ ] C7 Payments core and manual payment **alpha**
 - [ ] C8 Stripe **alpha**
 - [ ] C9 Checkout **alpha**

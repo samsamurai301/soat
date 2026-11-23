@@ -21,6 +21,7 @@ soat-pricing.workspace = true
 soat-customers.workspace = true
 soat-cart.workspace = true
 soat-tax.workspace = true
+soat-shipping.workspace = true
 zapline = { workspace = true, features = ["storage"] }
 
 [dev-dependencies]

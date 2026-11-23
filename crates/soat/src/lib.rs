@@ -14,6 +14,7 @@ use soat_files::Files;
 use soat_inventory::Inventory;
 use soat_module::Modules;
 use soat_pricing::Pricing;
+use soat_shipping::Shipping;
 use soat_tax::Taxes;
 use soat_tenancy::Tenancy;
 use soat_webhooks::Webhooks;
@@ -69,6 +70,7 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Customers)
         .with(Carts)
         .with(Taxes)
+        .with(Shipping)
 }
 
 /// Builds the application on top of `db` (Postgres). `main` passes the real
