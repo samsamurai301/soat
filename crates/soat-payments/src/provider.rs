@@ -49,6 +49,9 @@ pub struct ProviderUpdate {
     /// details), shown by the storefront.
     pub next_action: Option<Value>,
     pub failure_reason: Option<String>,
+    /// A secret only the buyer gets (e.g. a Stripe client secret): returned
+    /// once by [`start`](crate::start), never stored or published.
+    pub buyer_secret: Option<String>,
 }
 
 impl ProviderUpdate {
@@ -58,6 +61,7 @@ impl ProviderUpdate {
             provider_ref: None,
             next_action: None,
             failure_reason: None,
+            buyer_secret: None,
         }
     }
 }

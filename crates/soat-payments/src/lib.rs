@@ -23,7 +23,7 @@ use zapline::embed::Dir;
 use zapline::prelude::*;
 
 pub use methods::{PaymentMethod, PaymentMethodId};
-pub use payments::{apply, for_reference, start, Payment, PaymentId, Refund, StartPayment};
+pub use payments::{apply, for_reference, get, start, Payment, PaymentId, Refund, StartPayment};
 pub use provider::{
     Manual, PaymentProvider, ProviderFuture, ProviderPayment, ProviderUpdate, Providers,
     StartRequest,

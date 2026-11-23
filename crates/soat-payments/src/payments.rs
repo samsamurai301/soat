@@ -40,6 +40,10 @@ pub struct Payment {
     /// RFC 3339, UTC.
     pub created_at: String,
     pub updated_at: String,
+    /// Only in the answer that started the payment, for the buyer's
+    /// browser (e.g. Stripe's client secret); never stored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -75,6 +79,7 @@ impl From<PaymentRow> for Payment {
             failure_reason: r.failure_reason,
             created_at: r.created_at,
             updated_at: r.updated_at,
+            client_secret: None,
         }
     }
 }
@@ -261,7 +266,26 @@ pub async fn start(
             ..ProviderUpdate::status(PaymentStatus::Failed)
         },
     };
-    apply(db, scope, id.as_str(), &update).await
+    let mut payment = apply(db, scope, id.as_str(), &update).await?;
+    if matches!(payment.status.as_str(), "pending" | "requires_action") {
+        payment.client_secret = update.buyer_secret;
+    }
+    Ok(payment)
+}
+
+/// One payment of the shop. Run it in the shop's transaction.
+pub async fn get(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Result<Option<Payment>> {
+    let Ok(id) = PaymentId::parse(id) else {
+        return Ok(None);
+    };
+    let row = sqlx::query_as::<_, PaymentRow>(&format!(
+        "SELECT {COLUMNS} FROM payments WHERE tenant_id = $1 AND id = $2"
+    ))
+    .bind(scope.tenant_id())
+    .bind(id.as_str())
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok(row.map(Into::into))
 }
 
 /// Records what a provider says about a payment (from its webhook or a

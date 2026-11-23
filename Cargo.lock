@@ -1484,6 +1484,7 @@ dependencies = [
  "soat-payments",
  "soat-pricing",
  "soat-shipping",
+ "soat-stripe",
  "soat-tax",
  "soat-tenancy",
  "soat-testing",
@@ -1664,6 +1665,28 @@ dependencies = [
  "soat-module",
  "soat-tenancy",
  "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-stripe"
+version = "0.0.1"
+dependencies = [
+ "bytes",
+ "hmac",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "serde",
+ "serde_json",
+ "sha2",
+ "soat-core",
+ "soat-module",
+ "soat-payments",
+ "soat-tenancy",
+ "tokio",
  "zapline",
 ]
 

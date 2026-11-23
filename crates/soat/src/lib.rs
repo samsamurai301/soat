@@ -30,12 +30,16 @@ pub struct Settings {
     pub auth: Auth,
     /// Where uploaded files go.
     pub storage: Storage,
+    /// Stripe, when configured.
+    #[cfg(feature = "stripe")]
+    pub stripe: Option<soat_stripe::StripeConfig>,
 }
 
 impl Settings {
     /// From the environment: `SOAT_SETUP_TOKEN`, and `STORAGE_DIR`
     /// (default `./storage`), or `S3_BUCKET` and friends, and
-    /// `STORAGE_SECRET` to keep file links valid across restarts.
+    /// `STORAGE_SECRET` to keep file links valid across restarts;
+    /// `SOAT_STRIPE_SECRET_KEY` and `SOAT_STRIPE_WEBHOOK_SECRET` for Stripe.
     ///
     /// # Errors
     ///
@@ -44,6 +48,8 @@ impl Settings {
         Ok(Self {
             auth: Auth::from_env(),
             storage: Storage::from_env()?,
+            #[cfg(feature = "stripe")]
+            stripe: soat_stripe::StripeConfig::from_env(),
         })
     }
 
@@ -52,13 +58,21 @@ impl Settings {
         Self {
             auth: Auth::with_setup_token(setup_token),
             storage: Storage::memory(),
+            #[cfg(feature = "stripe")]
+            stripe: None,
         }
     }
 }
 
 /// Every module in this build. A module must come after the ones it needs.
 pub fn modules(settings: Settings) -> Modules {
-    Modules::new()
+    #[allow(unused_mut)]
+    let mut payments = Payments::new();
+    #[cfg(feature = "stripe")]
+    if let Some(config) = &settings.stripe {
+        payments = payments.with(soat_stripe::Stripe::new(config.clone()));
+    }
+    let modules = Modules::new()
         .with(settings.auth)
         .with(Events::new())
         .with(Tenancy)
@@ -72,7 +86,13 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Carts)
         .with(Taxes)
         .with(Shipping)
-        .with(Payments::new())
+        .with(payments);
+    #[cfg(feature = "stripe")]
+    let modules = match settings.stripe {
+        Some(config) => modules.with(soat_stripe::StripeWebhooks::new(config)),
+        None => modules,
+    };
+    modules
 }
 
 /// Builds the application on top of `db` (Postgres). `main` passes the real

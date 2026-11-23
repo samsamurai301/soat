@@ -23,7 +23,13 @@ soat-cart.workspace = true
 soat-tax.workspace = true
 soat-shipping.workspace = true
 soat-payments.workspace = true
+soat-stripe = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
+
+[features]
+default = ["stripe"]
+# Stripe payments (PaymentIntents, Connect, webhooks).
+stripe = ["dep:soat-stripe"]
 
 [dev-dependencies]
 soat-testing.workspace = true
