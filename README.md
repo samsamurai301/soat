@@ -48,7 +48,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Money as integer minor units, validated currency codes
 - [ ] Platform-admin auth before tenant creation is exposed anywhere public
 - [x] Postgres as the only database
-- [ ] Row-level security per tenant
+- [x] Row-level security per tenant
 - [ ] Variants, categories, media, inventory
 - [ ] Cart, checkout, Stripe, orders
 - [ ] Admin UI and storefront in Rust (Leptos or Zapline views)

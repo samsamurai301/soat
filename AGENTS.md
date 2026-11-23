@@ -16,10 +16,14 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   `main` branch). If SOAT needs something generic (plugin host, tenancy helpers,
   a new extractor), add it to Zapline, not here. Zapline's guide:
   https://samsamurai301.github.io/zapline/ (`llms.txt` there for agents).
-- **Every tenant-owned table has `tenant_id`, and every query on it filters by
-  it.** Take the `Tenant` extractor and call `tenant.verify(&db)` first. A
-  foreign id must be a 404, never someone else's row. Add an isolation test for
-  every new tenant-owned resource.
+- **Every tenant-owned table has `tenant_id`, row-level security, and every
+  query on it filters by it.** Take the `Tenant` extractor, open
+  `tenant.begin(&db)` and run every query on that transaction (`&mut *tx`),
+  then commit. Lists use `TenantListing`. The table's migration enables and
+  forces RLS with the `tenant_isolation` policy (copy it from the catalog's
+  `..._products_row_level_security.up.sql`); a test fails for any `tenant_id`
+  table without it. A foreign id must be a 404, never someone else's row. Add
+  an API isolation test for every new tenant-owned resource.
 - **Postgres only.** Integer columns that map to `i64` are `BIGINT`. Ids are
   `TEXT` typed ids (`soat_core::Id`), generated in Rust.
 - **Money is integer minor units plus a `Currency`.** Never `f32`/`f64` for prices.

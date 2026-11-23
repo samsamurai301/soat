@@ -80,5 +80,11 @@ pub async fn fresh_database_url() -> String {
 
 /// The SOAT app on a fresh schema.
 pub async fn client() -> TestClient {
-    soat::app(Database::postgres(fresh_database_url().await)).test()
+    client_and_url().await.0
+}
+
+/// The SOAT app on a fresh schema, and that schema's URL for direct SQL.
+pub async fn client_and_url() -> (TestClient, String) {
+    let url = fresh_database_url().await;
+    (soat::app(Database::postgres(url.clone())).test(), url)
 }

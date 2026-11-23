@@ -3,11 +3,26 @@
 //! This module owns the `tenants` table and `POST /api/tenants`, and exports
 //! the [`Tenant`] extractor that every tenant-owned module uses to scope its
 //! queries.
+//!
+//! Isolation is enforced twice: queries filter on `tenant_id`, and Postgres
+//! row-level security on every tenant-owned table only shows rows whose
+//! `tenant_id` matches the `soat.tenant` setting, which [`Tenant::begin`]
+//! sets per transaction. A tenant-owned table's migration enables it:
+//!
+//! ```sql
+//! ALTER TABLE things ENABLE ROW LEVEL SECURITY;
+//! ALTER TABLE things FORCE ROW LEVEL SECURITY;
+//! CREATE POLICY tenant_isolation ON things
+//!     USING (tenant_id = current_setting('soat.tenant', true))
+//!     WITH CHECK (tenant_id = current_setting('soat.tenant', true));
+//! ```
 
 mod extract;
+mod list;
 pub mod routes;
 
-pub use extract::{Tenant, HEADER};
+pub use extract::{Tenant, TenantTx, HEADER, SETTING};
+pub use list::TenantListing;
 
 use soat_module::Module;
 use zapline::embed::Dir;
