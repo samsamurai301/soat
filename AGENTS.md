@@ -4,7 +4,9 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
 
 ## Commands
 
-- `cargo test`: all tests. Run it before every commit.
+- `cargo test`: all tests. Run it before every commit. Needs Postgres:
+  `SOAT_TEST_DATABASE_URL` (default `postgres://postgres@localhost/postgres`);
+  end-to-end tests use `tests/common::client()`, one fresh schema per test.
 - `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: CI runs both.
 - `cargo run -p soat`: the server on :8080, OpenAPI docs at `/docs`.
 
@@ -18,6 +20,8 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   it.** Take the `Tenant` extractor and call `tenant.verify(&db)` first. A
   foreign id must be a 404, never someone else's row. Add an isolation test for
   every new tenant-owned resource.
+- **Postgres only.** Integer columns that map to `i64` are `BIGINT`. Ids are
+  `TEXT` typed ids (`soat_core::Id`), generated in Rust.
 - **Money is integer minor units plus a `Currency`.** Never `f32`/`f64` for prices.
 - **Domain logic goes in `soat-core`** when it needs no HTTP or SQL, with unit tests.
 - **One domain = one crate.** Each domain is `crates/soat-<name>`, exports one

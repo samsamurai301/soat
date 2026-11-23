@@ -26,7 +26,7 @@ through events, never by importing each other.
 
 - [x] A1 Module system: `soat-module`, tenancy and catalog as module crates, per-module migrations **alpha**
 - [x] A2 Typed IDs (`prod_…`) and list endpoints (Zapline `Listing`: offset pages, sort, search, filters) **alpha**; cursor pagination later as a Zapline addition
-- [ ] A3 Postgres as main database, SQLite for fast tests, CI runs both **alpha**
+- [x] A3 Postgres as the only database; tests get a fresh schema each, CI runs a Postgres service **alpha**
 - [ ] A4 Row-level security per shop, isolation tests on Postgres **alpha**
 - [ ] A5 Platform admin bootstrap, staff accounts, login; tenant creation behind it **alpha**
 - [ ] A6 Roles and permissions **alpha**

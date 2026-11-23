@@ -7,12 +7,18 @@ Status: foundation phase, aiming at a public alpha in the week of 4 January 2027
 
 ## Run it
 
+SOAT needs Postgres 16 or newer; it is the only service it needs.
+
 ```sh
-cargo run -p soat          # http://localhost:8080, API docs at /docs
-cargo test                 # every test uses its own in-memory database
+docker run -d --name soat-pg -p 5432:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16
+createdb -h localhost -U postgres soat
+DATABASE_URL=postgres://postgres@localhost/soat cargo run -p soat   # :8080, API docs at /docs
+cargo test     # each test gets its own schema in a `soat_test` database
 ```
 
-With no `DATABASE_URL` the server uses a local SQLite file (`soat.db`).
+Tests connect with `SOAT_TEST_DATABASE_URL` (default
+`postgres://postgres@localhost/postgres`) and create a non-superuser
+`soat_test` role, so row-level security applies in tests as in production.
 
 ## Try the API
 
@@ -41,7 +47,8 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Tenants, and products scoped to a tenant (`x-soat-tenant` header)
 - [x] Money as integer minor units, validated currency codes
 - [ ] Platform-admin auth before tenant creation is exposed anywhere public
-- [ ] Postgres with row-level security per tenant
+- [x] Postgres as the only database
+- [ ] Row-level security per tenant
 - [ ] Variants, categories, media, inventory
 - [ ] Cart, checkout, Stripe, orders
 - [ ] Admin UI and storefront in Rust (Leptos or Zapline views)

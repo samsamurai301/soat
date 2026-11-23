@@ -1,10 +1,10 @@
-//! End-to-end tests against a fresh in-memory database per test.
+//! End-to-end tests against a fresh Postgres schema per test.
+
+mod common;
 
 use serde_json::json;
-use zapline::db::Database;
 use zapline::test::TestClient;
 
-use soat::app;
 use soat_catalog::Product;
 
 /// One page of a list response.
@@ -25,7 +25,7 @@ async fn list(client: &TestClient, tenant: &str, query: &str) -> Page {
 }
 
 async fn with_tenants(ids: &[&str]) -> TestClient {
-    let client = app(Database::sqlite_memory()).test();
+    let client = common::client().await;
     for id in ids {
         client
             .post("/api/tenants")

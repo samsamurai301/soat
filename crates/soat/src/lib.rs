@@ -17,8 +17,8 @@ pub fn modules() -> Modules {
     Modules::new().with(Tenancy).with(Catalog)
 }
 
-/// Builds the application on top of `db`. `main` passes the real database;
-/// tests pass `Database::sqlite_memory()`.
+/// Builds the application on top of `db` (Postgres). `main` passes the real
+/// database; tests pass a fresh schema each (see `tests/common`).
 ///
 /// # Panics
 ///

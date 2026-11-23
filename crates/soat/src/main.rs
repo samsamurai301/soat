@@ -8,7 +8,7 @@ fn main() -> std::io::Result<()> {
         let port = std::env::var("PORT").unwrap_or_else(|_| "8080".into());
         format!("0.0.0.0:{port}")
     });
-    // DATABASE_URL, or a local SQLite file so a fresh checkout runs with no setup.
-    let db = Database::from_env_or("sqlite://soat.db?mode=rwc");
+    // DATABASE_URL, or a local Postgres database named `soat`.
+    let db = Database::from_env_or("postgres://localhost/soat");
     soat::app(db).run(addr)
 }
