@@ -1476,8 +1476,10 @@ name = "soat-tenancy"
 version = "0.0.1"
 dependencies = [
  "serde",
+ "serde_json",
  "soat-auth",
  "soat-core",
+ "soat-events",
  "soat-module",
  "sqlx",
  "zapline",

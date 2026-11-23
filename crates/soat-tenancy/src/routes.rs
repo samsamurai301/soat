@@ -44,6 +44,14 @@ async fn create_tenant(
         .bind(staff.user_id.as_str())
         .execute(&mut *tx)
         .await?;
+    soat_events::publish(
+        &mut tx,
+        id.as_str(),
+        Some(staff.user_id.as_str()),
+        "tenant.created",
+        &t,
+    )
+    .await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(t)))
 }

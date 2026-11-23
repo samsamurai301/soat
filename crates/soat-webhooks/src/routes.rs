@@ -82,17 +82,19 @@ async fn create_endpoint(
     .bind(&secret)
     .execute(&mut *tx)
     .await?;
+    let endpoint = Endpoint {
+        id: id.to_string(),
+        url: body.url,
+        events: body.events,
+    };
+    // The event carries the endpoint, never its signing secret.
+    tenant
+        .publish(&mut tx, "webhook.created", &endpoint)
+        .await?;
     tx.commit().await?;
     Ok((
         StatusCode::CREATED,
-        Json(CreatedEndpoint {
-            endpoint: Endpoint {
-                id: id.to_string(),
-                url: body.url,
-                events: body.events,
-            },
-            secret,
-        }),
+        Json(CreatedEndpoint { endpoint, secret }),
     ))
 }
 
@@ -119,6 +121,9 @@ async fn delete_endpoint(db: Db, tenant: Tenant, Path(id): Path<String>) -> Resu
     if deleted.rows_affected() == 0 {
         return Err(Error::not_found());
     }
+    tenant
+        .publish(&mut tx, "webhook.deleted", &serde_json::json!({ "id": id }))
+        .await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

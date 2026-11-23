@@ -117,7 +117,7 @@ async fn create_product(
     .bind(currency.as_str())
     .fetch_one(&mut *tx)
     .await?;
-    soat_events::publish(&mut tx, tenant.id(), "product.created", &product).await?;
+    tenant.publish(&mut tx, "product.created", &product).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(product)))
 }

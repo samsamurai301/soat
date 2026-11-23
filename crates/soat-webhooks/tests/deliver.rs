@@ -77,8 +77,8 @@ async fn app() -> (TestClient, String) {
     let url = soat_testing::fresh_database_url().await;
     let modules = Modules::new()
         .with(Auth::with_setup_token("t"))
-        .with(Tenancy)
         .with(Events::manual())
+        .with(Tenancy)
         .with(Webhooks::new().manual().allow_private_targets())
         .with(Catalog);
     let client = modules.build(App::new(), Database::postgres(url)).test();
@@ -190,8 +190,8 @@ async fn private_targets_are_refused_in_production() {
     let url = soat_testing::fresh_database_url().await;
     let modules = Modules::new()
         .with(Auth::with_setup_token("t"))
-        .with(Tenancy)
         .with(Events::manual())
+        .with(Tenancy)
         .with(Webhooks::new().manual());
     let client = modules.build(App::new(), Database::postgres(url)).test();
     let session: Value = client

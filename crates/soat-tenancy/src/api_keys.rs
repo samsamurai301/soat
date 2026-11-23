@@ -105,19 +105,16 @@ async fn create_key(
     .bind(staff.user_id.as_str())
     .execute(&mut *tx)
     .await?;
+    let key = ApiKeyView {
+        id: id.to_string(),
+        name: body.name,
+        permissions,
+        revoked: false,
+    };
+    // The event carries the key's view, never its secret.
+    tenant.publish(&mut tx, "api_key.created", &key).await?;
     tx.commit().await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(CreatedApiKey {
-            key: ApiKeyView {
-                id: id.to_string(),
-                name: body.name,
-                permissions,
-                revoked: false,
-            },
-            secret,
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(CreatedApiKey { key, secret })))
 }
 
 /// The shop's API keys, newest first (`api_keys:manage`).
@@ -146,6 +143,9 @@ async fn revoke_key(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<St
     if revoked.rows_affected() == 0 {
         return Err(Error::not_found());
     }
+    tenant
+        .publish(&mut tx, "api_key.revoked", &serde_json::json!({ "id": id }))
+        .await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

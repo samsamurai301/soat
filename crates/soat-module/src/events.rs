@@ -17,6 +17,8 @@ pub struct Event {
     /// `evt_...`, time-ordered.
     pub id: String,
     pub tenant_id: String,
+    /// Who caused it: `user_...`, `key_...`, or `None` for the system.
+    pub actor: Option<String>,
     /// `resource.verb`, e.g. `product.created`.
     pub kind: String,
     /// The resource as the API shows it, after the change.

@@ -89,7 +89,7 @@ struct Publish {
 
 async fn publish_route(db: Db, tenant: Tenant, Json(p): Json<Publish>) -> Result<StatusCode> {
     let mut tx = tenant.begin(&db).await?;
-    publish(&mut tx, tenant.id(), &p.kind, &json!({ "n": 1 })).await?;
+    publish(&mut tx, tenant.id(), None, &p.kind, &json!({ "n": 1 })).await?;
     if p.rollback {
         tx.rollback().await?;
     } else {
@@ -120,8 +120,8 @@ async fn app(recorders: Vec<Arc<Recorder>>) -> (TestClient, String, String) {
     let url = soat_testing::fresh_database_url().await;
     let modules = Modules::new()
         .with(Auth::with_setup_token("t"))
-        .with(Tenancy)
         .with(Events::manual())
+        .with(Tenancy)
         .with(Probe(recorders));
     let client = modules
         .build(App::new(), Database::postgres(url.clone()))
@@ -141,6 +141,18 @@ async fn app(recorders: Vec<Arc<Recorder>>) -> (TestClient, String, String) {
         .send()
         .await
         .assert_status(201);
+    // Setup published `tenant.created`; start each test with an empty log.
+    let mut conn = PgConnection::connect(&url).await.unwrap();
+    let mut tx = conn.begin().await.unwrap();
+    sqlx::query("SELECT set_config('soat.system', 'on', true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM events")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
     (client, token, url)
 }
 

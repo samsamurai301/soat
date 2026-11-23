@@ -19,6 +19,7 @@
 //! ```
 
 pub mod api_keys;
+pub mod event_log;
 mod extract;
 mod list;
 pub mod routes;
@@ -52,7 +53,7 @@ impl Module for Tenancy {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["auth"]
+        &["auth", "events"]
     }
 
     fn migrations(&self) -> Option<Dir> {
@@ -60,12 +61,18 @@ impl Module for Tenancy {
     }
 
     fn permissions(&self) -> &'static [Permission] {
-        &[STAFF_READ, STAFF_MANAGE, api_keys::API_KEYS_MANAGE]
+        &[
+            STAFF_READ,
+            STAFF_MANAGE,
+            api_keys::API_KEYS_MANAGE,
+            event_log::EVENTS_READ,
+        ]
     }
 
     fn mount(&self, app: App) -> App {
         app.plugin(routes::mount)
             .plugin(staff::mount)
             .plugin(api_keys::mount)
+            .plugin(event_log::mount)
     }
 }

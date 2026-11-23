@@ -19,8 +19,8 @@ use zapline::prelude::*;
 pub fn modules(auth: Auth) -> Modules {
     Modules::new()
         .with(auth)
-        .with(Tenancy)
         .with(Events::new())
+        .with(Tenancy)
         .with(Webhooks::new())
         .with(Catalog)
 }

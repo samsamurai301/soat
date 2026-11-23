@@ -29,8 +29,9 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   the built-in staff role should have it). Roles, API keys and Claude's tools
   are all scoped by these names, so a new endpoint without one is a hole.
 - **Changes publish events.** Every create, update or delete calls
-  `soat_events::publish(&mut tx, tenant.id(), "resource.verb", &resource)` in
-  the same transaction. Modules react to each other through `Subscriber`s
+  `tenant.publish(&mut tx, "resource.verb", &resource)` in the same
+  transaction. It records who acted, so the event log is also the audit log
+  (`GET /api/events?actor=`). Never put secrets in a payload. Modules react to each other through `Subscriber`s
   (at-least-once, so handlers must be idempotent), never by importing each
   other. Webhooks, audit and Claude build on these events.
 - **Shared test helpers** live in `soat-testing` (fresh schema per test).

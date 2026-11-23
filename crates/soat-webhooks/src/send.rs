@@ -40,9 +40,15 @@ impl Subscriber for Recorder {
                 .execute(&mut *tx)
                 .await?;
             let endpoints: Vec<(String,)> = sqlx::query_as(
-                "SELECT id FROM webhook_endpoints WHERE $1 = ANY(events) OR '*' = ANY(events)",
+                // Only endpoints that existed before the event: a new
+                // endpoint never receives older events, nor its own
+                // `webhook.created`.
+                "SELECT id FROM webhook_endpoints \
+                 WHERE ($1 = ANY(events) OR '*' = ANY(events)) \
+                 AND created_at < (SELECT occurred_at FROM events WHERE id = $2)",
             )
             .bind(&event.kind)
+            .bind(&event.id)
             .fetch_all(&mut *tx)
             .await?;
             for (endpoint,) in endpoints {

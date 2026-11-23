@@ -8,18 +8,18 @@
 //!    backoff (1 s, 2 s, 4 s ... capped at 1 h) and given up after
 //!    [`MAX_ATTEMPTS`]. Rows are claimed with `FOR UPDATE SKIP LOCKED`, so
 //!    several SOAT processes can dispatch side by side.
-//! 3. `GET /api/events` lists a shop's events (`events:read`).
+//!
+//! Events carry their actor, so the log doubles as the audit log
+//! (`GET /api/events`, served by `soat-tenancy`).
 
 use std::panic::AssertUnwindSafe;
 use std::time::Duration;
 
 use futures_util::FutureExt;
 use serde::Serialize;
-use soat_core::{id_kind, Permission};
+use soat_core::id_kind;
 use soat_module::{Event, Module, Subscribers};
-use soat_tenancy::{Tenant, TenantListing};
 use zapline::db::sqlx::{self, types::Json as SqlJson, PgConnection, PgPool};
-use zapline::db::{Db, ListParams, Paged};
 use zapline::embed::Dir;
 use zapline::prelude::*;
 use zapline::tasks::Schedule;
@@ -30,31 +30,35 @@ id_kind!(EventId, EventKind, "evt");
 /// Deliveries are given up after this many failed attempts.
 pub const MAX_ATTEMPTS: i32 = 20;
 
-/// See the shop's event log.
-pub const EVENTS_READ: Permission = Permission::new("events:read", "See the shop's event log");
-
 /// Records `kind` (`resource.verb`) with `payload` for the shop that `conn`'s
 /// transaction is scoped to. Call it in the same transaction as the change.
+/// `actor` is who caused it (`user_...`, `key_...`), or `None` for the
+/// system. Request handlers use `Tenant::publish`, which fills both in.
 pub async fn publish(
     conn: &mut PgConnection,
     tenant_id: &str,
+    actor: Option<&str>,
     kind: &str,
     payload: &impl Serialize,
 ) -> Result<EventId> {
     let id = EventId::new();
     let payload = serde_json::to_value(payload)
         .map_err(|e| Error::internal(format!("event payload: {e}")))?;
-    sqlx::query("INSERT INTO events (id, tenant_id, kind, payload) VALUES ($1, $2, $3, $4)")
-        .bind(id.as_str())
-        .bind(tenant_id)
-        .bind(kind)
-        .bind(SqlJson(payload))
-        .execute(&mut *conn)
-        .await?;
+    sqlx::query(
+        "INSERT INTO events (id, tenant_id, actor, kind, payload) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(id.as_str())
+    .bind(tenant_id)
+    .bind(actor)
+    .bind(kind)
+    .bind(SqlJson(payload))
+    .execute(&mut *conn)
+    .await?;
     Ok(id)
 }
 
-/// The events module: outbox tables, the dispatcher and the events API.
+/// The events module: outbox tables and the dispatcher. The shop's event
+/// log API lives in `soat-tenancy`, which builds on this crate.
 pub struct Events {
     poll: Option<Duration>,
 }
@@ -85,19 +89,15 @@ impl Module for Events {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy"]
+        // Its tables reference `tenants`; migration versions order that.
+        &["auth"]
     }
 
     fn migrations(&self) -> Option<Dir> {
         Some(zapline::embed!("migrations"))
     }
 
-    fn permissions(&self) -> &'static [Permission] {
-        &[EVENTS_READ]
-    }
-
     fn mount(&self, app: App) -> App {
-        let app = app.mount(list_events);
         match self.poll {
             Some(every) => app.schedule(
                 Schedule::every(every).name("soat-events"),
@@ -167,6 +167,7 @@ type DueRow = (
     String,
     String,
     String,
+    Option<String>,
     String,
     SqlJson<serde_json::Value>,
     i32,
@@ -175,7 +176,7 @@ type DueRow = (
 async fn deliver(pool: &PgPool, subscribers: &Subscribers, resources: &Resources) -> Result<usize> {
     let mut tx = system_tx(pool).await?;
     let due: Vec<DueRow> = sqlx::query_as(
-        "SELECT d.subscriber, e.id, e.tenant_id, e.kind, e.payload, d.attempts \
+        "SELECT d.subscriber, e.id, e.tenant_id, e.actor, e.kind, e.payload, d.attempts \
          FROM event_deliveries d JOIN events e ON e.id = d.event_id \
          WHERE d.delivered_at IS NULL AND d.failed_at IS NULL AND d.next_attempt_at <= now() \
          ORDER BY d.event_id LIMIT 100 FOR UPDATE OF d SKIP LOCKED",
@@ -183,10 +184,11 @@ async fn deliver(pool: &PgPool, subscribers: &Subscribers, resources: &Resources
     .fetch_all(&mut *tx)
     .await?;
     let mut delivered = 0;
-    for (subscriber, id, tenant_id, kind, SqlJson(payload), attempts) in due {
+    for (subscriber, id, tenant_id, actor, kind, SqlJson(payload), attempts) in due {
         let event = Event {
             id,
             tenant_id,
+            actor,
             kind,
             payload,
         };
@@ -240,40 +242,6 @@ async fn deliver(pool: &PgPool, subscribers: &Subscribers, resources: &Resources
 pub fn backoff_secs(attempts: i32) -> f64 {
     let exp = attempts.saturating_sub(1).clamp(0, 12);
     f64::from(1u32 << exp).min(3600.0)
-}
-
-/// An event in the shop's log.
-#[model]
-pub struct EventView {
-    pub id: String,
-    pub kind: String,
-    pub payload: serde_json::Value,
-}
-
-impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for EventView {
-    fn from_row(row: &'r sqlx::postgres::PgRow) -> sqlx::Result<Self> {
-        use sqlx::Row;
-        let SqlJson(payload) = row.try_get("payload")?;
-        Ok(Self {
-            id: row.try_get("id")?,
-            kind: row.try_get("kind")?,
-            payload,
-        })
-    }
-}
-
-/// The shop's events, newest first (`events:read`). `?kind=` filters.
-#[get("/api/events", tag = "events")]
-async fn list_events(db: Db, tenant: Tenant, params: ListParams) -> Result<Json<Paged<EventView>>> {
-    let mut tx = tenant.begin_for(&db, &EVENTS_READ).await?;
-    let page = TenantListing::new("events", "id, kind, payload")
-        .filter_text("kind")
-        .default_sort("-id")
-        .page_size(50, 200)
-        .fetch(&mut tx, &params)
-        .await?;
-    tx.commit().await?;
-    Ok(Json(page))
 }
 
 #[cfg(test)]

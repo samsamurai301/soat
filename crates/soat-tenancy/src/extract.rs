@@ -37,6 +37,8 @@ pub struct Tenant {
     pub id: TenantId,
     pub actor: Actor,
     permissions: Permissions,
+    /// `user_...` or `key_...`, known once `begin` checked the caller.
+    actor_id: std::sync::OnceLock<String>,
 }
 
 /// Who acts for the shop.
@@ -89,6 +91,7 @@ impl FromRequestParts for Tenant {
             id,
             actor,
             permissions,
+            actor_id: std::sync::OnceLock::new(),
         })
     }
 }
@@ -174,16 +177,17 @@ impl Tenant {
         let staff = match &self.actor {
             Actor::Staff(staff) => staff,
             Actor::ApiKey { token_hash } => {
-                let key: Option<(String, Vec<String>)> = sqlx::query_as(
-                    "SELECT name, permissions FROM api_keys \
+                let key: Option<(String, String, Vec<String>)> = sqlx::query_as(
+                    "SELECT id, name, permissions FROM api_keys \
                      WHERE token_hash = $1 AND revoked_at IS NULL",
                 )
                 .bind(token_hash)
                 .fetch_optional(&mut *tx)
                 .await?;
-                let Some((name, permissions)) = key else {
+                let Some((key_id, name, permissions)) = key else {
                     return Err(Error::unauthorized().with_code("invalid_api_key"));
                 };
+                let _ = self.actor_id.set(key_id);
                 let access = Access {
                     role: format!("api_key:{name}"),
                     granted: Granted::Only(permissions.into_iter().collect()),
@@ -191,6 +195,7 @@ impl Tenant {
                 return Ok((tx, access));
             }
         };
+        let _ = self.actor_id.set(staff.user_id.to_string());
         if staff.is_platform_admin {
             return Ok((tx, owner()));
         }
@@ -238,6 +243,24 @@ impl Tenant {
 
     pub fn id(&self) -> &str {
         self.id.as_str()
+    }
+
+    /// Who acts, as recorded on events: `user_...` or `key_...`. `None`
+    /// before [`begin`](Self::begin) has checked the caller.
+    pub fn actor_id(&self) -> Option<&str> {
+        self.actor_id.get().map(String::as_str)
+    }
+
+    /// Publishes a domain event for this shop, recording who caused it. Call
+    /// it in the transaction of the change.
+    pub async fn publish(
+        &self,
+        conn: &mut PgConnection,
+        kind: &str,
+        payload: &impl serde::Serialize,
+    ) -> Result<()> {
+        soat_events::publish(conn, self.id(), self.actor_id(), kind, payload).await?;
+        Ok(())
     }
 
     /// The signed-in user, or `None` for an API key.

@@ -164,15 +164,14 @@ async fn add_staff(
     if added.rows_affected() == 0 {
         return Err(Error::conflict("already a member of this shop").with_code("already_member"));
     }
+    let member = Member {
+        user_id,
+        email,
+        role,
+    };
+    tenant.publish(&mut tx, "staff.added", &member).await?;
     tx.commit().await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(Member {
-            user_id,
-            email,
-            role,
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(member)))
 }
 
 /// The shop's staff, owners first (`staff:read`).
@@ -226,6 +225,13 @@ async fn change_role(
         .bind(&change.role)
         .bind(&user_id)
         .execute(&mut *tx)
+        .await?;
+    tenant
+        .publish(
+            &mut tx,
+            "staff.role_changed",
+            &serde_json::json!({ "user_id": user_id, "from": current, "to": change.role }),
+        )
         .await?;
     tx.commit().await?;
     Ok(Json(Member {
@@ -331,12 +337,14 @@ async fn put_role(
     .bind(&permissions)
     .execute(&mut *tx)
     .await?;
-    tx.commit().await?;
-    Ok(Json(RoleView {
+    let role = RoleView {
         name,
         built_in: false,
         permissions,
-    }))
+    };
+    tenant.publish(&mut tx, "role.updated", &role).await?;
+    tx.commit().await?;
+    Ok(Json(role))
 }
 
 /// Delete a custom role. Owners only; a role someone still has is a 409.
@@ -363,6 +371,13 @@ async fn delete_role(db: Db, tenant: Tenant, Path(name): Path<String>) -> Result
     if deleted.rows_affected() == 0 {
         return Err(Error::not_found());
     }
+    tenant
+        .publish(
+            &mut tx,
+            "role.deleted",
+            &serde_json::json!({ "name": name }),
+        )
+        .await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
