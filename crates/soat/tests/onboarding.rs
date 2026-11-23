@@ -271,3 +271,139 @@ async fn the_shop_profile_belongs_to_its_owner() {
         .await
         .assert_status(403);
 }
+
+#[tokio::test]
+async fn sample_products_come_and_go() {
+    let (client, t) = common::with_tenants(&["acme"]).await;
+    let res = client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let me = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let welcome = "/admin/acme/welcome";
+    let res = post(
+        &client,
+        &me,
+        &format!("{welcome}/sample"),
+        json!({ "template": "coffee" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("country and currency first"));
+    post(
+        &client,
+        &me,
+        &format!("{welcome}/basics"),
+        json!({ "name": "Acme", "country": "CH", "currency": "CHF" }),
+    )
+    .await
+    .assert_status(303);
+    let html = get(&client, &me, welcome).await.text();
+    assert!(
+        html.contains("Load Coffee roastery") && !html.contains("Load EU VAT rates"),
+        "{html}"
+    );
+    post(
+        &client,
+        &me,
+        &format!("{welcome}/sample"),
+        json!({ "template": "nope" }),
+    )
+    .await
+    .assert_status(422);
+    post(
+        &client,
+        &me,
+        &format!("{welcome}/sample"),
+        json!({ "template": "coffee" }),
+    )
+    .await
+    .assert_status(303);
+
+    let api = |path: String| {
+        let req = client.get(&path).header("x-soat-tenant", "acme").bearer(&t);
+        async move {
+            let res = req.send().await;
+            res.assert_status(200);
+            res.json::<Value>()
+        }
+    };
+    let products = api("/api/products?tag=sample&sort=sku".into()).await;
+    assert_eq!(products["total"], 5);
+    let eth = products["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["sku"] == "BEAN-ETH")
+        .unwrap()
+        .clone();
+    assert_eq!(eth["currency"], "CHF");
+    assert_eq!(eth["price_minor"], 1450);
+    let variants = api(format!(
+        "/api/products/{}/variants",
+        eth["id"].as_str().unwrap()
+    ))
+    .await;
+    let variants = variants
+        .as_array()
+        .or(variants["items"].as_array())
+        .unwrap()
+        .clone();
+    assert_eq!(variants.len(), 3);
+    assert_eq!(variants[0]["sku"], "BEAN-ETH-WHOLE-BEAN");
+    let stock = api(format!(
+        "/api/inventory/{}",
+        variants[1]["id"].as_str().unwrap()
+    ))
+    .await;
+    assert_eq!(stock["available"], 25);
+    let locations = api("/api/locations".into()).await;
+    assert_eq!(locations["items"][0]["country"], "CH");
+    let collections = api("/api/collections?q=sample-coffee".into()).await;
+    let coffee = collections["items"][0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        api(format!("/api/collections/{coffee}/products")).await["total"],
+        5
+    );
+
+    // Once at a time.
+    let res = post(
+        &client,
+        &me,
+        &format!("{welcome}/sample"),
+        json!({ "template": "home" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("loaded already"));
+    let html = get(&client, &me, welcome).await.text();
+    assert!(html.contains("Remove the sample products"));
+
+    post(&client, &me, &format!("{welcome}/remove-sample"), json!({}))
+        .await
+        .assert_status(303);
+    assert_eq!(api("/api/products?tag=sample".into()).await["total"], 0);
+    assert_eq!(api("/api/collections?q=sample-".into()).await["total"], 0);
+    // A shop's own products stay.
+    client
+        .post("/api/products")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({ "sku": "OWN", "title": "Own", "price_minor": 100, "currency": "CHF" }))
+        .send()
+        .await
+        .assert_status(201);
+    post(
+        &client,
+        &me,
+        &format!("{welcome}/sample"),
+        json!({ "template": "apparel" }),
+    )
+    .await
+    .assert_status(303);
+    post(&client, &me, &format!("{welcome}/remove-sample"), json!({}))
+        .await
+        .assert_status(303);
+    assert_eq!(api("/api/products".into()).await["total"], 1);
+}

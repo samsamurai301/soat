@@ -61,4 +61,18 @@
   <h2>5. Products {{#if progress.steps.products }}<span class="badge on">Done</span>{{/if}}</h2>
   {{#if progress.steps.products }}<p><a href="{{ base }}/products">See your products</a></p>
   {{else}}<p><a class="button" href="{{ base }}/products/new">Add your first product</a></p>{{/if}}
+  {{#if progress.samples }}
+  <form method="post" action="{{ base }}/welcome/remove-sample" class="inline">
+    <p>Sample products are in your shop. <button class="link">Remove the sample products</button></p>
+  </form>
+  {{else}}{{#if progress.steps.basics }}
+  <p>Or try the shop with sample products, priced in {{ currency }} and in stock. They are tagged “sample” and can be removed in one go.</p>
+  <ul class="cards">
+    {{#each templates }}<li><form method="post" action="{{ base }}/welcome/sample" class="card">
+      <input type="hidden" name="template" value="{{ key }}">
+      <strong>{{ name }}</strong> <span class="muted">{{ summary }}</span>
+      <p><button class="link">Load {{ name }}</button></p>
+    </form></li>{{/each}}
+  </ul>
+  {{/if}}{{/if}}
 </section>

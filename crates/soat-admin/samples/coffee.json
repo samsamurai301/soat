@@ -1,0 +1,20 @@
+{
+  "key": "coffee",
+  "name": "Coffee roastery",
+  "summary": "Beans, a grinder and brewing gear.",
+  "collection": { "title": "Coffee", "description": "Roasted every week in small batches." },
+  "products": [
+    { "sku": "BEAN-ETH", "title": "Ethiopia Yirgacheffe", "price": "14.50", "tax_class": "reduced", "weight_grams": 250,
+      "tags": ["beans", "light roast"], "description": "Floral and bright, with notes of jasmine and lemon. 250 g, whole beans.",
+      "option": { "name": "Grind", "values": ["Whole bean", "Filter", "Espresso"] } },
+    { "sku": "BEAN-COL", "title": "Colombia Huila", "price": "12.90", "tax_class": "reduced", "weight_grams": 250,
+      "tags": ["beans", "medium roast"], "description": "Caramel sweetness and a round body. 250 g, whole beans.",
+      "option": { "name": "Grind", "values": ["Whole bean", "Filter", "Espresso"] } },
+    { "sku": "BEAN-HOUSE", "title": "House Espresso", "price": "11.50", "tax_class": "reduced", "weight_grams": 500,
+      "tags": ["beans", "dark roast"], "description": "Chocolate and hazelnut, made for milk drinks. 500 g." },
+    { "sku": "GRINDER-HAND", "title": "Hand Grinder", "price": "69.00", "weight_grams": 650,
+      "tags": ["gear"], "description": "Steel burrs, 40 settings, from espresso to cold brew." },
+    { "sku": "DRIPPER", "title": "Ceramic Dripper", "price": "24.00", "weight_grams": 400,
+      "tags": ["gear"], "description": "For one or two cups of filter coffee." }
+  ]
+}

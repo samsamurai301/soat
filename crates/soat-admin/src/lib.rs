@@ -37,6 +37,7 @@ mod onboarding;
 mod orders;
 mod pages;
 mod products;
+mod samples;
 mod settings;
 mod theme;
 mod util;

@@ -207,6 +207,7 @@ async fn progress(cx: &Ctx) -> Value {
     let payments = get("/api/payment-methods").await;
     let shipping = get("/api/shipping/zones").await;
     let products = get("/api/products?limit=1").await;
+    let samples = get("/api/products?tag=sample&limit=1").await;
     let done = [
         shop["country"].is_string() && shop["currency"].is_string(),
         count(&taxes) > 0,
@@ -224,6 +225,7 @@ async fn progress(cx: &Ctx) -> Value {
         "shop": shop, "steps": steps,
         "done": done.iter().filter(|d| **d).count(), "total": STEPS.len(),
         "ready": done.iter().all(|d| *d),
+        "samples": count(&samples),
     })
 }
 
@@ -260,6 +262,7 @@ async fn welcome_page(mut cx: Ctx, error: Option<String>, status: StatusCode) ->
     cx.set("country_name", json!(country_name(&country)));
     cx.set("currency", json!(currency));
     cx.set("progress", p);
+    cx.set("templates", json!(crate::samples::offered()));
     cx.set("page_title", json!("Set up your shop"));
     if let Some(e) = error {
         cx.set("error", json!(e));
@@ -282,7 +285,8 @@ pub(crate) async fn welcome(
 
 /// Do one welcome step (a form post): `basics` (name, country, currency),
 /// `taxes` (the EU's VAT rates), `payments` (bank transfer), `shipping`
-/// (one rate for the home country).
+/// (one rate for the home country), `sample` (a store template's
+/// products) and `remove-sample`.
 #[post("/admin/{shop}/welcome/{step}", tag = "admin")]
 pub(crate) async fn welcome_step(
     s: State<Shared>,
@@ -297,6 +301,29 @@ pub(crate) async fn welcome_step(
     let p = progress(&cx).await;
     let country = p["shop"]["country"].as_str().map(str::to_owned);
     let currency = p["shop"]["currency"].as_str().map(str::to_owned);
+    match step.as_str() {
+        "sample" => {
+            let (Some(country), Some(currency)) = (&country, &currency) else {
+                let e = "Choose the shop's country and currency first.".to_owned();
+                return Ok(welcome_page(cx, Some(e), StatusCode::UNPROCESSABLE_ENTITY).await);
+            };
+            return Ok(
+                match crate::samples::load(&cx, &f.get("template"), currency, country).await {
+                    Ok(_) => {
+                        Redirect::to(&format!("/admin/{shop}/welcome#products")).into_response()
+                    }
+                    Err((status, out)) => step_failed(cx, status, &out).await,
+                },
+            );
+        }
+        "remove-sample" => {
+            return Ok(match crate::samples::remove(&cx).await {
+                Ok(()) => Redirect::to(&format!("/admin/{shop}/welcome#products")).into_response(),
+                Err((status, out)) => step_failed(cx, status, &out).await,
+            });
+        }
+        _ => {}
+    }
     let calls: Vec<(Method, String, Value)> = match step.as_str() {
         "basics" => {
             let country = f.get("country").to_ascii_uppercase();

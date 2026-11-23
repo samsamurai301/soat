@@ -131,7 +131,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Admin in the browser (htmx): sign in, pick a shop, manage products, orders, customers, content and the theme
 - [x] Admin settings: general, payments, shipping, taxes, email wording, invoices, staff, API keys and webhooks, the assistant
 - [x] Admin dashboard: orders waiting on staff, sales by day, best sellers, first steps for a new shop (`GET /api/orders/report`)
-- [x] Setup in the browser: the first admin at `/admin/setup`, a new shop, then welcome steps for country and currency, EU VAT, bank transfer, shipping and the first product
+- [x] Setup in the browser: the first admin at `/admin/setup`, a new shop, then welcome steps for country and currency, EU VAT, bank transfer, shipping and the first product, or sample products from a store template (clothing, coffee, home goods) removed again in one click
 - [ ] WASM plugin host, built into Zapline
 
 ## License
