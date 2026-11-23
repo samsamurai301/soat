@@ -256,8 +256,16 @@ async fn wording(
 }
 
 fn parse(source: &str, what: &str) -> Result<Template> {
-    Template::parse(source)
-        .map_err(|e| Error::unprocessable(format!("the {what}: {e}")).with_code("invalid_template"))
+    let t = Template::parse(source).map_err(|e| {
+        Error::unprocessable(format!("the {what}: {e}")).with_code("invalid_template")
+    })?;
+    if let Some(p) = t.partials().first() {
+        return Err(Error::unprocessable(format!(
+            "the {what}: emails have no partials, so {{{{> {p} }}}} cannot be used"
+        ))
+        .with_code("invalid_template"));
+    }
+    Ok(t)
 }
 
 fn render(subject: &str, text: &str, html: &str, data: &Value) -> Result<Rendered> {

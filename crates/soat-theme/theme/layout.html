@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="{{ shop.language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page_title }}{{#if shop.name }} · {{ shop.name }}{{/if}}</title>
+{{#if meta_description }}<meta name="description" content="{{ meta_description }}">{{/if}}
+{{#if canonical }}<link rel="canonical" href="{{ canonical }}">{{/if}}
+<link rel="stylesheet" href="/theme.css">
+{{#if theme.accent_color }}<style>:root { --accent: {{ theme.accent_color }}; }</style>{{/if}}
+<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" defer></script>
+</head>
+<body>
+{{#if theme.announcement }}<div class="announcement">{{ theme.announcement }}</div>{{/if}}
+{{> header }}
+<main class="wrap">
+{{> content }}
+</main>
+{{> footer }}
+</body>
+</html>

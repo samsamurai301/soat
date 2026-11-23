@@ -1,0 +1,27 @@
+<h1>Your cart</h1>
+<div id="cart">
+{{#if cart.lines }}
+<table class="cart-lines">
+  <thead><tr><th>Item</th><th>Quantity</th><th>Price</th><th></th></tr></thead>
+  <tbody>
+  {{#each cart.lines }}
+  <tr>
+    <td>{{ title }}{{#if variant_title }} · {{ variant_title }}{{/if}}</td>
+    <td>
+      <form method="post" action="/cart/lines/{{ id }}" hx-post="/cart/lines/{{ id }}" hx-target="#cart" hx-select="#cart" hx-swap="outerHTML">
+        <input type="number" name="quantity" value="{{ quantity }}" min="0" max="99" aria-label="Quantity">
+        <button type="submit">Update</button>
+      </form>
+    </td>
+    <td>{{ total }}</td>
+    <td><form method="post" action="/cart/lines/{{ id }}" hx-post="/cart/lines/{{ id }}" hx-target="#cart" hx-select="#cart" hx-swap="outerHTML"><input type="hidden" name="quantity" value="0"><button type="submit">Remove</button></form></td>
+  </tr>
+  {{/each}}
+  </tbody>
+</table>
+<p class="subtotal">Subtotal: <strong>{{ cart.subtotal }}</strong></p>
+<p><a class="button" href="/checkout">Check out</a></p>
+{{else}}
+<p class="empty">Your cart is empty. <a href="/search">Keep shopping</a></p>
+{{/if}}
+</div>

@@ -1,0 +1,21 @@
+<article class="product">
+  <div class="gallery">
+    {{#each product.images }}<img src="{{ url }}" alt="{{ alt }}">{{/each}}
+    {{#if product.images }}{{else}}<span class="no-image large"></span>{{/if}}
+  </div>
+  <div class="details">
+    <h1>{{ product.title }}</h1>
+    <p class="price">{{ product.price }}</p>
+    <form class="buy" method="post" action="/cart/add" hx-post="/cart/add" hx-target="#cart-count" hx-swap="outerHTML">
+      <input type="hidden" name="product_id" value="{{ product.id }}">
+      {{#if product.variants }}
+      <label>Option
+        <select name="variant_id">{{#each product.variants }}<option value="{{ id }}">{{ title }} · {{ price }}</option>{{/each}}</select>
+      </label>
+      {{/if}}
+      <label>Quantity <input type="number" name="quantity" value="1" min="1" max="99"></label>
+      <button class="button" type="submit">Add to cart</button>
+    </form>
+    <div class="prose">{{ product.description | markdown }}</div>
+  </div>
+</article>

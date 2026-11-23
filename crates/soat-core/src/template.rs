@@ -8,6 +8,11 @@
 //! - `{{#if order.discount_code}} … {{else}} … {{/if}}` shows the first part
 //!   when the value is set: not null, false, `""`, `0` or an empty list.
 //!
+//! - `{{ product.description | markdown }}` writes Markdown as safe HTML
+//!   (see [`crate::markdown`]); outside HTML it writes the text.
+//! - `{{> header }}` writes another template (a partial) with the same
+//!   values, when the caller supplies partials ([`Template::render_with`]).
+//!
 //! There are no other tags and no code: shops edit these texts, so a
 //! template can only read the values it is given.
 
@@ -36,6 +41,8 @@ impl std::error::Error for TemplateError {}
 enum Node {
     Text(String),
     Var(String),
+    Markdown(String),
+    Partial(String),
     Each(String, Vec<Node>),
     If(String, Vec<Node>, Vec<Node>),
 }
@@ -87,10 +94,47 @@ impl Template {
     }
 
     /// Writes the template out with `data`; `html` escapes values for HTML.
+    /// Partials write nothing.
     pub fn render(&self, data: &Value, html: bool) -> String {
+        self.render_with(data, html, &|_| None)
+    }
+
+    /// [`render`](Self::render), finding `{{> name }}` partials with
+    /// `partials`. Partials may include partials, [`MAX_DEPTH`] deep.
+    pub fn render_with<'t>(
+        &self,
+        data: &Value,
+        html: bool,
+        partials: &dyn Fn(&str) -> Option<&'t Template>,
+    ) -> String {
         let mut out = String::new();
         let mut scopes = vec![data];
-        render_nodes(&self.0, &mut scopes, html, &mut out);
+        let cx = Cx {
+            html,
+            partials,
+            depth: 0,
+        };
+        render_nodes(&self.0, &mut scopes, &cx, &mut out);
+        out
+    }
+
+    /// The partials this template names, directly.
+    pub fn partials(&self) -> Vec<&str> {
+        fn walk<'a>(nodes: &'a [Node], out: &mut Vec<&'a str>) {
+            for n in nodes {
+                match n {
+                    Node::Partial(p) => out.push(p),
+                    Node::Each(_, body) => walk(body, out),
+                    Node::If(_, a, b) => {
+                        walk(a, out);
+                        walk(b, out);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.0, &mut out);
         out
     }
 }
@@ -158,6 +202,28 @@ fn parse_block(rest: &mut &str, depth: usize) -> Result<(Vec<Node>, End), Templa
             return Ok((nodes, End::If));
         } else if tag == "else" {
             return Ok((nodes, End::Else));
+        } else if let Some(name) = tag.strip_prefix('>') {
+            let name = name.trim();
+            if name.is_empty()
+                || name.len() > 64
+                || !name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            {
+                return Err(err(format!("`{name}` is not a partial name")));
+            }
+            nodes.push(Node::Partial(name.to_owned()));
+        } else if let Some((path, filter)) = tag.split_once('|') {
+            let (path, filter) = (path.trim(), filter.trim());
+            if !is_path(path) {
+                return Err(err(format!("`{path}` is not a name")));
+            }
+            if filter != "markdown" {
+                return Err(err(format!(
+                    "`{filter}` is not a filter; there is markdown"
+                )));
+            }
+            nodes.push(Node::Markdown(path.to_owned()));
         } else if is_path(tag) {
             nodes.push(Node::Var(tag.to_owned()));
         } else {
@@ -200,10 +266,38 @@ fn escape_into(s: &str, out: &mut String) {
     }
 }
 
-fn render_nodes(nodes: &[Node], scopes: &mut Vec<&Value>, html: bool, out: &mut String) {
+struct Cx<'p, 't> {
+    html: bool,
+    partials: &'p dyn Fn(&str) -> Option<&'t Template>,
+    depth: usize,
+}
+
+fn render_nodes(nodes: &[Node], scopes: &mut Vec<&Value>, cx: &Cx<'_, '_>, out: &mut String) {
+    let html = cx.html;
     for node in nodes {
         match node {
             Node::Text(t) => out.push_str(t),
+            Node::Markdown(path) => {
+                if let Some(Value::String(s)) = lookup(scopes, path) {
+                    if html {
+                        out.push_str(&crate::markdown::to_html(s));
+                    } else {
+                        out.push_str(s);
+                    }
+                }
+            }
+            Node::Partial(name) => {
+                if cx.depth < MAX_DEPTH {
+                    if let Some(t) = (cx.partials)(name) {
+                        let inner = Cx {
+                            html,
+                            partials: cx.partials,
+                            depth: cx.depth + 1,
+                        };
+                        render_nodes(&t.0, scopes, &inner, out);
+                    }
+                }
+            }
             Node::Var(path) => {
                 let text = match lookup(scopes, path) {
                     None | Some(Value::Null) => continue,
@@ -221,7 +315,7 @@ fn render_nodes(nodes: &[Node], scopes: &mut Vec<&Value>, html: bool, out: &mut 
                 if let Some(Value::Array(items)) = lookup(scopes, path) {
                     for item in items {
                         scopes.push(item);
-                        render_nodes(body, scopes, html, out);
+                        render_nodes(body, scopes, cx, out);
                         scopes.pop();
                     }
                 }
@@ -232,7 +326,7 @@ fn render_nodes(nodes: &[Node], scopes: &mut Vec<&Value>, html: bool, out: &mut 
                 } else {
                     otherwise
                 };
-                render_nodes(branch, scopes, html, out);
+                render_nodes(branch, scopes, cx, out);
             }
         }
     }
@@ -243,6 +337,34 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn partials_and_markdown() {
+        let layout = Template::parse("<main>{{> content }}</main>{{> missing }}").unwrap();
+        let content =
+            Template::parse("<h1>{{ title }}</h1>{{ body | markdown }}{{> loop }}").unwrap();
+        let looping = Template::parse("{{> loop }}").unwrap();
+        assert_eq!(layout.partials(), ["content", "missing"]);
+        let data = json!({ "title": "A & B", "body": "*hi* <b>" });
+        let out = layout.render_with(&data, true, &|name| match name {
+            "content" => Some(&content),
+            "loop" => Some(&looping),
+            _ => None,
+        });
+        assert_eq!(
+            out,
+            "<main><h1>A &amp; B</h1><p><em>hi</em> &lt;b&gt;</p>\n</main>"
+        );
+        assert_eq!(content.render(&data, false), "<h1>A & B</h1>*hi* <b>");
+        for bad in [
+            "{{ body | upper }}",
+            "{{> }}",
+            "{{> a b }}",
+            "{{ a b | markdown }}",
+        ] {
+            assert!(Template::parse(bad).is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn writes_values_and_escapes_html() {
@@ -299,7 +421,6 @@ mod tests {
             "{{#if a}}x{{/each}}",
             "{{else}}",
             "{{ a b }}",
-            "{{> partial}}",
             "{{ a..b }}",
         ] {
             assert!(Template::parse(bad).is_err(), "{bad}");

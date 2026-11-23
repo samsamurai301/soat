@@ -1580,6 +1580,7 @@ dependencies = [
  "soat-tax",
  "soat-tenancy",
  "soat-testing",
+ "soat-theme",
  "soat-webhooks",
  "tokio",
  "zapline",
@@ -1953,6 +1954,19 @@ version = "0.0.1"
 dependencies = [
  "serde_json",
  "tokio",
+ "zapline",
+]
+
+[[package]]
+name = "soat-theme"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
  "zapline",
 ]
 

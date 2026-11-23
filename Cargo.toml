@@ -36,6 +36,7 @@ soat-checkout = { path = "crates/soat-checkout" }
 soat-invoices = { path = "crates/soat-invoices" }
 soat-notify = { path = "crates/soat-notify" }
 soat-cms = { path = "crates/soat-cms" }
+soat-theme = { path = "crates/soat-theme" }
 soat-mcp = { path = "crates/soat-mcp" }
 soat-testing = { path = "crates/soat-testing" }
 # Tracks Zapline main (newer than the crates.io release); Cargo.lock pins the exact commit.

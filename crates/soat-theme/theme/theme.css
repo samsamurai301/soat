@@ -1,0 +1,65 @@
+:root {
+  --accent: #1f6feb;
+  --text: #1c1d21;
+  --muted: #6b6f76;
+  --line: #e5e6ea;
+  --bg: #ffffff;
+  --soft: #f6f7f9;
+  --radius: 10px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --text: #eceef2; --muted: #a0a4ab; --line: #2c2f36; --bg: #111317; --soft: #1a1d23; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; line-height: 1.55; background: var(--bg); }
+a { color: inherit; }
+img { max-width: 100%; height: auto; display: block; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+main.wrap { padding-top: 24px; padding-bottom: 48px; min-height: 60vh; }
+.announcement { background: var(--accent); color: #fff; text-align: center; padding: 6px 16px; font-size: 14px; }
+.site-header { border-bottom: 1px solid var(--line); }
+.bar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; min-height: 64px; }
+.brand { font-weight: 700; font-size: 20px; text-decoration: none; }
+.menu { display: flex; gap: 16px; flex: 1; flex-wrap: wrap; }
+.menu a { text-decoration: none; color: var(--muted); }
+.menu a:hover { color: var(--text); }
+.menu-item { position: relative; }
+.submenu { display: none; position: absolute; top: 100%; left: 0; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; min-width: 180px; z-index: 5; }
+.menu-item:hover .submenu, .menu-item:focus-within .submenu { display: grid; gap: 4px; }
+.search input { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--soft); color: var(--text); min-width: 0; width: 180px; }
+.cart-link { text-decoration: none; font-weight: 600; }
+.hero { padding: 64px 0; text-align: center; }
+.hero h1 { font-size: clamp(32px, 6vw, 56px); margin: 0 0 16px; }
+.button { display: inline-block; background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 10px 20px; font-weight: 600; text-decoration: none; cursor: pointer; font-size: 16px; }
+.grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.card { text-decoration: none; display: block; }
+.card h3 { font-size: 16px; margin: 10px 0 2px; font-weight: 500; }
+.card-image { aspect-ratio: 1; background: var(--soft); border-radius: var(--radius); overflow: hidden; }
+.card-image img { width: 100%; height: 100%; object-fit: cover; }
+.price { color: var(--muted); margin: 0; }
+.product { display: grid; gap: 32px; grid-template-columns: 1fr; }
+@media (min-width: 800px) { .product { grid-template-columns: 1.2fr 1fr; } }
+.gallery { display: grid; gap: 12px; }
+.gallery img { border-radius: var(--radius); }
+.no-image { display: block; width: 100%; aspect-ratio: 1; background: var(--soft); border-radius: var(--radius); }
+.details h1 { margin-top: 0; }
+.buy { display: grid; gap: 12px; margin: 20px 0; max-width: 360px; }
+.buy label { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
+.buy select, .buy input, .cart-lines input { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
+.prose { max-width: 70ch; }
+.columns { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.spacer-small { height: 16px; } .spacer-medium { height: 40px; } .spacer-large { height: 80px; }
+.block-image img { border-radius: var(--radius); }
+.cart-lines { width: 100%; border-collapse: collapse; }
+.cart-lines th, .cart-lines td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+.cart-lines input { width: 72px; }
+.cart-lines form { display: flex; gap: 6px; align-items: center; }
+.subtotal { font-size: 18px; }
+.pager { display: flex; justify-content: space-between; margin-top: 24px; }
+.empty { color: var(--muted); }
+.site-footer { border-top: 1px solid var(--line); padding: 24px 0; color: var(--muted); font-size: 14px; }
+.site-footer nav { display: flex; gap: 16px; flex-wrap: wrap; }
+@media (max-width: 640px) { .search input { width: 120px; } .cart-lines thead { display: none; } }

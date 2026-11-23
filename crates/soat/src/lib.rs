@@ -25,6 +25,7 @@ use soat_promotions::Promotions;
 use soat_shipping::Shipping;
 use soat_tax::Taxes;
 use soat_tenancy::Tenancy;
+use soat_theme::Themes;
 use soat_webhooks::Webhooks;
 use zapline::db::{Database, DbCheck};
 use zapline::mail::Mailer;
@@ -150,7 +151,8 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Checkout)
         .with(Invoices)
         .with(Notify::new(settings.mailer, settings.mail_from))
-        .with(Cms);
+        .with(Cms)
+        .with(Themes);
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {
         Some(config) => modules.with(soat_stripe::StripeWebhooks::new(config)),

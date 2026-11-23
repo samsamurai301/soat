@@ -1,0 +1,17 @@
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/">{{ shop.name }}</a>
+    <nav class="menu" aria-label="Main">
+      {{#each menus.main.items }}
+      <div class="menu-item">
+        <a href="{{ url }}">{{ title }}</a>
+        {{#if items }}<div class="submenu">{{#each items }}<a href="{{ url }}">{{ title }}</a>{{/each}}</div>{{/if}}
+      </div>
+      {{/each}}
+    </nav>
+    <form class="search" action="/search" method="get" role="search">
+      <input type="search" name="q" value="{{ query }}" placeholder="Search" aria-label="Search">
+    </form>
+    <a class="cart-link" href="/cart" id="cart-count">Cart{{#if cart.count }} ({{ cart.count }}){{/if}}</a>
+  </div>
+</header>
