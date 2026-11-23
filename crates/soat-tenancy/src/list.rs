@@ -22,6 +22,8 @@ pub struct TenantListing {
     sortable: Vec<&'static str>,
     search: Vec<&'static str>,
     text_filters: Vec<&'static str>,
+    array_filters: Vec<(&'static str, &'static str)>,
+    subquery_scopes: Vec<(&'static str, Vec<String>, &'static str)>,
     scopes: Vec<(&'static str, String)>,
     default_limit: i64,
     max_limit: i64,
@@ -38,6 +40,8 @@ impl TenantListing {
             sortable: Vec::new(),
             search: Vec::new(),
             text_filters: Vec::new(),
+            array_filters: Vec::new(),
+            subquery_scopes: Vec::new(),
             scopes: Vec::new(),
             default_limit: 50,
             max_limit: 200,
@@ -65,6 +69,26 @@ impl TenantListing {
     /// A text column callers may filter on exactly (`?currency=EUR`).
     pub fn filter_text(mut self, column: &'static str) -> Self {
         self.text_filters.push(column);
+        self
+    }
+
+    /// A `TEXT[]` column callers may filter on by one element
+    /// (`?tag=summer` for `filter_array("tag", "tags")`).
+    pub fn filter_array(mut self, param: &'static str, column: &'static str) -> Self {
+        self.array_filters.push((param, column));
+        self
+    }
+
+    /// Always adds `prefix $values suffix` to the filter, with `values`
+    /// bound as one `TEXT[]` parameter, e.g. `("id IN (SELECT product_id
+    /// FROM product_categories WHERE category_id = ANY(", ids, "))")`.
+    pub fn scope_subquery(
+        mut self,
+        prefix: &'static str,
+        values: Vec<String>,
+        suffix: &'static str,
+    ) -> Self {
+        self.subquery_scopes.push((prefix, values, suffix));
         self
     }
 
@@ -136,6 +160,18 @@ impl TenantListing {
                 q.push(format!(" AND {column} = "));
                 q.push_bind(value.to_owned());
             }
+        }
+        for (param, column) in &self.array_filters {
+            if let Some(value) = params.get(param).filter(|v| !v.is_empty()) {
+                q.push(" AND ");
+                q.push_bind(value.to_owned());
+                q.push(format!(" = ANY({column})"));
+            }
+        }
+        for (prefix, values, suffix) in &self.subquery_scopes {
+            q.push(format!(" AND {prefix}"));
+            q.push_bind(values.clone());
+            q.push(*suffix);
         }
         let query = params.get("q").map(str::trim).filter(|q| !q.is_empty());
         if let (Some(text), false) = (query, self.search.is_empty()) {

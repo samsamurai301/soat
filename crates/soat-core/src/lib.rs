@@ -9,6 +9,7 @@ mod id;
 mod money;
 pub mod options;
 mod permission;
+pub mod tags;
 mod tenant;
 
 pub use domain::{Domain, DomainError};

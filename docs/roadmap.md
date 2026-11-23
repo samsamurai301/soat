@@ -45,7 +45,7 @@ layer.
 - [x] B1 Variants and options: up to 3 options per product, variants with own SKU and price (product currency), options change only while variants still fit **alpha**
 - [x] B2 Collections: hand-picked, ordered, unique handles per shop **alpha**
 - [ ] B3 Smart collections
-- [ ] B4 Categories and tags **alpha**
+- [x] B4 Categories (a tree, up to 8 deep, listing includes subtrees) and product tags (`?tag=`) **alpha**
 - [ ] B5 Custom fields **alpha**
 - [ ] B6 Files and media **alpha**
 - [ ] B7 Image pipeline

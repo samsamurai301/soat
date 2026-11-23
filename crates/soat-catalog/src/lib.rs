@@ -1,15 +1,18 @@
 //! Catalog: products of the request's tenant.
 //!
 //! Products have options and variants ([`variants`]) and are grouped in
-//! [`collections`]. Categories and media follow (milestones B3 to B12).
+//! [`collections`], sorted into [`categories`] and tagged. Media and the
+//! rest follow (milestones B5 to B12).
 //!
 //! Every query runs in a tenant transaction (row-level security) and filters
 //! on `tenant_id`, so one tenant can never read or change
 //! another's products: a foreign id is simply "not found".
 
+pub mod categories;
 pub mod collections;
 pub mod variants;
 
+use soat_core::tags::normalize_tags;
 use soat_core::{id_kind, Currency, Permission};
 use soat_module::Module;
 use soat_tenancy::{Tenant, TenantListing};
@@ -47,6 +50,8 @@ impl Module for Catalog {
             PRODUCTS_WRITE,
             collections::COLLECTIONS_READ,
             collections::COLLECTIONS_WRITE,
+            categories::CATEGORIES_READ,
+            categories::CATEGORIES_WRITE,
         ]
     }
 
@@ -60,6 +65,7 @@ impl Module for Catalog {
         ))
         .plugin(variants::mount)
         .plugin(collections::mount)
+        .plugin(categories::mount)
     }
 }
 
@@ -75,6 +81,8 @@ pub struct Product {
     pub price_minor: i64,
     /// ISO 4217 code, e.g. `EUR`.
     pub currency: String,
+    /// Free-form tags, e.g. `["summer", "organic"]`.
+    pub tags: Vec<String>,
 }
 
 /// Body of a create request.
@@ -88,6 +96,8 @@ pub struct NewProduct {
     pub price_minor: i64,
     #[validate(length(equal = 3))]
     pub currency: String,
+    /// Trimmed, deduplicated; at most 50.
+    pub tags: Option<Vec<String>>,
 }
 
 /// Body of an update request; absent fields stay as they are. The currency
@@ -100,13 +110,20 @@ pub struct ProductChange {
     pub title: Option<String>,
     #[validate(range(min = 0))]
     pub price_minor: Option<i64>,
+    /// Replaces all tags.
+    pub tags: Option<Vec<String>>,
 }
 
-const COLUMNS: &str = "id, sku, title, price_minor, currency";
+fn tags(raw: Option<&[String]>) -> Result<Option<Vec<String>>> {
+    raw.map(|t| normalize_tags(t).map_err(|e| Error::unprocessable(e).with_code("invalid_tags")))
+        .transpose()
+}
+
+const COLUMNS: &str = "id, sku, title, price_minor, currency, tags";
 
 /// List the tenant's products, 50 per page (at most 200).
 ///
-/// `?q=` searches SKU and title, `?currency=EUR` filters, `?sort=-price_minor`
+/// `?q=` searches SKU and title, `?currency=EUR` and `?tag=summer` filter, `?sort=-price_minor`
 /// sorts (by `id`, `sku`, `title` or `price_minor`), `?limit=&offset=` pages.
 /// Ids are time-ordered, so the default sort is oldest first.
 #[get("/api/products", tag = "catalog")]
@@ -116,6 +133,7 @@ async fn list_products(db: Db, tenant: Tenant, params: ListParams) -> Result<Jso
         .sortable(["id", "sku", "title", "price_minor"])
         .search(["sku", "title"])
         .filter_text("currency")
+        .filter_array("tag", "tags")
         .page_size(50, 200)
         .fetch(&mut tx, &params)
         .await?;
@@ -133,10 +151,11 @@ async fn create_product(
 ) -> Result<(StatusCode, Json<Product>)> {
     let currency = Currency::parse(&p.currency)
         .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))?;
+    let tags = tags(p.tags.as_deref())?.unwrap_or_default();
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
     let product = sqlx::query_as::<_, Product>(&format!(
-        "INSERT INTO products (id, tenant_id, sku, title, price_minor, currency) \
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING {COLUMNS}"
+        "INSERT INTO products (id, tenant_id, sku, title, price_minor, currency, tags) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {COLUMNS}"
     ))
     .bind(ProductId::new().as_str())
     .bind(tenant.id())
@@ -144,6 +163,7 @@ async fn create_product(
     .bind(&p.title)
     .bind(p.price_minor)
     .bind(currency.as_str())
+    .bind(&tags)
     .fetch_one(&mut *tx)
     .await?;
     tenant.publish(&mut tx, "product.created", &product).await?;
@@ -177,10 +197,11 @@ async fn update_product(
     Valid(Json(change)): Valid<Json<ProductChange>>,
 ) -> Result<Json<Product>> {
     let id = ProductId::parse(&id).map_err(|_| Error::not_found())?;
+    let tags = tags(change.tags.as_deref())?;
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
     let product = sqlx::query_as::<_, Product>(&format!(
         "UPDATE products SET sku = COALESCE($3, sku), title = COALESCE($4, title), \
-         price_minor = COALESCE($5, price_minor) \
+         price_minor = COALESCE($5, price_minor), tags = COALESCE($6, tags) \
          WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
     ))
     .bind(tenant.id())
@@ -188,6 +209,7 @@ async fn update_product(
     .bind(&change.sku)
     .bind(&change.title)
     .bind(change.price_minor)
+    .bind(&tags)
     .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(Error::not_found)?;
