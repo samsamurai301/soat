@@ -2,17 +2,17 @@
 
 #[test]
 fn module_list_is_valid_and_ordered() {
-    let modules = soat::modules(soat::Auth::with_setup_token("t"));
+    let modules = soat::modules(soat::Settings::for_tests("t"));
     assert_eq!(modules.validate(), Ok(()));
     assert_eq!(
         modules.names(),
-        ["auth", "events", "tenancy", "webhooks", "fields", "catalog"]
+        ["auth", "events", "tenancy", "webhooks", "fields", "files", "catalog"]
     );
 }
 
 #[test]
 fn every_module_migration_is_merged() {
-    let files = soat::modules(soat::Auth::with_setup_token("t"))
+    let files = soat::modules(soat::Settings::for_tests("t"))
         .migrations()
         .unwrap()
         .files()

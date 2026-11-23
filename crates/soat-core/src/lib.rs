@@ -7,6 +7,7 @@ mod domain;
 pub mod fields;
 pub mod handle;
 mod id;
+pub mod media;
 mod money;
 pub mod options;
 mod permission;

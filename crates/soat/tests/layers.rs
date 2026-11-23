@@ -24,11 +24,11 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-tenancy", 5),
     ("soat-webhooks", 6),
     ("soat-fields", 7),
+    ("soat-files", 8),
     // Catalog.
     ("soat-catalog", 10),
     ("soat-inventory", 10),
     ("soat-pricing", 10),
-    ("soat-files", 10),
     // Selling.
     ("soat-customers", 20),
     ("soat-cart", 20),

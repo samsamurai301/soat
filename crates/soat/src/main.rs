@@ -10,5 +10,9 @@ fn main() -> std::io::Result<()> {
     });
     // DATABASE_URL, or a local Postgres database named `soat`.
     let db = Database::from_env_or("postgres://localhost/soat");
-    soat::app(db, soat::Auth::from_env()).run(addr)
+    let settings = soat::Settings::from_env().unwrap_or_else(|e| {
+        eprintln!("soat: {e}");
+        std::process::exit(1);
+    });
+    soat::app(db, settings).run(addr)
 }

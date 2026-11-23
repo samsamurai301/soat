@@ -14,8 +14,9 @@ soat-tenancy.workspace = true
 soat-events.workspace = true
 soat-webhooks.workspace = true
 soat-fields.workspace = true
+soat-files.workspace = true
 soat-catalog.workspace = true
-zapline.workspace = true
+zapline = { workspace = true, features = ["storage"] }
 
 [dev-dependencies]
 soat-testing.workspace = true

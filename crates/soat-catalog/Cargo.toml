@@ -13,7 +13,8 @@ soat-module.workspace = true
 soat-tenancy.workspace = true
 soat-events.workspace = true
 soat-fields.workspace = true
-zapline.workspace = true
+soat-files.workspace = true
+zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true

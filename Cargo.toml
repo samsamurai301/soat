@@ -18,6 +18,7 @@ soat-tenancy = { path = "crates/soat-tenancy" }
 soat-events = { path = "crates/soat-events" }
 soat-webhooks = { path = "crates/soat-webhooks" }
 soat-fields = { path = "crates/soat-fields" }
+soat-files = { path = "crates/soat-files" }
 soat-catalog = { path = "crates/soat-catalog" }
 soat-testing = { path = "crates/soat-testing" }
 # Tracks Zapline main (newer than the crates.io release); Cargo.lock pins the exact commit.

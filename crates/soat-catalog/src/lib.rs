@@ -10,6 +10,7 @@
 
 pub mod categories;
 pub mod collections;
+pub mod media;
 pub mod variants;
 
 use soat_core::tags::normalize_tags;
@@ -37,7 +38,7 @@ impl Module for Catalog {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy", "events", "fields"]
+        &["tenancy", "events", "fields", "files"]
     }
 
     fn migrations(&self) -> Option<Dir> {
@@ -68,6 +69,7 @@ impl Module for Catalog {
         .plugin(variants::mount)
         .plugin(collections::mount)
         .plugin(categories::mount)
+        .plugin(media::mount)
     }
 }
 

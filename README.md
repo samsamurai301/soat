@@ -24,6 +24,8 @@ Tests connect with `SOAT_TEST_DATABASE_URL` (default
 
 On first start the server prints a setup token (or set `SOAT_SETUP_TOKEN`).
 Use it once to create the platform admin, then act with the returned token.
+Uploads go to `./storage` (`STORAGE_DIR`), or to S3 when `S3_BUCKET` is set;
+set `STORAGE_SECRET` so file links survive restarts.
 
 ```sh
 TOKEN=$(curl -s -X POST localhost:8080/api/setup -H 'content-type: application/json' \
@@ -40,12 +42,17 @@ curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-te
 
 | Path | What |
 | --- | --- |
-| `crates/soat-core` | Domain types with no HTTP or SQL: `Money`, `Currency`, `TenantId` |
+| `crates/soat-core` | Domain rules with no HTTP or SQL: money, ids, handles, options, custom field kinds, media types |
 | `crates/soat-module` | The `Module` trait and the `Modules` set that wires modules into one app |
 | `crates/soat-auth` | Users, platform admins, login sessions, first-run setup, the `Staff` extractor |
-| `crates/soat-tenancy` | Shops, staff memberships, row-level security, the `Tenant` extractor |
-| `crates/soat-catalog` | Products of a shop |
+| `crates/soat-events` | Domain events: transactional outbox, at-least-once subscribers |
+| `crates/soat-tenancy` | Shops, staff, roles, API keys, domains, the audit log, the `Tenant` extractor |
+| `crates/soat-webhooks` | Signed outbound webhooks with retries and a delivery log |
+| `crates/soat-fields` | Custom fields any resource can carry |
+| `crates/soat-files` | Uploads checked by content, stored on disk or S3 |
+| `crates/soat-catalog` | Products, variants, collections, categories, tags, product media |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
+| `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
 
 The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 
@@ -56,9 +63,11 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Platform admin, staff login, shop creation behind auth
 - [x] Postgres as the only database
 - [x] Row-level security per tenant
-- [ ] Variants, categories, media, inventory
+- [x] Roles, API keys, events, webhooks, audit log, shop domains
+- [x] Variants, collections, categories, tags, custom fields, media
+- [ ] Inventory, price lists
 - [ ] Cart, checkout, Stripe, orders
-- [ ] Admin UI and storefront in Rust (Leptos or Zapline views)
+- [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline
 
 ## License

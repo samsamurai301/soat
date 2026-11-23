@@ -22,8 +22,11 @@ pub const ADMIN_PASSWORD: &str = "correct horse battery";
 /// The SOAT app on a fresh schema, and that schema's URL for direct SQL.
 pub async fn client_and_url() -> (TestClient, String) {
     let url = fresh_database_url().await;
-    let auth = soat::Auth::with_setup_token(SETUP_TOKEN);
-    (soat::app(Database::postgres(url.clone()), auth).test(), url)
+    let settings = soat::Settings::for_tests(SETUP_TOKEN);
+    (
+        soat::app(Database::postgres(url.clone()), settings).test(),
+        url,
+    )
 }
 
 /// Runs first-time setup and returns the platform admin's session token.
