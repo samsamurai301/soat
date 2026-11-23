@@ -935,3 +935,223 @@ async fn owners_change_settings() {
         .json();
     assert_eq!(s["approval"], "writes");
 }
+
+#[tokio::test]
+async fn owners_set_up_selling() {
+    let (client, t) = common::with_tenants(&["acme"]).await;
+    let admin = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+    let api = |path: &'static str| {
+        let (client, t) = (&client, &t);
+        async move {
+            client
+                .get(path)
+                .header("x-soat-tenant", "acme")
+                .bearer(t)
+                .send()
+                .await
+                .json::<serde_json::Value>()
+        }
+    };
+    for area in ["payments", "shipping", "taxes", "email", "invoices"] {
+        get(&client, &admin, &format!("/admin/acme/settings/{area}"))
+            .await
+            .assert_status(200);
+    }
+
+    // Payments: a manual method with instructions, off and on again.
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/payments/add",
+        json!({ "provider": "manual", "name": "Bank transfer", "instructions": "IBAN DE00 …" }),
+    )
+    .await
+    .assert_status(303);
+    let methods = api("/api/payment-methods").await;
+    let m = methods["items"][0].clone();
+    assert_eq!(m["settings"]["instructions"], "IBAN DE00 …");
+    let id = m["id"].as_str().unwrap();
+    post(
+        &client,
+        &admin,
+        &format!("/admin/acme/settings/payments/disable/{id}"),
+        json!({}),
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(
+        api("/api/payment-methods").await["items"][0]["active"],
+        false
+    );
+
+    // Shipping: a zone and a rate that is free from 50.
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/shipping/add-zone",
+        json!({ "name": "Germany", "countries": "de" }),
+    )
+    .await
+    .assert_status(303);
+    let zone = api("/api/shipping/zones").await["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let res = post(
+        &client,
+        &admin,
+        &format!("/admin/acme/settings/shipping/add-rate/{zone}"),
+        json!({ "name": "Standard", "currency": "EUR", "price": "4,95" }),
+    )
+    .await;
+    res.assert_status(303);
+    let res = post(
+        &client,
+        &admin,
+        &format!("/admin/acme/settings/shipping/add-rate/{zone}"),
+        json!({ "name": "Express", "currency": "EUR", "price": "9.90", "free_from": "50", "min_days": "1", "max_days": "2" }),
+    )
+    .await;
+    res.assert_status(303);
+    let html = get(&client, &admin, "/admin/acme/settings/shipping")
+        .await
+        .text();
+    assert!(
+        html.contains("4.95 EUR") && html.contains("from 50.00 EUR") && html.contains("1–2 days"),
+        "{html}"
+    );
+    let res = post(
+        &client,
+        &admin,
+        &format!("/admin/acme/settings/shipping/add-rate/{zone}"),
+        json!({ "name": "Bad", "currency": "EUR", "price": "free" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("The price is an amount in EUR"));
+    let quote: serde_json::Value = client
+        .post("/api/shipping/options")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({ "country": "DE", "currency": "EUR", "subtotal_minor": 6000, "weight_grams": 0 }))
+        .send()
+        .await
+        .json();
+    let prices: Vec<i64> = quote["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["price_minor"].as_i64().unwrap())
+        .collect();
+    assert_eq!(prices, vec![0, 495], "{quote}");
+
+    // Taxes: settings, the EU preset and a zone of its own.
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/taxes/settings",
+        json!({ "origin_country": "de", "prices_include_tax": "1" }),
+    )
+    .await
+    .assert_status(303);
+    let tax = api("/api/tax/settings").await;
+    assert_eq!(tax["origin_country"], "DE");
+    assert_eq!(tax["charge_destination_vat"], false);
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/taxes/eu-vat",
+        json!({}),
+    )
+    .await
+    .assert_status(303);
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/taxes/add-zone",
+        json!({ "name": "Switzerland", "countries": "CH, li", "standard": "8,1", "reduced": "2.6" }),
+    )
+    .await
+    .assert_status(303);
+    let html = get(&client, &admin, "/admin/acme/settings/taxes")
+        .await
+        .text();
+    assert!(
+        html.contains("reduced 2.6%, standard 8.1%") && html.contains("standard 19%"),
+        "{html}"
+    );
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/settings/taxes/add-zone",
+        json!({ "name": "X", "countries": "NO", "standard": "lots" }),
+    )
+    .await;
+    res.assert_status(422);
+
+    // Email: sender, a template off, a template reworded.
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/email/settings",
+        json!({ "sender_name": "Acme", "reply_to": "help@acme.example", "enabled": "order_confirmation" }),
+    )
+    .await
+    .assert_status(303);
+    let n = api("/api/notifications/settings").await;
+    assert_eq!(n["sender_name"], "Acme");
+    let off = n["disabled"].as_array().unwrap();
+    assert!(off.contains(&json!("order_canceled")) && !off.contains(&json!("order_confirmation")));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/emails/order_confirmation",
+        json!({ "subject": "Thanks {{#if }}", "text": "x" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("value=\"Thanks {{#if }}\""));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/emails/order_confirmation",
+        json!({ "subject": "Danke für Bestellung {{ order.number }}", "text": "Hallo\r\nDanke!" }),
+    )
+    .await;
+    res.assert_status(303);
+    let tpl = api("/api/notifications/templates/order_confirmation").await;
+    assert_eq!(tpl["text"], "Hallo\nDanke!");
+    assert_eq!(tpl["customized"], true);
+    post(
+        &client,
+        &admin,
+        "/admin/acme/emails/order_confirmation/reset",
+        json!({}),
+    )
+    .await
+    .assert_status(303);
+    assert_eq!(
+        api("/api/notifications/templates/order_confirmation").await["customized"],
+        false
+    );
+
+    // Invoices: legal details.
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/settings/invoices/settings",
+        json!({
+            "legal_name": "Acme GmbH", "line1": "Hauptstr. 1", "postal_code": "10115",
+            "city": "Berlin", "country": "de", "vat_number": "DE123456789", "issue_on": "placed"
+        }),
+    )
+    .await;
+    res.assert_status(303);
+    let inv = api("/api/invoices/settings").await;
+    assert_eq!(inv["legal_name"], "Acme GmbH");
+    assert_eq!(inv["issue_on"], "placed");
+    let html = get(&client, &admin, "/admin/acme/settings/invoices")
+        .await
+        .text();
+    assert!(html.contains("value=\"placed\" selected"));
+}

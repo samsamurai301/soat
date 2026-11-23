@@ -145,6 +145,9 @@ impl Module for Admin {
             settings::show_area,
             settings::act,
             settings::act_on,
+            settings::email_template,
+            settings::save_email_template,
+            settings::reset_email_template,
         ))
     }
 }

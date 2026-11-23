@@ -1,0 +1,16 @@
+<div class="head">
+  <h1>{{ template.key }}</h1>
+  <a href="{{ base }}/settings/email">Email settings</a>
+</div>
+<p class="muted">{{ template.description }}</p>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/emails/{{ template.key }}" class="form">
+  <label>Subject <input name="subject" value="{{ template.subject }}" required></label>
+  <label>Text <textarea name="text" rows="12" class="code" spellcheck="false">{{ template.text }}</textarea></label>
+  <label>HTML <span class="muted">(optional)</span> <textarea name="html" rows="12" class="code" spellcheck="false">{{ template.html }}</textarea></label>
+  <button class="button">Save</button>
+</form>
+{{#if template.customized }}
+<form method="post" action="{{ base }}/emails/{{ template.key }}/reset" class="danger" hx-confirm="Go back to the default wording?"><button class="link">Back to the default</button></form>
+{{/if}}

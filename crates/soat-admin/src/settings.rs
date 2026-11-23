@@ -1,16 +1,54 @@
-//! Settings, by area: general (languages, domains), staff, developers (API
-//! keys, webhooks) and Claude (approval of its changes). Each area is one
-//! page; its forms post to `settings/{area}/{action}[/{item}]`.
+//! Settings, by area: general (languages, domains), payments, shipping,
+//! taxes, email, invoices, staff, developers (API keys, webhooks) and
+//! Claude (approval of its changes). Each area is one page; its forms post
+//! to `settings/{area}/{action}[/{item}]`.
 
 use serde_json::{json, Map, Value};
 use zapline::db::Db;
 use zapline::prelude::*;
 
-use crate::util::{encode, message};
+use soat_core::Currency;
+
+use crate::util::{encode, message, money};
 use crate::{Ctx, Shared};
 
 /// The areas, in the order the tabs show them.
-const AREAS: &[&str] = &["general", "staff", "developers", "assistant"];
+const AREAS: &[&str] = &[
+    "general",
+    "payments",
+    "shipping",
+    "taxes",
+    "email",
+    "invoices",
+    "staff",
+    "developers",
+    "assistant",
+];
+
+/// A percentage such as `19` or `7,5` in basis points.
+fn bps(text: &str) -> Option<i64> {
+    let eur = Currency::parse("EUR").ok()?;
+    eur.parse_decimal(&text.trim().replace(',', "."))
+        .filter(|b| (0..=10_000).contains(b))
+}
+
+/// An amount such as `4.95` in minor units of `currency`.
+fn amount(text: &str, currency: &str) -> Option<i64> {
+    Currency::parse(currency)
+        .ok()?
+        .parse_decimal(&text.trim().replace(',', "."))
+        .filter(|a| *a >= 0)
+}
+
+fn percent(bps: &Value) -> String {
+    let b = bps.as_i64().unwrap_or(0);
+    if b % 100 == 0 {
+        format!("{}%", b / 100)
+    } else {
+        let s = format!("{}.{:02}", b / 100, b % 100);
+        format!("{}%", s.trim_end_matches('0'))
+    }
+}
 
 /// A form's fields; a name may repeat (checkboxes).
 struct Fields(Vec<(String, String)>);
@@ -116,6 +154,85 @@ async fn page(mut cx: Ctx, area: &str, error: Option<String>, status: StatusCode
             cx.set("staff", Value::Array(staff));
             cx.set("roles", roles);
         }
+        "payments" => {
+            let methods = page_or!(cx.get("/api/payment-methods").await);
+            let providers = page_or!(cx.get("/api/payment-providers").await);
+            cx.set("methods", methods["items"].clone());
+            cx.set("providers", providers["items"].clone());
+        }
+        "shipping" => {
+            let zones = page_or!(cx.get("/api/shipping/zones").await);
+            let zones: Vec<Value> = zones["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|z| {
+                    let rates: Vec<Value> = z["rates"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|r| {
+                            let cur = r["currency"].as_str().unwrap_or_default();
+                            let days = match (r["min_days"].as_i64(), r["max_days"].as_i64()) {
+                                (Some(a), Some(b)) if a == b => format!("{a} days"),
+                                (Some(a), Some(b)) => format!("{a}–{b} days"),
+                                (None, Some(b)) => format!("up to {b} days"),
+                                (Some(a), None) => format!("from {a} days"),
+                                _ => String::new(),
+                            };
+                            json!({
+                                "id": r["id"], "name": r["name"], "carrier": r["carrier"],
+                                "price": money(r["price_minor"].as_i64().unwrap_or(0), cur),
+                                "free_from": r["min_subtotal_minor"].as_i64().map(|m| money(m, cur)),
+                                "days": days,
+                            })
+                        })
+                        .collect();
+                    json!({ "id": z["id"], "name": z["name"], "countries": z["countries"], "rates": rates })
+                })
+                .collect();
+            cx.set("zones", Value::Array(zones));
+        }
+        "taxes" => {
+            let settings = page_or!(cx.get("/api/tax/settings").await);
+            let zones = page_or!(cx.get("/api/tax/zones?limit=200").await);
+            let zones: Vec<Value> = zones["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|z| {
+                    let rates: Vec<String> = z["rates"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|r| format!("{} {}", r["tax_class"].as_str().unwrap_or_default(), percent(&r["rate_bps"])))
+                        .collect();
+                    json!({ "id": z["id"], "name": z["name"], "countries": z["countries"], "rates": rates.join(", ") })
+                })
+                .collect();
+            cx.set("tax", settings);
+            cx.set("zones", Value::Array(zones));
+        }
+        "email" => {
+            let settings = page_or!(cx.get("/api/notifications/settings").await);
+            let templates = page_or!(cx.get("/api/notifications/templates").await);
+            cx.set("email", settings);
+            cx.set("templates", templates);
+        }
+        "invoices" => {
+            let (status, settings) = cx.call(Method::GET, "/api/invoices/settings", None).await;
+            match status {
+                200 => cx.set("invoice", settings),
+                404 => cx.set("invoice", json!({ "issue_on": "paid", "address": {} })),
+                401 => return Redirect::to("/admin/login").into_response(),
+                _ => return cx.failed(status, &settings),
+            }
+            let on = cx.data["invoice"]["issue_on"]
+                .as_str()
+                .unwrap_or("paid")
+                .to_owned();
+            cx.set("issue_on", json!({ on: true }));
+        }
         "developers" => {
             let keys = page_or!(cx.get("/api/api-keys").await);
             let hooks = page_or!(cx.get("/api/webhooks").await);
@@ -154,6 +271,11 @@ async fn page(mut cx: Ctx, area: &str, error: Option<String>, status: StatusCode
         .map(|a| {
             let label = match *a {
                 "general" => "General",
+                "payments" => "Payments",
+                "shipping" => "Shipping",
+                "taxes" => "Taxes",
+                "email" => "Email",
+                "invoices" => "Invoices",
                 "staff" => "Staff",
                 "developers" => "Developers",
                 _ => "Claude",
@@ -212,9 +334,181 @@ enum Call {
     Secret(Method, String, Value, &'static str),
 }
 
+/// The area again with `error`, for a form that never reached the API.
+async fn refused(cx: Ctx, area: &str, error: &str) -> Response {
+    page(
+        cx,
+        area,
+        Some(error.to_owned()),
+        StatusCode::UNPROCESSABLE_ENTITY,
+    )
+    .await
+}
+
 async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Fields) -> Response {
     let item = item.map(encode);
+    let opt = |name: &str| {
+        let v = f.get(name);
+        (!v.is_empty()).then_some(v)
+    };
     let call = match (area, action, item) {
+        ("payments", "add", None) => {
+            let provider = f.get("provider");
+            let settings = if provider == "manual" {
+                json!({ "instructions": f.get("instructions") })
+            } else {
+                match opt("settings").map(|s| serde_json::from_str::<Value>(&s)) {
+                    None => json!({}),
+                    Some(Ok(v)) => v,
+                    Some(Err(_)) => {
+                        return refused(cx, area, "The settings are not valid JSON.").await
+                    }
+                }
+            };
+            Call::Plain(
+                Method::POST,
+                "/api/payment-methods".into(),
+                Some(json!({ "provider": provider, "name": f.get("name"), "settings": settings })),
+            )
+        }
+        ("payments", toggle @ ("enable" | "disable"), Some(m)) => Call::Plain(
+            Method::PATCH,
+            format!("/api/payment-methods/{m}"),
+            Some(json!({ "active": toggle == "enable" })),
+        ),
+        ("payments", "remove", Some(m)) => {
+            Call::Plain(Method::DELETE, format!("/api/payment-methods/{m}"), None)
+        }
+        ("shipping", "add-zone", None) => Call::Plain(
+            Method::POST,
+            "/api/shipping/zones".into(),
+            Some(json!({ "name": f.get("name"), "countries": upper(f.list("countries")) })),
+        ),
+        ("shipping", "remove-zone", Some(z)) => {
+            Call::Plain(Method::DELETE, format!("/api/shipping/zones/{z}"), None)
+        }
+        ("shipping", "add-rate", Some(z)) => {
+            let currency = f.get("currency").to_ascii_uppercase();
+            let Some(price) = amount(&f.get("price"), &currency) else {
+                return refused(
+                    cx,
+                    area,
+                    &format!("The price is an amount in {currency}, like 4.95."),
+                )
+                .await;
+            };
+            let free_from = match opt("free_from") {
+                None => None,
+                Some(t) => match amount(&t, &currency) {
+                    Some(a) => Some(a),
+                    None => {
+                        return refused(cx, area, "“Free from” is an amount, like 50.00.").await
+                    }
+                },
+            };
+            let days = |n: &str| opt(n).and_then(|d| d.parse::<i32>().ok());
+            let base = json!({
+                "name": f.get("name"), "carrier": opt("carrier"), "currency": currency,
+                "min_days": days("min_days"), "max_days": days("max_days"),
+            });
+            // A free-shipping threshold is a second rate at 0 from that subtotal,
+            // and the paid one stops below it.
+            let mut paid = base.clone();
+            paid["price_minor"] = json!(price);
+            if let Some(m) = free_from {
+                paid["max_subtotal_minor"] = json!(m - 1);
+                let mut free = base;
+                free["price_minor"] = json!(0);
+                free["min_subtotal_minor"] = json!(m);
+                let path = format!("/api/shipping/zones/{z}/rates");
+                let (status, out) = cx.call(Method::POST, &path, Some(&free)).await;
+                if !(200..300).contains(&status) {
+                    let code =
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::UNPROCESSABLE_ENTITY);
+                    return page(cx, area, Some(message(&out)), code).await;
+                }
+            }
+            Call::Plain(
+                Method::POST,
+                format!("/api/shipping/zones/{z}/rates"),
+                Some(paid),
+            )
+        }
+        ("shipping", "remove-rate", Some(r)) => {
+            Call::Plain(Method::DELETE, format!("/api/shipping/rates/{r}"), None)
+        }
+        ("taxes", "settings", None) => Call::Plain(
+            Method::PUT,
+            "/api/tax/settings".into(),
+            Some(json!({
+                "origin_country": opt("origin_country").map(|c| c.to_ascii_uppercase()),
+                "prices_include_tax": !f.get("prices_include_tax").is_empty(),
+                "charge_destination_vat": !f.get("charge_destination_vat").is_empty(),
+            })),
+        ),
+        ("taxes", "eu-vat", None) => Call::Plain(
+            Method::POST,
+            "/api/tax/presets/eu-vat".into(),
+            Some(json!({})),
+        ),
+        ("taxes", "add-zone", None) => {
+            let mut rates = Vec::new();
+            for (class, field) in [("standard", "standard"), ("reduced", "reduced")] {
+                if let Some(t) = opt(field) {
+                    let Some(b) = bps(&t) else {
+                        return refused(cx, area, "A rate is a percentage, like 19 or 7.5.").await;
+                    };
+                    rates.push(json!({ "tax_class": class, "rate_bps": b }));
+                }
+            }
+            Call::Plain(
+                Method::POST,
+                "/api/tax/zones".into(),
+                Some(
+                    json!({ "name": f.get("name"), "countries": upper(f.list("countries")), "rates": rates }),
+                ),
+            )
+        }
+        ("taxes", "remove-zone", Some(z)) => {
+            Call::Plain(Method::DELETE, format!("/api/tax/zones/{z}"), None)
+        }
+        ("email", "settings", None) => {
+            // Unticked templates are turned off.
+            let templates = page_or!(cx.get("/api/notifications/templates").await);
+            let on = f.all("enabled");
+            let disabled: Vec<Value> = templates
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|t| t["key"].as_str())
+                .filter(|k| !on.iter().any(|o| o == k))
+                .map(|k| json!(k))
+                .collect();
+            Call::Plain(
+                Method::PUT,
+                "/api/notifications/settings".into(),
+                Some(json!({
+                    "sender_name": f.get("sender_name"), "reply_to": opt("reply_to"),
+                    "staff_email": opt("staff_email"), "disabled": disabled,
+                })),
+            )
+        }
+        ("invoices", "settings", None) => Call::Plain(
+            Method::PUT,
+            "/api/invoices/settings".into(),
+            Some(json!({
+                "legal_name": f.get("legal_name"),
+                "address": {
+                    "line1": f.get("line1"), "line2": f.get("line2"),
+                    "postal_code": f.get("postal_code"), "city": f.get("city"),
+                    "country": f.get("country").to_ascii_uppercase(),
+                },
+                "vat_number": opt("vat_number"), "tax_number": opt("tax_number"),
+                "email": opt("email"), "bank_details": f.get("bank_details"),
+                "footer": f.get("footer"), "invoice_prefix": opt("invoice_prefix"),
+                "credit_note_prefix": opt("credit_note_prefix"), "issue_on": opt("issue_on"),
+            })),
+        ),
         ("general", "languages", None) => Call::Plain(
             Method::PUT,
             "/api/languages".into(),
@@ -312,6 +606,99 @@ async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Field
     }
 }
 
+/// An email's wording to edit.
+#[get("/admin/{shop}/emails/{key}", tag = "admin")]
+pub(crate) async fn email_template(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, key)): Path<(String, String)>,
+    Query(q): Query<Map<String, Value>>,
+) -> Result<Response> {
+    let mut cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "settings").await);
+    let t = page!(
+        cx.get(&format!("/api/notifications/templates/{}", encode(&key)))
+            .await
+    );
+    cx.set("saved", json!(q.contains_key("saved")));
+    cx.set("page_title", json!(format!("Email: {key}")));
+    cx.set("template", t);
+    Ok(cx.render("email_template", StatusCode::OK))
+}
+
+/// The email form's fields.
+#[model]
+pub struct TemplateForm {
+    pub subject: String,
+    pub text: String,
+    pub html: Option<String>,
+}
+
+/// Reword an email (a form post); a template that does not parse is shown
+/// again with the reason.
+#[post("/admin/{shop}/emails/{key}", tag = "admin")]
+pub(crate) async fn save_email_template(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, key)): Path<(String, String)>,
+    Form(f): Form<TemplateForm>,
+) -> Result<Response> {
+    let mut cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "settings").await);
+    let crlf = |t: &str| t.replace("\r\n", "\n");
+    let body = json!({
+        "subject": f.subject.trim(), "text": crlf(&f.text),
+        "html": crlf(f.html.as_deref().unwrap_or_default()),
+    });
+    let path = format!("/api/notifications/templates/{}", encode(&key));
+    let (status, out) = cx.call(Method::PUT, &path, Some(&body)).await;
+    Ok(match status {
+        200 => {
+            Redirect::to(&format!("/admin/{shop}/emails/{}?saved=1", encode(&key))).into_response()
+        }
+        401 => Redirect::to("/admin/login").into_response(),
+        422 => {
+            let current = page!(cx.get(&path).await);
+            let mut t = body;
+            t["key"] = json!(key);
+            t["description"] = current["description"].clone();
+            t["customized"] = current["customized"].clone();
+            cx.set("page_title", json!(format!("Email: {key}")));
+            cx.set("template", t);
+            cx.set("error", json!(message(&out)));
+            cx.render("email_template", StatusCode::UNPROCESSABLE_ENTITY)
+        }
+        _ => cx.failed(status, &out),
+    })
+}
+
+/// Back to an email's default wording (a form post).
+#[post("/admin/{shop}/emails/{key}/reset", tag = "admin")]
+pub(crate) async fn reset_email_template(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, key)): Path<(String, String)>,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "settings").await);
+    let path = format!("/api/notifications/templates/{}", encode(&key));
+    let (status, out) = cx.call(Method::DELETE, &path, None).await;
+    Ok(match status {
+        200 | 204 => {
+            Redirect::to(&format!("/admin/{shop}/emails/{}", encode(&key))).into_response()
+        }
+        401 => Redirect::to("/admin/login").into_response(),
+        _ => cx.failed(status, &out),
+    })
+}
+
+fn upper(v: Vec<String>) -> Vec<String> {
+    v.into_iter().map(|c| c.to_ascii_uppercase()).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,5 +710,19 @@ mod tests {
         assert_eq!(f.all("permissions"), ["products:read", "orders:read"]);
         assert_eq!(f.list("events"), ["a.b", "c.d"]);
         assert_eq!(f.get("missing"), "");
+    }
+
+    #[test]
+    fn rates_and_amounts() {
+        assert_eq!(bps("19"), Some(1900));
+        assert_eq!(bps("7,5"), Some(750));
+        assert_eq!(bps("101"), None);
+        assert_eq!(bps("x"), None);
+        assert_eq!(amount("4,95", "EUR"), Some(495));
+        assert_eq!(amount("500", "JPY"), Some(500));
+        assert_eq!(amount("-1", "EUR"), None);
+        assert_eq!(percent(&json!(1900)), "19%");
+        assert_eq!(percent(&json!(750)), "7.5%");
+        assert_eq!(percent(&json!(1025)), "10.25%");
     }
 }

@@ -61,3 +61,5 @@ code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: va
 .inline.tight { margin: 0; align-items: center; }
 .proposal { border-top: 1px solid var(--line); padding: .75rem 0; }
 .proposal form { display: inline-block; margin-right: .75rem; }
+.row.tight { display: inline-flex; gap: .25rem; align-items: center; }
+.head form { margin: 0; }

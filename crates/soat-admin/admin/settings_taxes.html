@@ -1,0 +1,24 @@
+{{> settings_tabs }}
+<section class="panel">
+  <h2>How you charge tax</h2>
+  <form method="post" action="{{ base }}/settings/taxes/settings" class="form">
+    <label>Registered in <input name="origin_country" value="{{ tax.origin_country }}" placeholder="DE" maxlength="2" size="3"></label>
+    <label class="check"><input type="checkbox" name="prices_include_tax" value="1"{{#if tax.prices_include_tax }} checked{{/if}}> Prices include tax</label>
+    <label class="check"><input type="checkbox" name="charge_destination_vat" value="1"{{#if tax.charge_destination_vat }} checked{{/if}}> Charge the buyer's country's VAT in the EU (One-Stop Shop)</label>
+    <button class="button">Save</button>
+  </form>
+</section>
+<section class="panel">
+  <div class="head"><h2>Tax zones</h2>
+  <form method="post" action="{{ base }}/settings/taxes/eu-vat"><button class="button">Add EU VAT rates</button></form></div>
+  {{#if zones }}<table class="table"><tbody>{{#each zones }}<tr><td>{{ name }}</td><td class="small">{{#each countries }}{{ this }} {{/each}}</td><td class="small">{{ rates }}</td><td class="num"><form method="post" action="{{ base }}/settings/taxes/remove-zone/{{ id }}" hx-confirm="Remove this tax zone?"><button class="link">Remove</button></form></td></tr>{{/each}}</tbody></table>
+  {{else}}<p class="muted">No tax zones: no tax is charged.</p>{{/if}}
+  <h3>Add a zone</h3>
+  <form method="post" action="{{ base }}/settings/taxes/add-zone" class="inline">
+    <label>Name <input name="name" placeholder="Switzerland" required></label>
+    <label>Countries <input name="countries" placeholder="CH, LI" required></label>
+    <label>Standard % <input name="standard" placeholder="8.1" size="5"></label>
+    <label>Reduced % <input name="reduced" placeholder="2.6" size="5"></label>
+    <button class="button">Add zone</button>
+  </form>
+</section>

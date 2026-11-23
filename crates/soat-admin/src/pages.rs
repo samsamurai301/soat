@@ -31,6 +31,30 @@ const FILES: &[(&str, &str)] = &[
     ("theme_file", include_str!("../admin/theme_file.html")),
     ("settings_tabs", include_str!("../admin/settings_tabs.html")),
     (
+        "settings_payments",
+        include_str!("../admin/settings_payments.html"),
+    ),
+    (
+        "settings_shipping",
+        include_str!("../admin/settings_shipping.html"),
+    ),
+    (
+        "settings_taxes",
+        include_str!("../admin/settings_taxes.html"),
+    ),
+    (
+        "settings_email",
+        include_str!("../admin/settings_email.html"),
+    ),
+    (
+        "settings_invoices",
+        include_str!("../admin/settings_invoices.html"),
+    ),
+    (
+        "email_template",
+        include_str!("../admin/email_template.html"),
+    ),
+    (
         "settings_general",
         include_str!("../admin/settings_general.html"),
     ),
@@ -67,6 +91,7 @@ impl Pages {
     /// Page `name` inside the layout, as an HTML response.
     pub fn render(&self, name: &str, data: &Value, status: StatusCode) -> Response {
         let content = self.0.get(name);
+        debug_assert!(content.is_some(), "no admin template {name}");
         let partials = |n: &str| -> Option<&Template> {
             if n == "content" {
                 content
