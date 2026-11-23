@@ -67,7 +67,8 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Roles, API keys, events, webhooks, audit log, shop domains
 - [x] Variants, collections, categories, tags, custom fields, media
 - [x] Inventory and locations
-- [ ] Stock reservations, price lists
+- [x] Stock reservations
+- [ ] Price lists
 - [ ] Cart, checkout, Stripe, orders
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline

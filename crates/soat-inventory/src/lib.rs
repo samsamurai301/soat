@@ -3,13 +3,14 @@
 //! A shop keeps stock at [`locations`]. Each stock item (a variant, or a
 //! product without variants, see [`soat_catalog::stock_item`]) has units on
 //! hand per location; every change goes through an adjustment with a
-//! reason and lands in a ledger ([`stock`]). Reservations by carts and
-//! orders (B9) will subtract from what is available.
+//! reason and lands in a ledger ([`stock`]). Carts and orders hold units
+//! with [`reservations`], which subtract from what is available.
 //!
 //! When a product or variant is deleted, the `inventory` subscriber drops
 //! its stock (the ledger stays).
 
 pub mod locations;
+pub mod reservations;
 pub mod stock;
 
 use std::sync::Arc;
@@ -61,7 +62,11 @@ impl Module for Inventory {
     }
 
     fn mount(&self, app: App) -> App {
-        app.plugin(locations::mount).plugin(stock::mount)
+        // Reservations first: `/api/inventory/reservations` must not be
+        // taken for an item id.
+        app.plugin(locations::mount)
+            .plugin(reservations::mount)
+            .plugin(stock::mount)
     }
 }
 

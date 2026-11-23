@@ -51,7 +51,7 @@ layer.
 - [x] B6 Files and media: `soat-files` (foundation) on Zapline storage, type from content (no HTML/SVG), signed links, ordered product media **alpha**
 - [ ] B7 Image pipeline
 - [x] B8 Inventory and locations: stock per variant (or variant-less product) and location, adjustments with reasons, counts, transfers, a ledger **alpha**
-- [ ] B9 Stock reservations **alpha**
+- [x] B9 Stock reservations: by reference (cart or order), optional expiry, locked per item so nothing oversells **alpha**
 - [ ] B10 Price lists and currencies **alpha**
 - [ ] B11 Group and tier prices
 - [ ] B12 Digital products and bundles

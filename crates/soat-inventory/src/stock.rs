@@ -39,6 +39,10 @@ pub struct InventoryView {
     pub allow_backorder: bool,
     /// Units on hand at all locations.
     pub on_hand: i64,
+    /// Units held by carts and orders.
+    pub reserved: i64,
+    /// On hand minus reserved, never below zero.
+    pub available: i64,
     pub levels: Vec<Level>,
 }
 
@@ -143,8 +147,11 @@ async fn view(tx: &mut TenantTx, tenant: &Tenant, item: StockItem) -> Result<Inv
     .bind(&item.id)
     .fetch_all(&mut **tx)
     .await?;
+    let now = crate::reservations::availability(tx, tenant, &item.id).await?;
     Ok(InventoryView {
-        on_hand: levels.iter().map(|l| l.on_hand).sum(),
+        on_hand: now.on_hand,
+        reserved: now.reserved,
+        available: now.available(),
         item_id: item.id,
         sku: item.sku,
         tracked,

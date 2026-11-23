@@ -1469,6 +1469,7 @@ dependencies = [
 name = "soat"
 version = "0.0.1"
 dependencies = [
+ "futures-util",
  "serde",
  "serde_json",
  "soat-auth",

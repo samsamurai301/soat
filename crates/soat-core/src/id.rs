@@ -72,8 +72,12 @@ static LAST: std::sync::Mutex<(u64, u128)> = std::sync::Mutex::new((0, 0));
 /// last id, reuse its time and add one to its randomness.
 fn next_monotonic(now: u64, random: [u8; 10]) -> (u64, [u8; 10]) {
     const MAX_RANDOM: u128 = (1 << 80) - 1;
-    let fresh = random.iter().fold(0u128, |acc, b| (acc << 8) | u128::from(*b));
-    let mut last = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let fresh = random
+        .iter()
+        .fold(0u128, |acc, b| (acc << 8) | u128::from(*b));
+    let mut last = LAST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let (millis, bits) = if now > last.0 {
         (now, fresh)
     } else if last.1 < MAX_RANDOM {
