@@ -8,9 +8,10 @@
 //!
 //! An order's `financial_status` follows its payments (whose reference is
 //! the order id): a subscriber recomputes it on every `payment.updated`.
-//! Canceling releases the stock held for it. Fulfillment comes in C11,
-//! returns in C12.
+//! Canceling releases the stock held for it. [`fulfillments`] ship its
+//! lines and take them out of stock. Returns come in C12.
 
+pub mod fulfillments;
 mod routes;
 
 use std::sync::Arc;
@@ -67,7 +68,7 @@ impl Module for Orders {
     }
 
     fn mount(&self, app: App) -> App {
-        app.plugin(routes::mount)
+        app.plugin(routes::mount).plugin(fulfillments::mount)
     }
 }
 
@@ -120,9 +121,11 @@ pub struct Order {
     /// `pending`, `authorized`, `partially_paid`, `paid`,
     /// `partially_refunded` or `refunded`.
     pub financial_status: String,
-    /// `unfulfilled` until C11.
+    /// `unfulfilled`, `partially_fulfilled` or `fulfilled`.
     pub fulfillment_status: String,
     pub lines: Vec<OrderLine>,
+    /// Shipments, oldest first.
+    pub fulfillments: Vec<fulfillments::Fulfillment>,
     /// Sum of the lines.
     pub subtotal_minor: i64,
     pub shipping_minor: i64,
@@ -163,6 +166,8 @@ pub struct OrderLine {
     pub tax_class: String,
     pub tax_rate_bps: i64,
     pub tax_minor: i64,
+    /// Units shipped (not counting canceled shipments).
+    pub fulfilled_quantity: i64,
 }
 
 /// A line to place.
@@ -377,14 +382,19 @@ pub async fn load(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Resu
         return Ok(None);
     };
     let lines = sqlx::query_as::<_, OrderLine>(
-        "SELECT id, item_id, product_id, sku, title, quantity, unit_price_minor, total_minor, \
-         tax_class, tax_rate_bps, tax_minor FROM order_lines \
-         WHERE tenant_id = $1 AND order_id = $2 ORDER BY position",
+        "SELECT l.id, l.item_id, l.product_id, l.sku, l.title, l.quantity, l.unit_price_minor, \
+         l.total_minor, l.tax_class, l.tax_rate_bps, l.tax_minor, \
+         COALESCE((SELECT SUM(fl.quantity) FROM fulfillment_lines fl \
+                   JOIN fulfillments f ON f.id = fl.fulfillment_id \
+                   WHERE fl.order_line_id = l.id AND f.status <> 'canceled'), 0)::BIGINT \
+           AS fulfilled_quantity \
+         FROM order_lines l WHERE l.tenant_id = $1 AND l.order_id = $2 ORDER BY l.position",
     )
     .bind(scope.tenant_id())
     .bind(&r.id)
     .fetch_all(&mut *conn)
     .await?;
+    let fulfillments = fulfillments::of_order(conn, scope, &r.id).await?;
     Ok(Some(Order {
         id: r.id,
         number: r.number,
@@ -396,6 +406,7 @@ pub async fn load(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Resu
         financial_status: r.financial_status,
         fulfillment_status: r.fulfillment_status,
         lines,
+        fulfillments,
         subtotal_minor: r.subtotal_minor,
         shipping_minor: r.shipping_minor,
         tax_minor: r.tax_minor,

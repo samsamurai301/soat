@@ -172,6 +172,51 @@ pub async fn reserve(
     Ok(reservation)
 }
 
+/// Lets go of up to `quantity` units of `item` held for `reference`, e.g.
+/// once they shipped.
+pub async fn take(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    reference: &str,
+    item: &str,
+    quantity: i64,
+) -> Result<()> {
+    let held: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT id, quantity FROM inventory_reservations \
+         WHERE tenant_id = $1 AND reference = $2 AND item_id = $3 ORDER BY id FOR UPDATE",
+    )
+    .bind(scope.tenant_id())
+    .bind(reference)
+    .bind(item)
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut left = quantity;
+    for (id, q) in held {
+        if left <= 0 {
+            break;
+        }
+        if q <= left {
+            sqlx::query("DELETE FROM inventory_reservations WHERE tenant_id = $1 AND id = $2")
+                .bind(scope.tenant_id())
+                .bind(&id)
+                .execute(&mut **tx)
+                .await?;
+        } else {
+            sqlx::query(
+                "UPDATE inventory_reservations SET quantity = quantity - $3 \
+                 WHERE tenant_id = $1 AND id = $2",
+            )
+            .bind(scope.tenant_id())
+            .bind(&id)
+            .bind(left)
+            .execute(&mut **tx)
+            .await?;
+        }
+        left -= q;
+    }
+    Ok(())
+}
+
 /// Keeps every reservation of `reference` until released, e.g. once its
 /// order is paid. Returns how many there are.
 pub async fn keep(tx: &mut TenantTx, scope: &impl Scope, reference: &str) -> Result<u64> {

@@ -7,7 +7,7 @@
 
 use soat_catalog::{stock_item, StockItem};
 use soat_core::id_kind;
-use soat_tenancy::{Tenant, TenantListing, TenantTx};
+use soat_tenancy::{Scope, Tenant, TenantListing, TenantTx};
 use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::prelude::*;
 
@@ -160,11 +160,12 @@ async fn view(tx: &mut TenantTx, tenant: &Tenant, item: StockItem) -> Result<Inv
     })
 }
 
-/// Applies `delta` at one location under a row lock and records it.
-/// Returns the new level, or 409 `insufficient_stock`.
-async fn apply(
+/// Applies `delta` at one location under a row lock and records it in the
+/// ledger with `reason`. Returns the new level, or 409
+/// `insufficient_stock`. Publishes `inventory.adjusted`.
+pub async fn apply(
     tx: &mut TenantTx,
-    tenant: &Tenant,
+    tenant: &impl Scope,
     item: &str,
     location: &str,
     delta: i64,
@@ -175,7 +176,7 @@ async fn apply(
         "INSERT INTO inventory_levels (tenant_id, item_id, location_id, on_hand) \
          VALUES ($1, $2, $3, 0) ON CONFLICT DO NOTHING",
     )
-    .bind(tenant.id())
+    .bind(tenant.tenant_id())
     .bind(item)
     .bind(location)
     .execute(&mut **tx)
@@ -184,7 +185,7 @@ async fn apply(
         "SELECT on_hand FROM inventory_levels \
          WHERE tenant_id = $1 AND item_id = $2 AND location_id = $3 FOR UPDATE",
     )
-    .bind(tenant.id())
+    .bind(tenant.tenant_id())
     .bind(item)
     .bind(location)
     .fetch_one(&mut **tx)
@@ -200,7 +201,7 @@ async fn apply(
         "UPDATE inventory_levels SET on_hand = $4 \
          WHERE tenant_id = $1 AND item_id = $2 AND location_id = $3",
     )
-    .bind(tenant.id())
+    .bind(tenant.tenant_id())
     .bind(item)
     .bind(location)
     .bind(after)
@@ -222,7 +223,7 @@ async fn apply(
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(&adjustment.id)
-    .bind(tenant.id())
+    .bind(tenant.tenant_id())
     .bind(item)
     .bind(location)
     .bind(delta)
@@ -236,6 +237,67 @@ async fn apply(
         .publish(tx, "inventory.adjusted", &adjustment)
         .await?;
     Ok(after)
+}
+
+/// Takes `quantity` of a shipped item out of stock for `reference` (an
+/// order): from `location`, or else the location with the most on hand,
+/// recorded as `sold`, and lets go of as much of the reference's
+/// reservation. Untracked items only lose the reservation. Returns the
+/// location used, if any.
+pub async fn ship(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    item: &str,
+    quantity: i64,
+    location: Option<&str>,
+    reference: &str,
+) -> Result<Option<String>> {
+    let tracked: Option<(bool,)> =
+        sqlx::query_as("SELECT tracked FROM inventory_items WHERE tenant_id = $1 AND item_id = $2")
+            .bind(scope.tenant_id())
+            .bind(item)
+            .fetch_optional(&mut **tx)
+            .await?;
+    let used = if tracked.is_none_or(|(t,)| t) {
+        let from = match location {
+            Some(l) => l.to_owned(),
+            None => {
+                let best: Option<(String,)> = sqlx::query_as(
+                    "SELECT location_id FROM inventory_levels \
+                     WHERE tenant_id = $1 AND item_id = $2 ORDER BY on_hand DESC, location_id \
+                     LIMIT 1",
+                )
+                .bind(scope.tenant_id())
+                .bind(item)
+                .fetch_optional(&mut **tx)
+                .await?;
+                best.map(|(l,)| l).ok_or_else(|| {
+                    Error::conflict(format!("{item} is not stocked anywhere"))
+                        .with_code("insufficient_stock")
+                })?
+            }
+        };
+        apply(tx, scope, item, &from, -quantity, "sold", reference).await?;
+        Some(from)
+    } else {
+        None
+    };
+    crate::reservations::take(tx, scope, reference, item, quantity).await?;
+    Ok(used)
+}
+
+/// Puts `quantity` of an item back at `location` for `reference`, recorded
+/// as `restocked`. Untracked items are left alone.
+pub async fn restock(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    item: &str,
+    quantity: i64,
+    location: &str,
+    reference: &str,
+) -> Result<()> {
+    apply(tx, scope, item, location, quantity, "restocked", reference).await?;
+    Ok(())
 }
 
 /// Stock levels of the shop, 50 per page (`inventory:read`). Filter with
