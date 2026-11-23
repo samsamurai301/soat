@@ -2,14 +2,18 @@
 
 #[test]
 fn module_list_is_valid_and_ordered() {
-    let modules = soat::modules();
+    let modules = soat::modules(soat::Auth::with_setup_token("t"));
     assert_eq!(modules.validate(), Ok(()));
-    assert_eq!(modules.names(), ["tenancy", "catalog"]);
+    assert_eq!(modules.names(), ["auth", "tenancy", "catalog"]);
 }
 
 #[test]
 fn every_module_migration_is_merged() {
-    let files = soat::modules().migrations().unwrap().files().unwrap();
+    let files = soat::modules(soat::Auth::with_setup_token("t"))
+        .migrations()
+        .unwrap()
+        .files()
+        .unwrap();
     assert!(files.contains(&"20261123000001_create_tenants.up.sql".to_owned()));
     assert!(files.contains(&"20261123000002_create_products.up.sql".to_owned()));
     // Each up migration has its down migration.

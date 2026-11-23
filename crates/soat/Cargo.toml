@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 soat-module.workspace = true
+soat-auth.workspace = true
 soat-tenancy.workspace = true
 soat-catalog.workspace = true
 zapline.workspace = true

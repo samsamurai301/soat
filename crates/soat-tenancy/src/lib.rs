@@ -1,7 +1,8 @@
 //! Tenancy: every shop on a SOAT install is one tenant.
 //!
-//! This module owns the `tenants` table and `POST /api/tenants`, and exports
-//! the [`Tenant`] extractor that every tenant-owned module uses to scope its
+//! This module owns the `tenants` and `memberships` tables, creating shops
+//! (platform admins only) and managing their staff, and exports the
+//! [`Tenant`] extractor that every tenant-owned module uses to scope its
 //! queries.
 //!
 //! Isolation is enforced twice: queries filter on `tenant_id`, and Postgres
@@ -21,7 +22,7 @@ mod extract;
 mod list;
 pub mod routes;
 
-pub use extract::{Tenant, TenantTx, HEADER, SETTING};
+pub use extract::{enter, Role, Tenant, TenantTx, HEADER, SETTING};
 pub use list::TenantListing;
 
 use soat_module::Module;
@@ -34,6 +35,10 @@ pub struct Tenancy;
 impl Module for Tenancy {
     fn name(&self) -> &'static str {
         "tenancy"
+    }
+
+    fn depends_on(&self) -> &'static [&'static str] {
+        &["auth"]
     }
 
     fn migrations(&self) -> Option<Dir> {

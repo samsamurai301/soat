@@ -28,7 +28,7 @@ through events, never by importing each other.
 - [x] A2 Typed IDs (`prod_…`) and list endpoints (Zapline `Listing`: offset pages, sort, search, filters) **alpha**; cursor pagination later as a Zapline addition
 - [x] A3 Postgres as the only database; tests get a fresh schema each, CI runs a Postgres service **alpha**
 - [x] A4 Row-level security per shop (`Tenant::begin`, `TenantListing`), a test that fails for any unprotected `tenant_id` table **alpha**
-- [ ] A5 Platform admin bootstrap, staff accounts, login; tenant creation behind it **alpha**
+- [x] A5 First-run setup token, platform admin, staff accounts and memberships, bearer sessions; shop creation behind auth **alpha**
 - [ ] A6 Roles and permissions **alpha**
 - [ ] A7 API keys with scopes **alpha**
 - [ ] A8 Domain events and transactional outbox **alpha**

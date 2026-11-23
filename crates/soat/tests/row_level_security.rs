@@ -9,16 +9,13 @@ use zapline::db::sqlx::{self, Connection, PgConnection};
 
 async fn setup() -> PgConnection {
     let (client, url) = common::client_and_url().await;
+    let token = common::setup_admin(&client).await;
+    common::create_tenants(&client, &token, &["acme", "globex"]).await;
     for tenant in ["acme", "globex"] {
-        client
-            .post("/api/tenants")
-            .json(&json!({ "id": tenant, "name": tenant }))
-            .send()
-            .await
-            .assert_status(201);
         client
             .post("/api/products")
             .header("x-soat-tenant", tenant)
+            .bearer(&token)
             .json(&json!({ "sku": "S", "title": "Shoe", "price_minor": 1, "currency": "EUR" }))
             .send()
             .await

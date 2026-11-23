@@ -34,7 +34,7 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   crate holds no domain code. Create a crate when its milestone starts, never
   as an empty placeholder.
 - **Dependencies point down.** A module may depend on foundation crates
-  (`soat-core`, `soat-module`, `soat-tenancy`) and on modules it names in
+  (`soat-core`, `soat-module`, `soat-auth`, `soat-tenancy`) and on modules it names in
   `depends_on`. It never imports a sibling in its own layer; siblings talk
   through events. Anything a shop can live without goes behind a Cargo feature.
 - **Migration versions are timestamps, unique across all crates**, because every

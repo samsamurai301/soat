@@ -4,6 +4,7 @@
 //! a `Module`; [`modules`] lists the ones this build includes, in dependency
 //! order, and [`app`] wires them into one Zapline app.
 
+pub use soat_auth::Auth;
 use soat_catalog::Catalog;
 use soat_module::Modules;
 use soat_tenancy::Tenancy;
@@ -13,19 +14,20 @@ use zapline::openapi::OpenApi;
 use zapline::prelude::*;
 
 /// Every module in this build. A module must come after the ones it needs.
-pub fn modules() -> Modules {
-    Modules::new().with(Tenancy).with(Catalog)
+pub fn modules(auth: Auth) -> Modules {
+    Modules::new().with(auth).with(Tenancy).with(Catalog)
 }
 
 /// Builds the application on top of `db` (Postgres). `main` passes the real
-/// database; tests pass a fresh schema each (see `tests/common`).
+/// database and `Auth::from_env()`; tests pass a fresh schema each and a
+/// fixed setup token (see `tests/common`).
 ///
 /// # Panics
 ///
 /// When the module list is inconsistent (a missing dependency, a duplicate
 /// name or migration version). That is a build mistake, caught by tests.
-pub fn app(db: Database) -> App {
-    let modules = modules();
+pub fn app(db: Database, auth: Auth) -> App {
+    let modules = modules(auth);
     modules
         .validate()
         .unwrap_or_else(|e| panic!("invalid module list: {e}"));

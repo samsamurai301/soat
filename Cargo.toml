@@ -13,6 +13,7 @@ publish = false
 [workspace.dependencies]
 soat-core = { path = "crates/soat-core" }
 soat-module = { path = "crates/soat-module" }
+soat-auth = { path = "crates/soat-auth" }
 soat-tenancy = { path = "crates/soat-tenancy" }
 soat-catalog = { path = "crates/soat-catalog" }
 # Tracks Zapline main (newer than the crates.io release); Cargo.lock pins the exact commit.

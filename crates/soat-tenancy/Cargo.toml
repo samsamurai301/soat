@@ -1,6 +1,6 @@
 [package]
 name = "soat-tenancy"
-description = "Shops (tenants): the tenants table, creating shops and the Tenant extractor every module uses."
+description = "Shops (tenants): the tenants table, staff memberships, and the Tenant extractor every module uses."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 soat-core.workspace = true
 soat-module.workspace = true
+soat-auth.workspace = true
 zapline.workspace = true
 serde.workspace = true
 sqlx.workspace = true
