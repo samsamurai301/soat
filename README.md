@@ -86,6 +86,7 @@ changes run at once with `PUT /api/assistant/settings {"approval":"off"}`.
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |
 | `crates/soat-notify` | Transactional email: order, shipping, cancel and refund emails, staff notices, editable templates, sent log |
+| `crates/soat-cms` | Content: pages built from blocks (drafts and published), menus, read by the storefront |
 | `crates/soat-mcp` | MCP server at `/mcp`: Claude runs a shop through a tool per API operation, scoped by API key, changes held for approval |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
 | `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
@@ -116,6 +117,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Discount codes
 - [x] Transactional email with editable templates
 - [x] Invoices and credit notes
+- [x] Content pages from blocks, and menus
 - [x] Claude runs your shop over MCP, with every change approved by a person
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline

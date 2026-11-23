@@ -8,6 +8,7 @@ pub use soat_auth::Auth;
 use soat_cart::Carts;
 use soat_catalog::Catalog;
 use soat_checkout::Checkout;
+use soat_cms::Cms;
 use soat_customers::Customers;
 use soat_events::Events;
 use soat_fields::Fields;
@@ -148,7 +149,8 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Orders)
         .with(Checkout)
         .with(Invoices)
-        .with(Notify::new(settings.mailer, settings.mail_from));
+        .with(Notify::new(settings.mailer, settings.mail_from))
+        .with(Cms);
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {
         Some(config) => modules.with(soat_stripe::StripeWebhooks::new(config)),

@@ -87,8 +87,8 @@ layer.
 - [ ] D2 Default theme **alpha**
 - [ ] D3 Storefront checkout pages **alpha**
 - [ ] D4 Customer account pages **alpha**
-- [ ] D5 CMS pages and blocks **alpha**
-- [ ] D6 Menus **alpha**
+- [x] D5 CMS pages and blocks **alpha**
+- [x] D6 Menus **alpha**
 - [ ] D7 Blog
 - [ ] D8 SEO basics **alpha**
 - [ ] D9 Search with facets **alpha**

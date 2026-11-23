@@ -1558,6 +1558,7 @@ dependencies = [
  "soat-cart",
  "soat-catalog",
  "soat-checkout",
+ "soat-cms",
  "soat-core",
  "soat-customers",
  "soat-events",
@@ -1644,6 +1645,19 @@ dependencies = [
  "soat-promotions",
  "soat-shipping",
  "soat-tax",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-cms"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-module",
  "soat-tenancy",
  "sqlx",
  "zapline",
