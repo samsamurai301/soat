@@ -99,6 +99,65 @@ impl FromRequestParts for Tenant {
     }
 }
 
+/// The shop a public request (storefront, customer accounts) is for, with
+/// no staff or API key involved: from the `x-soat-tenant` header, else the
+/// `Host` among the shop's domains. Its data is reached with
+/// [`Shop::begin`], which applies row-level security like [`Tenant`].
+#[derive(Debug, Clone)]
+pub struct Shop {
+    pub id: TenantId,
+}
+
+impl FromRequestParts for Shop {
+    async fn from_request_parts(req: &mut Request) -> Result<Self> {
+        let header = req
+            .headers()
+            .get(HEADER)
+            .and_then(|v| v.to_str().ok())
+            .map(|raw| TenantId::parse(raw).map_err(|_| unknown()))
+            .transpose()?;
+        let id = match header {
+            Some(id) => id,
+            None => from_host(req).await?.ok_or_else(unknown)?,
+        };
+        Ok(Shop { id })
+    }
+}
+
+impl Shop {
+    pub fn id(&self) -> &str {
+        self.id.as_str()
+    }
+
+    /// A transaction that sees only this shop; 404 (`unknown_tenant`) when
+    /// it does not exist.
+    pub async fn begin(&self, db: &Db) -> Result<TenantTx> {
+        let mut tx = db.begin().await?;
+        let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE id = $1")
+            .bind(self.id.as_str())
+            .fetch_optional(&mut *tx)
+            .await?;
+        if exists.is_none() {
+            return Err(unknown());
+        }
+        enter(&mut tx, &self.id).await?;
+        Ok(tx)
+    }
+
+    /// Publishes a domain event of this shop caused by `actor` (e.g. a
+    /// customer id), in the transaction of the change.
+    pub async fn publish(
+        &self,
+        conn: &mut PgConnection,
+        actor: Option<&str>,
+        kind: &str,
+        payload: &impl serde::Serialize,
+    ) -> Result<()> {
+        soat_events::publish(conn, self.id(), actor, kind, payload).await?;
+        Ok(())
+    }
+}
+
 /// The shop whose domain the request's `Host` is, if any.
 async fn from_host(req: &mut Request) -> Result<Option<TenantId>> {
     let Some(domain) = req

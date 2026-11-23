@@ -27,7 +27,7 @@ pub mod routes;
 pub mod staff;
 
 pub use extract::{
-    enter, Access, Actor, Tenant, TenantTx, API_KEY_PREFIX, HEADER, OWNER, SETTING, STAFF,
+    enter, Access, Actor, Shop, Tenant, TenantTx, API_KEY_PREFIX, HEADER, OWNER, SETTING, STAFF,
 };
 pub use list::TenantListing;
 

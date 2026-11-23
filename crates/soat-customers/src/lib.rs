@@ -3,8 +3,9 @@
 //! The people who buy from a shop: an email unique in the shop, names,
 //! phone, tags, a staff note, marketing consent with the time it was given,
 //! [`addresses`] and custom fields (`PUT /api/fields/customer/{key}`).
-//! Customer accounts and login come in C2.
+//! Customers sign in to the storefront with [`accounts`].
 
+pub mod accounts;
 pub mod addresses;
 
 use soat_auth::normalize_email;
@@ -59,6 +60,7 @@ impl Module for Customers {
             set_fields,
         ))
         .plugin(addresses::mount)
+        .plugin(accounts::mount)
     }
 }
 
@@ -79,6 +81,8 @@ pub struct Customer {
     pub tags: Vec<String>,
     /// For staff only.
     pub note: String,
+    /// Whether they registered and can sign in.
+    pub has_account: bool,
 }
 
 /// Body of a create request.
@@ -118,7 +122,7 @@ pub struct CustomerChange {
 
 const COLUMNS: &str = "id, email, first_name, last_name, phone, accepts_marketing, \
      to_char(marketing_consent_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') \
-     AS marketing_consent_at, tags, note";
+     AS marketing_consent_at, tags, note, password_hash IS NOT NULL AS has_account";
 
 fn tags(raw: Option<&[String]>) -> Result<Option<Vec<String>>> {
     raw.map(|t| normalize_tags(t).map_err(|e| Error::unprocessable(e).with_code("invalid_tags")))

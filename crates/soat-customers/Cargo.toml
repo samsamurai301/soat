@@ -13,7 +13,7 @@ soat-module.workspace = true
 soat-auth.workspace = true
 soat-tenancy.workspace = true
 soat-fields.workspace = true
-zapline.workspace = true
+zapline = { workspace = true, features = ["password"] }
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
