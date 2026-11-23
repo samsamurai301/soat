@@ -129,15 +129,27 @@ type Row = (
 );
 
 /// What `quantity` units of an order line are worth, tax included.
-fn value_of(unit: i64, quantity: i64, ordered: i64, line_tax: i64, inclusive: bool) -> i64 {
-    let goods = unit * quantity;
-    if inclusive || ordered == 0 {
+/// What `quantity` of `ordered` units of a line cost the buyer: the units
+/// less their share of the line's discount, plus their share of its tax
+/// when it was added on top.
+fn value_of(line: &LineWorth) -> i64 {
+    let (quantity, ordered) = (i64::from(line.1), i64::from(line.2));
+    if ordered == 0 {
+        return 0;
+    }
+    let share =
+        |amount: i64| (i128::from(amount) * i128::from(quantity) / i128::from(ordered)) as i64;
+    let goods = line.0 * quantity - share(line.4);
+    if line.5 {
         goods
     } else {
-        // The line's tax, shared out per unit.
-        goods + (i128::from(line_tax) * i128::from(quantity) / i128::from(ordered)) as i64
+        goods + share(line.3)
     }
 }
+
+/// unit price, returned quantity, ordered quantity, line tax, line
+/// discount, prices include tax.
+type LineWorth = (i64, i32, i32, i64, i64, bool);
 
 async fn build(conn: &mut PgConnection, scope: &impl Scope, r: Row) -> Result<Return> {
     let lines = sqlx::query_as::<_, ReturnLine>(
@@ -148,8 +160,9 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, r: Row) -> Result<Re
     .bind(&r.0)
     .fetch_all(&mut *conn)
     .await?;
-    let worth: Vec<(i64, i32, i32, i64, bool)> = sqlx::query_as(
-        "SELECT l.unit_price_minor, rl.quantity, l.quantity, l.tax_minor, o.prices_include_tax \
+    let worth: Vec<LineWorth> = sqlx::query_as(
+        "SELECT l.unit_price_minor, rl.quantity, l.quantity, l.tax_minor, l.discount_minor, \
+         o.prices_include_tax \
          FROM return_lines rl JOIN order_lines l ON l.id = rl.order_line_id \
          JOIN orders o ON o.id = l.order_id \
          WHERE rl.tenant_id = $1 AND rl.return_id = $2",
@@ -158,10 +171,7 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, r: Row) -> Result<Re
     .bind(&r.0)
     .fetch_all(&mut *conn)
     .await?;
-    let value_minor = worth
-        .iter()
-        .map(|(u, q, o, t, inc)| value_of(*u, i64::from(*q), i64::from(*o), *t, *inc))
-        .sum();
+    let value_minor = worth.iter().map(value_of).sum();
     Ok(Return {
         id: r.0,
         order_id: r.1,
@@ -567,8 +577,11 @@ mod tests {
 
     #[test]
     fn values() {
-        assert_eq!(value_of(1190, 1, 2, 380, true), 1190);
-        assert_eq!(value_of(1000, 1, 2, 380, false), 1190);
-        assert_eq!(value_of(1000, 2, 3, 100, false), 2066);
+        assert_eq!(value_of(&(1190, 1, 2, 380, 0, true)), 1190);
+        assert_eq!(value_of(&(1000, 1, 2, 380, 0, false)), 1190);
+        assert_eq!(value_of(&(1000, 2, 3, 100, 0, false)), 2066);
+        // 10% off two units: one returned gives back 900 plus its tax.
+        assert_eq!(value_of(&(1000, 1, 2, 342, 200, false)), 900 + 171);
+        assert_eq!(value_of(&(1000, 0, 2, 342, 200, false)), 0);
     }
 }

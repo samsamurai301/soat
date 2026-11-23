@@ -23,6 +23,7 @@ soat-cart.workspace = true
 soat-tax.workspace = true
 soat-shipping.workspace = true
 soat-payments.workspace = true
+soat-promotions.workspace = true
 soat-orders.workspace = true
 soat-checkout.workspace = true
 soat-stripe = { workspace = true, optional = true }

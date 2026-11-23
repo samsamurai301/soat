@@ -38,6 +38,7 @@ fn order(customer: Option<&str>) -> NewOrder {
                 tax_class: "standard".into(),
                 tax_rate_bps: 1900,
                 tax_minor: 380,
+                discount_minor: 0,
             },
             NewOrderLine {
                 item_id: "prod_b".into(),
@@ -49,12 +50,14 @@ fn order(customer: Option<&str>) -> NewOrder {
                 tax_class: "reduced".into(),
                 tax_rate_bps: 700,
                 tax_minor: 105,
+                discount_minor: 0,
             },
         ],
         shipping: Some(NewShipping {
             rate_id: "shr_x".into(),
             name: "Standard".into(),
             price_minor: 500,
+            discount_minor: 0,
             tax_minor: 95,
         }),
         shipping_address: Some(PostalAddress {
@@ -71,6 +74,7 @@ fn order(customer: Option<&str>) -> NewOrder {
         reverse_charge: false,
         vat_number: None,
         note: String::new(),
+        discount_code: None,
     }
 }
 

@@ -2,7 +2,8 @@
 //!
 //! The shopper, holding the cart's token, gives an email, a shipping
 //! address (a billing address, a VAT number) and picks one of the shipping
-//! options for that address. `GET .../checkout` shows the totals with tax
+//! options for that address, and may enter a discount code.
+//! `GET .../checkout` shows the totals with tax
 //! at every step and what is still missing. Completing it, in one
 //! transaction, places the order, holds the stock for it and closes the
 //! cart; then the payment starts with the chosen method.
@@ -17,10 +18,12 @@ use serde_json::Value;
 use soat_cart::storefront::CartToken;
 use soat_cart::{view, CartView};
 use soat_core::address::is_country_code;
+use soat_core::discount::allocate;
 use soat_core::{Currency, Permission};
 use soat_module::{Event, HandlerFuture, Module, Subscriber};
 use soat_orders::{NewOrder, NewOrderLine, NewShipping, Order, PostalAddress};
 use soat_payments::{Payment, Providers, StartPayment};
+use soat_promotions::{AppliedDiscount, DiscountContext};
 use soat_shipping::{ShippingOption, ShippingQuery};
 use soat_tax::{QuoteInput, TaxQuote};
 use soat_tenancy::{Scope, TenantTx};
@@ -52,6 +55,7 @@ impl Module for Checkout {
             "tax",
             "shipping",
             "payments",
+            "promotions",
             "orders",
         ]
     }
@@ -86,6 +90,10 @@ pub struct CheckoutChange {
     pub vat_number: Option<String>,
     /// One of `shipping_options`.
     pub shipping_rate_id: Option<String>,
+    /// A discount code; an empty string removes it. A code that does not
+    /// apply is a 422 `invalid_discount` saying why.
+    #[validate(length(max = 64))]
+    pub discount_code: Option<String>,
 }
 
 /// A checkout with today's prices, shipping and tax.
@@ -102,8 +110,14 @@ pub struct CheckoutView {
     pub shipping: Option<ShippingOption>,
     /// Tax on the lines and shipping, once the address is known.
     pub tax: Option<TaxQuote>,
+    /// The code entered and what it takes off, while it applies.
+    pub discount: Option<AppliedDiscount>,
+    /// Why the code entered no longer applies (e.g. the cart changed).
+    pub discount_issue: Option<String>,
     pub subtotal_minor: i64,
     pub shipping_minor: i64,
+    /// Taken off the lines and shipping.
+    pub discount_minor: i64,
     pub tax_minor: i64,
     pub total_minor: i64,
     pub prices_include_tax: bool,
@@ -141,6 +155,7 @@ struct Details {
     billing_address: Option<SqlJson<Value>>,
     vat_number: Option<String>,
     shipping_rate_id: Option<String>,
+    discount_code: Option<String>,
 }
 
 fn address(v: &Option<SqlJson<Value>>) -> Option<PostalAddress> {
@@ -179,13 +194,15 @@ struct Built {
     lines: Vec<NewOrderLine>,
     shipping: Option<NewShipping>,
     currency: Currency,
+    /// The error a code entered gives, while it does not apply.
+    discount_error: Option<Error>,
 }
 
 async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Result<Built> {
     let cart = view(conn, scope, cart_id).await?;
     let d = sqlx::query_as::<_, Details>(
-        "SELECT email, shipping_address, billing_address, vat_number, shipping_rate_id \
-         FROM checkouts WHERE tenant_id = $1 AND cart_id = $2",
+        "SELECT email, shipping_address, billing_address, vat_number, shipping_rate_id, \
+         discount_code FROM checkouts WHERE tenant_id = $1 AND cart_id = $2",
     )
     .bind(scope.tenant_id())
     .bind(cart_id)
@@ -222,6 +239,7 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
             tax_class: item.tax_class,
             tax_rate_bps: 0,
             tax_minor: 0,
+            discount_minor: 0,
         });
     }
 
@@ -250,29 +268,65 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
             if chosen.is_none() {
                 missing.push("shipping".to_owned());
             }
-            let mut amounts: Vec<(String, i64)> = lines
-                .iter()
-                .map(|l| (l.tax_class.clone(), l.unit_price_minor * l.quantity))
-                .collect();
-            if let Some(s) = &chosen {
-                amounts.push((s.tax_class.clone(), s.price_minor));
-            }
-            let quote = soat_tax::quote(
-                conn,
-                scope,
-                &QuoteInput {
-                    country: addr.country.clone(),
-                    vat_number: d.vat_number.clone(),
-                    lines: amounts,
-                },
-            )
-            .await?;
-            for (line, taxed) in lines.iter_mut().zip(&quote.lines) {
-                line.tax_rate_bps = taxed.rate_bps;
-                line.tax_minor = taxed.tax_minor;
-            }
-            tax = Some(quote);
         }
+    }
+
+    // The discount code, shared out over the lines.
+    let (mut discount, mut discount_error) = (None, None);
+    if let Some(code) = d.discount_code.as_deref().filter(|c| !c.is_empty()) {
+        let subtotal = lines.iter().map(|l| l.unit_price_minor * l.quantity).sum();
+        let ctx = DiscountContext {
+            currency: &cart.currency,
+            subtotal_minor: subtotal,
+            shipping_minor: chosen.as_ref().map_or(0, |s| s.price_minor),
+            email: &email,
+            customer_id: cart.customer_id.as_deref(),
+        };
+        match soat_promotions::check(conn, scope, code, &ctx).await {
+            Ok(applied) => discount = Some(applied),
+            Err(e) if e.status() == StatusCode::UNPROCESSABLE_ENTITY => discount_error = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    if let Some(a) = &discount {
+        let worth: Vec<i64> = lines
+            .iter()
+            .map(|l| l.unit_price_minor * l.quantity)
+            .collect();
+        for (line, share) in lines.iter_mut().zip(allocate(a.goods_minor, &worth)) {
+            line.discount_minor = share;
+        }
+    }
+    let shipping_discount = discount.as_ref().map_or(0, |a| a.shipping_minor);
+
+    if let Some(addr) = &shipping_address {
+        let mut amounts: Vec<(String, i64)> = lines
+            .iter()
+            .map(|l| {
+                (
+                    l.tax_class.clone(),
+                    l.unit_price_minor * l.quantity - l.discount_minor,
+                )
+            })
+            .collect();
+        if let Some(s) = &chosen {
+            amounts.push((s.tax_class.clone(), s.price_minor - shipping_discount));
+        }
+        let quote = soat_tax::quote(
+            conn,
+            scope,
+            &QuoteInput {
+                country: addr.country.clone(),
+                vat_number: d.vat_number.clone(),
+                lines: amounts,
+            },
+        )
+        .await?;
+        for (line, taxed) in lines.iter_mut().zip(&quote.lines) {
+            line.tax_rate_bps = taxed.rate_bps;
+            line.tax_minor = taxed.tax_minor;
+        }
+        tax = Some(quote);
     }
     let prices_include_tax = match &tax {
         Some(q) => q.prices_include_tax,
@@ -282,6 +336,7 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
         rate_id: s.rate_id.clone(),
         name: s.name.clone(),
         price_minor: s.price_minor,
+        discount_minor: shipping_discount,
         tax_minor: tax
             .as_ref()
             .and_then(|q| q.lines.get(lines.len()))
@@ -301,8 +356,9 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
         reverse_charge: false,
         vat_number: None,
         note: String::new(),
+        discount_code: None,
     };
-    let (subtotal, shipping_minor, tax_minor, total) = soat_orders::totals(&draft)?;
+    let totals = soat_orders::totals(&draft)?;
     let ready = missing.is_empty();
     Ok(Built {
         view: CheckoutView {
@@ -314,10 +370,13 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
             shipping_options: options,
             shipping: chosen,
             tax,
-            subtotal_minor: subtotal,
-            shipping_minor,
-            tax_minor,
-            total_minor: total,
+            discount_issue: discount_error.as_ref().map(|e| e.message().to_owned()),
+            discount,
+            subtotal_minor: totals.subtotal,
+            shipping_minor: totals.shipping,
+            discount_minor: totals.discount,
+            tax_minor: totals.tax,
+            total_minor: totals.total,
             prices_include_tax,
             missing,
             ready,
@@ -325,6 +384,7 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
         lines,
         shipping,
         currency,
+        discount_error,
     })
 }
 
@@ -342,8 +402,9 @@ async fn get_checkout(
     Ok(Json(built.view))
 }
 
-/// Give the checkout's email, addresses, VAT number or shipping choice.
-/// A shipping choice that does not apply to the address is a 422.
+/// Give the checkout's email, addresses, VAT number, shipping choice or
+/// discount code. A shipping choice that does not apply to the address, or
+/// a code that does not apply to the cart, is a 422.
 #[patch("/api/storefront/carts/{id}/checkout", tag = "storefront")]
 async fn update_checkout(
     db: Db,
@@ -371,13 +432,14 @@ async fn update_checkout(
     };
     sqlx::query(
         "INSERT INTO checkouts (cart_id, tenant_id, email, shipping_address, billing_address, \
-         vat_number, shipping_rate_id) VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         vat_number, shipping_rate_id, discount_code) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
          ON CONFLICT (cart_id) DO UPDATE SET \
          email = COALESCE(EXCLUDED.email, checkouts.email), \
          shipping_address = COALESCE(EXCLUDED.shipping_address, checkouts.shipping_address), \
          billing_address = COALESCE(EXCLUDED.billing_address, checkouts.billing_address), \
          vat_number = COALESCE(EXCLUDED.vat_number, checkouts.vat_number), \
          shipping_rate_id = COALESCE(EXCLUDED.shipping_rate_id, checkouts.shipping_rate_id), \
+         discount_code = COALESCE(EXCLUDED.discount_code, checkouts.discount_code), \
          updated_at = now()",
     )
     .bind(&id)
@@ -387,9 +449,18 @@ async fn update_checkout(
     .bind(json(&c.billing_address))
     .bind(c.vat_number.as_deref().map(str::trim))
     .bind(&c.shipping_rate_id)
+    .bind(c.discount_code.as_deref().map(str::trim))
     .execute(&mut *tx)
     .await?;
-    let built = build(&mut tx, shop, &id).await?;
+    let mut built = build(&mut tx, shop, &id).await?;
+    if c.discount_code
+        .as_deref()
+        .is_some_and(|c| !c.trim().is_empty())
+    {
+        if let Some(e) = built.discount_error.take() {
+            return Err(e);
+        }
+    }
     if let Some(rate) = &c.shipping_rate_id {
         if built.view.shipping.as_ref().map(|s| &s.rate_id) != Some(rate) {
             return Err(Error::unprocessable(
@@ -405,7 +476,9 @@ async fn update_checkout(
 /// Place the order: checks that nothing is missing (422
 /// `checkout_incomplete` names it), holds the stock (409
 /// `insufficient_stock`), closes the cart and starts the payment with the
-/// chosen method. Publishes `order.placed` and `cart.completed`.
+/// chosen method. A discount code that no longer applies is a 422
+/// `invalid_discount`. Publishes `order.placed`, `cart.completed` and
+/// `discount.redeemed`.
 #[post(
     "/api/storefront/carts/{id}/checkout/complete",
     tag = "storefront",
@@ -420,7 +493,10 @@ async fn complete_checkout(
 ) -> Result<(StatusCode, Json<Completed>)> {
     let (mut tx, id) = holder.open(&db, &id).await?;
     let shop = &holder.shop;
-    let built = build(&mut tx, shop, &id).await?;
+    let mut built = build(&mut tx, shop, &id).await?;
+    if let Some(e) = built.discount_error.take() {
+        return Err(e);
+    }
     if !built.view.ready {
         return Err(Error::unprocessable(format!(
             "the checkout still needs: {}",
@@ -454,8 +530,20 @@ async fn complete_checkout(
         reverse_charge: tax.is_some_and(|t| t.reverse_charge),
         vat_number: view.vat_number.clone(),
         note: String::new(),
+        discount_code: view.discount.as_ref().map(|a| a.code.clone()),
     };
     let (placed, token) = soat_orders::place(&mut tx, shop, &order).await?;
+    if let Some(applied) = &view.discount {
+        soat_promotions::redeem(
+            &mut tx,
+            shop,
+            applied,
+            &placed.id,
+            placed.customer_id.as_deref(),
+            &placed.email,
+        )
+        .await?;
+    }
     hold(&mut tx, shop, &built.lines, &placed.id, confirmed_by_staff).await?;
     soat_cart::complete(&mut tx, shop, &id, &placed.id).await?;
     tx.commit().await?;

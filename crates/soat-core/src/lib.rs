@@ -4,6 +4,7 @@
 //! the server, plugins and SDKs alike.
 
 pub mod address;
+pub mod discount;
 mod domain;
 pub mod fields;
 pub mod handle;

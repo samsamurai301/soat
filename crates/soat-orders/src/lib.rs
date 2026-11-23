@@ -135,7 +135,10 @@ pub struct Order {
     pub shipping_minor: i64,
     /// All tax, of the lines and of shipping.
     pub tax_minor: i64,
+    /// Taken off the lines and shipping.
     pub discount_minor: i64,
+    /// The discount code used.
+    pub discount_code: Option<String>,
     /// What the buyer pays.
     pub total_minor: i64,
     /// Whether the line prices hold the tax (then it is not added on top).
@@ -170,6 +173,8 @@ pub struct OrderLine {
     pub tax_class: String,
     pub tax_rate_bps: i64,
     pub tax_minor: i64,
+    /// The line's share of the order's discount.
+    pub discount_minor: i64,
     /// Units shipped (not counting canceled shipments).
     pub fulfilled_quantity: i64,
 }
@@ -185,7 +190,10 @@ pub struct NewOrderLine {
     pub unit_price_minor: i64,
     pub tax_class: String,
     pub tax_rate_bps: i64,
+    /// Tax on the line after its discount.
     pub tax_minor: i64,
+    /// The line's share of the discount, taken off its total.
+    pub discount_minor: i64,
 }
 
 /// The chosen shipping.
@@ -194,6 +202,9 @@ pub struct NewShipping {
     pub rate_id: String,
     pub name: String,
     pub price_minor: i64,
+    /// Taken off the price (free shipping codes).
+    pub discount_minor: i64,
+    /// Tax on the price after the discount.
     pub tax_minor: i64,
 }
 
@@ -213,32 +224,71 @@ pub struct NewOrder {
     pub reverse_charge: bool,
     pub vat_number: Option<String>,
     pub note: String,
+    /// The discount code used, as entered after normalizing.
+    pub discount_code: Option<String>,
 }
 
-/// The totals of an order: `(subtotal, shipping, tax, total)`. Tax is
+/// The totals of an order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Totals {
+    /// Sum of the lines before discounts.
+    pub subtotal: i64,
+    /// Shipping before its discount.
+    pub shipping: i64,
+    pub tax: i64,
+    /// Of the lines and of shipping.
+    pub discount: i64,
+    pub total: i64,
+}
+
+/// The totals of an order: subtotal plus shipping, less discounts, with tax
 /// added on top unless prices include it.
-pub fn totals(o: &NewOrder) -> Result<(i64, i64, i64, i64)> {
+///
+/// # Errors
+///
+/// `422` when an amount overflows or a discount is larger than what it
+/// discounts.
+pub fn totals(o: &NewOrder) -> Result<Totals> {
     let too_large = || Error::unprocessable("the order total is too large");
-    let mut subtotal = 0i64;
-    let mut tax = 0i64;
+    let bad_discount = || Error::unprocessable("a discount is larger than its amount");
+    let mut t = Totals {
+        subtotal: 0,
+        shipping: 0,
+        tax: 0,
+        discount: 0,
+        total: 0,
+    };
     for l in &o.lines {
         let line = l
             .unit_price_minor
             .checked_mul(l.quantity)
             .ok_or_else(too_large)?;
-        subtotal = subtotal.checked_add(line).ok_or_else(too_large)?;
-        tax = tax.checked_add(l.tax_minor).ok_or_else(too_large)?;
+        if l.discount_minor < 0 || l.discount_minor > line {
+            return Err(bad_discount());
+        }
+        t.subtotal = t.subtotal.checked_add(line).ok_or_else(too_large)?;
+        t.discount = t
+            .discount
+            .checked_add(l.discount_minor)
+            .ok_or_else(too_large)?;
+        t.tax = t.tax.checked_add(l.tax_minor).ok_or_else(too_large)?;
     }
-    let (shipping, shipping_tax) = o
-        .shipping
-        .as_ref()
-        .map_or((0, 0), |s| (s.price_minor, s.tax_minor));
-    tax = tax.checked_add(shipping_tax).ok_or_else(too_large)?;
-    let mut total = subtotal.checked_add(shipping).ok_or_else(too_large)?;
+    if let Some(s) = &o.shipping {
+        if s.discount_minor < 0 || s.discount_minor > s.price_minor {
+            return Err(bad_discount());
+        }
+        t.shipping = s.price_minor;
+        t.discount = t
+            .discount
+            .checked_add(s.discount_minor)
+            .ok_or_else(too_large)?;
+        t.tax = t.tax.checked_add(s.tax_minor).ok_or_else(too_large)?;
+    }
+    t.total = t.subtotal.checked_add(t.shipping).ok_or_else(too_large)? - t.discount;
     if !o.prices_include_tax {
-        total = total.checked_add(tax).ok_or_else(too_large)?;
+        t.total = t.total.checked_add(t.tax).ok_or_else(too_large)?;
     }
-    Ok((subtotal, shipping, tax, total))
+    Ok(t)
 }
 
 /// Places an order in the shop's transaction: numbers it, copies
@@ -248,7 +298,7 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
     if o.lines.is_empty() {
         return Err(Error::unprocessable("an order needs lines").with_code("empty_order"));
     }
-    let (subtotal, shipping, tax, total) = totals(o)?;
+    let t = totals(o)?;
     let (number,): (i64,) = sqlx::query_as(
         "INSERT INTO order_counters (tenant_id, last) VALUES ($1, $2) \
          ON CONFLICT (tenant_id) DO UPDATE SET last = order_counters.last + 1 RETURNING last",
@@ -267,9 +317,10 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
         "INSERT INTO orders (id, tenant_id, number, token_hash, cart_id, customer_id, email, \
          currency, subtotal_minor, shipping_minor, tax_minor, total_minor, prices_include_tax, \
          tax_country, reverse_charge, vat_number, shipping_address, billing_address, \
-         shipping_rate_id, shipping_name, shipping_tax_minor, note) \
+         shipping_rate_id, shipping_name, shipping_tax_minor, note, discount_minor, \
+         discount_code) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, \
-         $18, $19, $20, $21, $22)",
+         $18, $19, $20, $21, $22, $23, $24)",
     )
     .bind(id.as_str())
     .bind(scope.tenant_id())
@@ -279,10 +330,10 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
     .bind(&o.customer_id)
     .bind(o.email.trim().to_lowercase())
     .bind(o.currency.as_str())
-    .bind(subtotal)
-    .bind(shipping)
-    .bind(tax)
-    .bind(total)
+    .bind(t.subtotal)
+    .bind(t.shipping)
+    .bind(t.tax)
+    .bind(t.total)
     .bind(o.prices_include_tax)
     .bind(&o.tax_country)
     .bind(o.reverse_charge)
@@ -293,6 +344,8 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
     .bind(o.shipping.as_ref().map(|s| &s.name))
     .bind(o.shipping.as_ref().map_or(0, |s| s.tax_minor))
     .bind(o.note.trim())
+    .bind(t.discount)
+    .bind(&o.discount_code)
     .execute(&mut **tx)
     .await?;
     for (position, l) in o.lines.iter().enumerate() {
@@ -301,7 +354,8 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
         sqlx::query(
             "INSERT INTO order_lines (id, tenant_id, order_id, position, item_id, product_id, \
              sku, title, quantity, unit_price_minor, total_minor, tax_class, tax_rate_bps, \
-             tax_minor) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+             tax_minor, discount_minor) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
         )
         .bind(OrderLineId::new().as_str())
         .bind(scope.tenant_id())
@@ -317,6 +371,7 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
         .bind(&l.tax_class)
         .bind(l.tax_rate_bps)
         .bind(l.tax_minor)
+        .bind(l.discount_minor)
         .execute(&mut **tx)
         .await?;
     }
@@ -342,6 +397,7 @@ struct OrderRow {
     shipping_minor: i64,
     tax_minor: i64,
     discount_minor: i64,
+    discount_code: Option<String>,
     total_minor: i64,
     prices_include_tax: bool,
     tax_country: Option<String>,
@@ -360,7 +416,7 @@ struct OrderRow {
 
 pub(crate) const ORDER_COLUMNS: &str = "id, number, cart_id, customer_id, email, currency, \
      status, financial_status, fulfillment_status, subtotal_minor, shipping_minor, tax_minor, \
-     discount_minor, total_minor, prices_include_tax, tax_country, reverse_charge, vat_number, \
+     discount_minor, discount_code, total_minor, prices_include_tax, tax_country, reverse_charge, vat_number, \
      shipping_address, billing_address, shipping_rate_id, shipping_name, shipping_tax_minor, \
      note, cancel_reason, \
      to_char(placed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS placed_at, \
@@ -387,7 +443,7 @@ pub async fn load(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Resu
     };
     let lines = sqlx::query_as::<_, OrderLine>(
         "SELECT l.id, l.item_id, l.product_id, l.sku, l.title, l.quantity, l.unit_price_minor, \
-         l.total_minor, l.tax_class, l.tax_rate_bps, l.tax_minor, \
+         l.total_minor, l.tax_class, l.tax_rate_bps, l.tax_minor, l.discount_minor, \
          COALESCE((SELECT SUM(fl.quantity) FROM fulfillment_lines fl \
                    JOIN fulfillments f ON f.id = fl.fulfillment_id \
                    WHERE fl.order_line_id = l.id AND f.status <> 'canceled'), 0)::BIGINT \
@@ -415,6 +471,7 @@ pub async fn load(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Resu
         shipping_minor: r.shipping_minor,
         tax_minor: r.tax_minor,
         discount_minor: r.discount_minor,
+        discount_code: r.discount_code,
         total_minor: r.total_minor,
         prices_include_tax: r.prices_include_tax,
         tax_country: r.tax_country,

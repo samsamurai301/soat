@@ -17,6 +17,7 @@ use soat_module::Modules;
 use soat_orders::Orders;
 use soat_payments::Payments;
 use soat_pricing::Pricing;
+use soat_promotions::Promotions;
 use soat_shipping::Shipping;
 use soat_tax::Taxes;
 use soat_tenancy::Tenancy;
@@ -89,6 +90,7 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Taxes)
         .with(Shipping)
         .with(payments)
+        .with(Promotions)
         .with(Orders)
         .with(Checkout);
     #[cfg(feature = "stripe")]

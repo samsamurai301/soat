@@ -17,6 +17,7 @@ soat-cart.workspace = true
 soat-tax.workspace = true
 soat-shipping.workspace = true
 soat-payments.workspace = true
+soat-promotions.workspace = true
 soat-orders.workspace = true
 zapline.workspace = true
 serde.workspace = true

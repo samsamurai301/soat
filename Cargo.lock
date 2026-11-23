@@ -1486,6 +1486,7 @@ dependencies = [
  "soat-orders",
  "soat-payments",
  "soat-pricing",
+ "soat-promotions",
  "soat-shipping",
  "soat-stripe",
  "soat-tax",
@@ -1553,6 +1554,7 @@ dependencies = [
  "soat-module",
  "soat-orders",
  "soat-payments",
+ "soat-promotions",
  "soat-shipping",
  "soat-tax",
  "soat-tenancy",
@@ -1687,6 +1689,19 @@ dependencies = [
  "serde",
  "serde_json",
  "soat-catalog",
+ "soat-core",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-promotions"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
  "soat-core",
  "soat-module",
  "soat-tenancy",

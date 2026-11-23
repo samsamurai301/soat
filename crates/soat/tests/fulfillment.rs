@@ -31,6 +31,7 @@ fn line(item: &str, quantity: i64) -> NewOrderLine {
         tax_class: "standard".into(),
         tax_rate_bps: 0,
         tax_minor: 0,
+        discount_minor: 0,
     }
 }
 
@@ -55,6 +56,7 @@ async fn placed(url: &str, lines: Vec<NewOrderLine>) -> String {
         reverse_charge: false,
         vat_number: None,
         note: String::new(),
+        discount_code: None,
     };
     let (o, _) = place(&mut tx, &In("acme"), &order).await.unwrap();
     tx.commit().await.unwrap();

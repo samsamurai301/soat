@@ -42,11 +42,13 @@ async fn placed(url: &str, item: &str, customer: &str) -> String {
             tax_class: "standard".into(),
             tax_rate_bps: 1900,
             tax_minor: 380,
+            discount_minor: 0,
         }],
         shipping: Some(NewShipping {
             rate_id: "shr_x".into(),
             name: "Standard".into(),
             price_minor: 495,
+            discount_minor: 0,
             tax_minor: 79,
         }),
         shipping_address: None,
@@ -56,6 +58,7 @@ async fn placed(url: &str, item: &str, customer: &str) -> String {
         reverse_charge: false,
         vat_number: None,
         note: String::new(),
+        discount_code: None,
     };
     let (o, _) = place(&mut tx, &In("acme"), &order).await.unwrap();
     tx.commit().await.unwrap();
