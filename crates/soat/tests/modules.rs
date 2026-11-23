@@ -14,7 +14,8 @@ fn module_list_is_valid_and_ordered() {
             "fields",
             "files",
             "catalog",
-            "inventory"
+            "inventory",
+            "pricing"
         ]
     );
 }

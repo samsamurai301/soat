@@ -288,7 +288,14 @@ mod tests {
 
     #[test]
     fn a_clock_going_back_does_not_reorder() {
-        let (t1, r1) = next_monotonic(u64::MAX / 2, [0xff; 10]);
+        // A minute ahead, with the randomness exhausted: later ids borrow
+        // the next millisecond. (Realistic times: other tests share LAST.)
+        let ahead = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 60_000;
+        let (t1, r1) = next_monotonic(ahead, [0xff; 10]);
         let (t2, r2) = next_monotonic(5, [0; 10]);
         assert!((t2, r2) > (t1, r1));
     }
