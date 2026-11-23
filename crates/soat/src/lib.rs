@@ -23,6 +23,7 @@ use soat_payments::Payments;
 use soat_pricing::Pricing;
 use soat_promotions::Promotions;
 use soat_shipping::Shipping;
+use soat_storefront::Storefront;
 use soat_tax::Taxes;
 use soat_tenancy::Tenancy;
 use soat_theme::Themes;
@@ -152,7 +153,8 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Invoices)
         .with(Notify::new(settings.mailer, settings.mail_from))
         .with(Cms)
-        .with(Themes);
+        .with(Themes)
+        .with(Storefront);
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {
         Some(config) => modules.with(soat_stripe::StripeWebhooks::new(config)),

@@ -64,6 +64,16 @@ pub struct CartToken {
     token_hash: String,
 }
 
+impl CartToken {
+    /// The holder of `token` in `shop`, e.g. from a storefront cookie.
+    pub fn new(shop: Shop, token: &str) -> Self {
+        Self {
+            shop,
+            token_hash: hash_token(token),
+        }
+    }
+}
+
 impl FromRequestParts for CartToken {
     async fn from_request_parts(req: &mut Request) -> Result<Self> {
         let shop = Shop::from_request_parts(req).await?;
@@ -142,6 +152,33 @@ async fn touch_and_view(tx: &mut TenantTx, scope: &impl Scope, id: &str) -> Resu
     Ok(cart)
 }
 
+/// Starts a cart in `currency` and returns its token (shown once) and the
+/// cart. Publishes `cart.created`.
+pub async fn create(
+    tx: &mut TenantTx,
+    shop: &Shop,
+    currency: &str,
+    email: Option<&str>,
+) -> Result<(String, CartView)> {
+    let currency = Currency::parse(currency)
+        .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))?;
+    let token = format!("soat_cart_{}", new_token()?);
+    let id = CartId::new();
+    sqlx::query(
+        "INSERT INTO carts (id, tenant_id, token_hash, currency, email) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(id.as_str())
+    .bind(shop.id())
+    .bind(hash_token(&token))
+    .bind(currency.as_str())
+    .bind(email.unwrap_or_default().trim().to_lowercase())
+    .execute(&mut **tx)
+    .await?;
+    let cart = view(tx, shop, id.as_str()).await?;
+    shop.publish(tx, None, "cart.created", &cart).await?;
+    Ok((token, cart))
+}
+
 /// Start a cart in a currency. Returns its token once: keep it to change
 /// the cart. Publishes `cart.created`.
 #[post("/api/storefront/carts", tag = "storefront", status = 201)]
@@ -150,23 +187,8 @@ async fn create_cart(
     shop: Shop,
     Valid(Json(c)): Valid<Json<NewCart>>,
 ) -> Result<(StatusCode, Json<NewCartResponse>)> {
-    let currency = Currency::parse(&c.currency)
-        .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))?;
-    let token = format!("soat_cart_{}", new_token()?);
-    let id = CartId::new();
     let mut tx = shop.begin(&db).await?;
-    sqlx::query(
-        "INSERT INTO carts (id, tenant_id, token_hash, currency, email) VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(id.as_str())
-    .bind(shop.id())
-    .bind(hash_token(&token))
-    .bind(currency.as_str())
-    .bind(c.email.unwrap_or_default().trim().to_lowercase())
-    .execute(&mut *tx)
-    .await?;
-    let cart = view(&mut tx, &shop, id.as_str()).await?;
-    shop.publish(&mut tx, None, "cart.created", &cart).await?;
+    let (token, cart) = create(&mut tx, &shop, &c.currency, c.email.as_deref()).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(NewCartResponse { token, cart })))
 }
@@ -202,24 +224,23 @@ async fn update_cart(
     Ok(Json(cart))
 }
 
-/// Add units of an item; adding an item already in the cart raises its
-/// quantity. An unknown item, or one not sold in the cart's currency, is a
-/// 422; more than can be sold is a 409 `insufficient_stock`. Publishes
-/// `cart.updated`.
-#[post("/api/storefront/carts/{id}/lines", tag = "storefront")]
-async fn add_line(
-    db: Db,
-    holder: CartToken,
-    Path(id): Path<String>,
-    Valid(Json(a)): Valid<Json<AddLine>>,
-) -> Result<Json<CartView>> {
-    let (mut tx, id) = holder.open(&db, &id).await?;
-    let shop = &holder.shop;
-    let item = stock_item(&mut tx, shop, &a.item_id)
-        .await?
-        .ok_or_else(|| {
-            Error::unprocessable(format!("no item {}", a.item_id)).with_code("unknown_item")
-        })?;
+/// Adds units of an item to open cart `id` (locked with
+/// [`CartToken::open`]). Publishes `cart.updated`.
+///
+/// # Errors
+///
+/// 422 for an unknown item or one not sold in the cart's currency, 409
+/// `insufficient_stock` for more than can be sold.
+pub async fn add(
+    tx: &mut TenantTx,
+    shop: &Shop,
+    id: &str,
+    item_id: &str,
+    quantity_added: i64,
+) -> Result<CartView> {
+    let item = stock_item(&mut *tx, shop, item_id).await?.ok_or_else(|| {
+        Error::unprocessable(format!("no item {}", item_id)).with_code("unknown_item")
+    })?;
     let (currency, current, lines): (String, Option<i32>, i64) = sqlx::query_as(
         "SELECT c.currency, \
          (SELECT quantity FROM cart_lines WHERE cart_id = c.id AND item_id = $3), \
@@ -227,11 +248,11 @@ async fn add_line(
          FROM carts c WHERE c.tenant_id = $1 AND c.id = $2",
     )
     .bind(shop.id())
-    .bind(&id)
+    .bind(id)
     .bind(&item.id)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
-    let quantity = i64::from(current.unwrap_or(0)) + a.quantity;
+    let quantity = i64::from(current.unwrap_or(0)) + quantity_added;
     if current.is_none() && lines >= MAX_LINES {
         return Err(
             Error::conflict(format!("a cart holds at most {MAX_LINES} lines"))
@@ -245,7 +266,7 @@ async fn add_line(
         );
     }
     let code = Currency::parse(&currency).map_err(|e| Error::internal(e.to_string()))?;
-    if soat_pricing::resolve(&mut tx, shop, &item.id, code)
+    if soat_pricing::resolve(&mut *tx, shop, &item.id, code)
         .await?
         .is_none()
     {
@@ -254,7 +275,7 @@ async fn add_line(
                 .with_code("not_sold_in_currency"),
         );
     }
-    let now = availability(&mut tx, shop, &item.id).await?;
+    let now = availability(&mut *tx, shop, &item.id).await?;
     if !now.can_sell(quantity) {
         return Err(
             Error::conflict(format!("only {} available", now.available()))
@@ -268,14 +289,76 @@ async fn add_line(
     )
     .bind(LineId::new().as_str())
     .bind(shop.id())
-    .bind(&id)
+    .bind(id)
     .bind(&item.id)
     .bind(quantity as i32)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
-    let cart = touch_and_view(&mut tx, shop, &id).await?;
+    touch_and_view(tx, shop, id).await
+}
+
+/// Add units of an item; adding an item already in the cart raises its
+/// quantity. An unknown item, or one not sold in the cart's currency, is a
+/// 422; more than can be sold is a 409 `insufficient_stock`. Publishes
+/// `cart.updated`.
+#[post("/api/storefront/carts/{id}/lines", tag = "storefront")]
+async fn add_line(
+    db: Db,
+    holder: CartToken,
+    Path(id): Path<String>,
+    Valid(Json(a)): Valid<Json<AddLine>>,
+) -> Result<Json<CartView>> {
+    let (mut tx, id) = holder.open(&db, &id).await?;
+    let cart = add(&mut tx, &holder.shop, &id, &a.item_id, a.quantity).await?;
     tx.commit().await?;
     Ok(Json(cart))
+}
+
+/// Sets the quantity of line `line_id` of open cart `id`; 0 removes it.
+/// Publishes `cart.updated`.
+///
+/// # Errors
+///
+/// 404 for another cart's line, 409 `insufficient_stock` for more than can
+/// be sold.
+pub async fn set_quantity(
+    tx: &mut TenantTx,
+    shop: &Shop,
+    id: &str,
+    line_id: &str,
+    quantity: i64,
+) -> Result<CartView> {
+    let item: Option<(String,)> = sqlx::query_as(
+        "SELECT item_id FROM cart_lines WHERE tenant_id = $1 AND cart_id = $2 AND id = $3",
+    )
+    .bind(shop.id())
+    .bind(id)
+    .bind(line_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let (item_id,) = item.ok_or_else(Error::not_found)?;
+    if quantity == 0 {
+        sqlx::query("DELETE FROM cart_lines WHERE tenant_id = $1 AND id = $2")
+            .bind(shop.id())
+            .bind(line_id)
+            .execute(&mut **tx)
+            .await?;
+    } else {
+        let now = availability(&mut *tx, shop, &item_id).await?;
+        if !now.can_sell(quantity) {
+            return Err(
+                Error::conflict(format!("only {} available", now.available()))
+                    .with_code("insufficient_stock"),
+            );
+        }
+        sqlx::query("UPDATE cart_lines SET quantity = $3 WHERE tenant_id = $1 AND id = $2")
+            .bind(shop.id())
+            .bind(line_id)
+            .bind(quantity as i32)
+            .execute(&mut **tx)
+            .await?;
+    }
+    touch_and_view(tx, shop, id).await
 }
 
 /// Set a line's quantity; 0 removes it. More than can be sold is a 409
@@ -288,38 +371,7 @@ async fn change_line(
     Valid(Json(c)): Valid<Json<LineChange>>,
 ) -> Result<Json<CartView>> {
     let (mut tx, id) = holder.open(&db, &id).await?;
-    let shop = &holder.shop;
-    let item: Option<(String,)> = sqlx::query_as(
-        "SELECT item_id FROM cart_lines WHERE tenant_id = $1 AND cart_id = $2 AND id = $3",
-    )
-    .bind(shop.id())
-    .bind(&id)
-    .bind(&line_id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let (item_id,) = item.ok_or_else(Error::not_found)?;
-    if c.quantity == 0 {
-        sqlx::query("DELETE FROM cart_lines WHERE tenant_id = $1 AND id = $2")
-            .bind(shop.id())
-            .bind(&line_id)
-            .execute(&mut *tx)
-            .await?;
-    } else {
-        let now = availability(&mut tx, shop, &item_id).await?;
-        if !now.can_sell(c.quantity) {
-            return Err(
-                Error::conflict(format!("only {} available", now.available()))
-                    .with_code("insufficient_stock"),
-            );
-        }
-        sqlx::query("UPDATE cart_lines SET quantity = $3 WHERE tenant_id = $1 AND id = $2")
-            .bind(shop.id())
-            .bind(&line_id)
-            .bind(c.quantity as i32)
-            .execute(&mut *tx)
-            .await?;
-    }
-    let cart = touch_and_view(&mut tx, shop, &id).await?;
+    let cart = set_quantity(&mut tx, &holder.shop, &id, &line_id, c.quantity).await?;
     tx.commit().await?;
     Ok(Json(cart))
 }
@@ -377,4 +429,29 @@ async fn attach_customer(
     let cart = touch_and_view(&mut tx, &acting, &id).await?;
     tx.commit().await?;
     Ok(Json(cart))
+}
+
+/// The open cart `id` if `token` holds it, read in the shop's transaction.
+pub async fn held(
+    conn: &mut zapline::db::sqlx::PgConnection,
+    shop: &Shop,
+    id: &str,
+    token: &str,
+) -> Result<Option<CartView>> {
+    let Ok(id) = CartId::parse(id) else {
+        return Ok(None);
+    };
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM carts WHERE tenant_id = $1 AND id = $2 AND token_hash = $3 \
+         AND status = 'open'",
+    )
+    .bind(shop.id())
+    .bind(id.as_str())
+    .bind(hash_token(token))
+    .fetch_optional(&mut *conn)
+    .await?;
+    match row {
+        Some((id,)) => Ok(Some(view(conn, shop, &id).await?)),
+        None => Ok(None),
+    }
 }

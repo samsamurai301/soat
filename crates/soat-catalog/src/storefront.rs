@@ -274,3 +274,46 @@ async fn shop_collection(
     tx.commit().await?;
     c.map(Json).ok_or_else(Error::not_found)
 }
+
+/// Active products among `ids`, in that order, as cards.
+pub async fn cards_by_ids(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    storage: &Storage,
+    ids: &[String],
+) -> Result<Vec<ProductCard>> {
+    let rows: Vec<ProductCard> = sqlx::query_as(&format!(
+        "SELECT {CARD_COLUMNS} FROM products WHERE tenant_id = $1 AND id = ANY($2) \
+         AND status = 'active'"
+    ))
+    .bind(scope.tenant_id())
+    .bind(ids)
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut rows: Vec<Option<ProductCard>> = rows.into_iter().map(Some).collect();
+    let mut cards: Vec<ProductCard> = ids
+        .iter()
+        .filter_map(|id| {
+            rows.iter_mut()
+                .find(|r| r.as_ref().is_some_and(|r| &r.id == id))
+                .and_then(Option::take)
+        })
+        .collect();
+    first_images(conn, scope, storage, &mut cards).await?;
+    Ok(cards)
+}
+
+/// The handle of collection `id`, if the shop has it.
+pub async fn collection_handle(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    id: &str,
+) -> Result<Option<String>> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT handle FROM collections WHERE tenant_id = $1 AND id = $2")
+            .bind(scope.tenant_id())
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    Ok(row.map(|(h,)| h))
+}

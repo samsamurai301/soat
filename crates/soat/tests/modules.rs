@@ -28,6 +28,7 @@ fn module_list_is_valid_and_ordered() {
             "notify",
             "cms",
             "theme",
+            "storefront",
             "mcp"
         ]
     );
