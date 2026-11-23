@@ -1,6 +1,6 @@
 <div class="head">
   <h1>Customers <span class="muted">{{ total }}</span></h1>
-  <a class="button" href="{{ base }}/customers/new">Add customer</a>
+  <a class="button" href="{{ base }}/customers/new">Add customer</a> <a href="{{ base }}/transfer">Import or export</a>
 </div>
 <form class="filters" method="get" action="{{ base }}/customers" hx-get="{{ base }}/customers" hx-trigger="input changed delay:300ms from:input" hx-target="#results" hx-select="#results" hx-push-url="true">
   <input type="search" name="q" value="{{ q }}" placeholder="Search email or name" aria-label="Search">

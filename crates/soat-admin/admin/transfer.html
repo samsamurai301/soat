@@ -1,0 +1,32 @@
+<h1>Import and export</h1>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+{{#if result }}
+<section class="panel" role="status">
+  <h2>Imported {{ result.kind }}</h2>
+  <p>{{ result.created }} created, {{ result.updated }} updated.</p>
+  {{#if result.failed }}
+  <p class="error">These rows were not imported:</p>
+  <ul>{{#each result.problems }}<li>Line {{ line }}: {{ message }}</li>{{/each}}</ul>
+  {{/if}}
+</section>
+{{/if}}
+
+<section class="panel">
+  <h2>Products</h2>
+  <p><a class="button" href="{{ base }}/transfer/products.csv" download>Export products</a></p>
+  <form method="post" action="{{ base }}/transfer/products" enctype="multipart/form-data" class="form" hx-boost="false">
+    <label>CSV file <input type="file" name="file" accept=".csv,text/csv" required></label>
+    <button class="button">Import products</button>
+  </form>
+  <p class="muted">A row per variant; rows with the same handle are one product. A handle the shop has updates that product, and its variants are matched by SKU. Empty cells change nothing; <code>stock</code> sets the units on hand. Columns: <code>{{ product_columns }}</code>.</p>
+</section>
+
+<section class="panel">
+  <h2>Customers</h2>
+  <p><a class="button" href="{{ base }}/transfer/customers.csv" download>Export customers</a></p>
+  <form method="post" action="{{ base }}/transfer/customers" enctype="multipart/form-data" class="form" hx-boost="false">
+    <label>CSV file <input type="file" name="file" accept=".csv,text/csv" required></label>
+    <button class="button">Import customers</button>
+  </form>
+  <p class="muted">An email the shop has updates that customer. Columns: <code>{{ customer_columns }}</code>.</p>
+</section>

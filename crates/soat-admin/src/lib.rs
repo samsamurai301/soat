@@ -40,6 +40,7 @@ mod products;
 mod samples;
 mod settings;
 mod theme;
+mod transfer;
 mod util;
 
 use std::sync::Arc;
@@ -111,6 +112,13 @@ impl Module for Admin {
             onboarding::create_shop,
             onboarding::welcome,
             onboarding::welcome_step,
+        ))
+        .mount((
+            transfer::show,
+            transfer::export_products,
+            transfer::export_customers,
+            transfer::import_products,
+            transfer::import_customers,
         ))
         .mount((
             products::list,

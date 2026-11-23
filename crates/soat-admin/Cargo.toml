@@ -10,7 +10,7 @@ publish.workspace = true
 [dependencies]
 soat-core.workspace = true
 soat-module.workspace = true
-zapline = { workspace = true, features = ["cookies"] }
+zapline = { workspace = true, features = ["cookies", "multipart"] }
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true

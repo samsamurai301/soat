@@ -5,6 +5,7 @@
 
 pub mod address;
 pub mod content;
+pub mod csv;
 pub mod discount;
 mod domain;
 pub mod fields;
