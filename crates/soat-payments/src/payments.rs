@@ -555,6 +555,104 @@ pub struct RefundResult {
     pub payment: Payment,
 }
 
+/// Returns `amount` (default: all that is left) of a collected payment
+/// through its provider, in the shop's transaction. More than is left is
+/// a 422. Publishes `payment.refunded` and `payment.updated`.
+pub async fn refund(
+    tx: &mut TenantTx,
+    providers: &Providers,
+    scope: &impl Scope,
+    payment_id: &str,
+    amount: Option<i64>,
+    reason: &str,
+) -> Result<RefundResult> {
+    let p = lock(tx, scope, payment_id).await?;
+    let status = status_of(&p)?;
+    if !matches!(
+        status,
+        PaymentStatus::Paid | PaymentStatus::PartiallyRefunded
+    ) {
+        return Err(not_now(&p, "refunded"));
+    }
+    let left = p.amount_minor - p.refunded_minor;
+    let amount = amount.unwrap_or(left);
+    if amount <= 0 || amount > left {
+        return Err(
+            Error::unprocessable(format!("refund 1 to {left}")).with_code("invalid_refund_amount")
+        );
+    }
+    let provider = provider_of(providers, &p)?;
+    let settings = settings_of(tx, scope, &p).await?;
+    let provider_ref = provider
+        .refund(&provider_view(&p, scope.tenant_id(), &settings), amount)
+        .await?;
+    let refund = sqlx::query_as::<_, Refund>(&format!(
+        "INSERT INTO payment_refunds (id, tenant_id, payment_id, amount_minor, reason, \
+         provider_ref) VALUES ($1, $2, $3, $4, $5, $6) RETURNING {REFUND_COLUMNS}"
+    ))
+    .bind(RefundId::new().as_str())
+    .bind(scope.tenant_id())
+    .bind(&p.id)
+    .bind(amount)
+    .bind(reason.trim())
+    .bind(&provider_ref)
+    .fetch_one(&mut **tx)
+    .await?;
+    let refunded = p.refunded_minor + amount;
+    let next = PaymentStatus::after_refunds(p.amount_minor, refunded);
+    let payment: Payment = sqlx::query_as::<_, PaymentRow>(&format!(
+        "UPDATE payments SET refunded_minor = $3, status = $4, updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
+    ))
+    .bind(scope.tenant_id())
+    .bind(&p.id)
+    .bind(refunded)
+    .bind(next.as_str())
+    .fetch_one(&mut **tx)
+    .await?
+    .into();
+    scope.publish(tx, "payment.refunded", &refund).await?;
+    scope.publish(tx, "payment.updated", &payment).await?;
+    Ok(RefundResult { refund, payment })
+}
+
+/// Returns `amount` of what was paid for `reference` (an order), across
+/// its collected payments, oldest first. More than was collected and not
+/// refunded is a 422 `invalid_refund_amount`.
+pub async fn refund_reference(
+    tx: &mut TenantTx,
+    providers: &Providers,
+    scope: &impl Scope,
+    reference: &str,
+    amount: i64,
+    reason: &str,
+) -> Result<Vec<RefundResult>> {
+    let mut payments = for_reference(tx, scope, reference).await?;
+    payments.reverse();
+    let refundable: Vec<(String, i64)> = payments
+        .iter()
+        .filter(|p| matches!(p.status.as_str(), "paid" | "partially_refunded"))
+        .map(|p| (p.id.clone(), p.amount_minor - p.refunded_minor))
+        .filter(|(_, left)| *left > 0)
+        .collect();
+    let available: i64 = refundable.iter().map(|(_, l)| l).sum();
+    if amount <= 0 || amount > available {
+        return Err(Error::unprocessable(format!("refund 1 to {available}"))
+            .with_code("invalid_refund_amount"));
+    }
+    let mut left = amount;
+    let mut out = Vec::new();
+    for (id, can) in refundable {
+        if left == 0 {
+            break;
+        }
+        let take = can.min(left);
+        out.push(refund(tx, providers, scope, &id, Some(take), reason).await?);
+        left -= take;
+    }
+    Ok(out)
+}
+
 /// Return money from a collected payment (`payments:refund`). More than
 /// is left is a 422. Publishes `payment.refunded` and `payment.updated`.
 #[post("/api/payments/{id}/refunds", tag = "payments", status = 201)]
@@ -566,53 +664,15 @@ async fn create_refund(
     Valid(Json(r)): Valid<Json<NewRefund>>,
 ) -> Result<(StatusCode, Json<RefundResult>)> {
     let mut tx = tenant.begin_for(&db, &PAYMENTS_REFUND).await?;
-    let p = lock(&mut tx, &tenant, &id).await?;
-    let status = status_of(&p)?;
-    if !matches!(
-        status,
-        PaymentStatus::Paid | PaymentStatus::PartiallyRefunded
-    ) {
-        return Err(not_now(&p, "refunded"));
-    }
-    let left = p.amount_minor - p.refunded_minor;
-    let amount = r.amount_minor.unwrap_or(left);
-    if amount <= 0 || amount > left {
-        return Err(
-            Error::unprocessable(format!("refund 1 to {left}")).with_code("invalid_refund_amount")
-        );
-    }
-    let provider = provider_of(&providers, &p)?;
-    let settings = settings_of(&mut tx, &tenant, &p).await?;
-    let provider_ref = provider
-        .refund(&provider_view(&p, tenant.id(), &settings), amount)
-        .await?;
-    let refund = sqlx::query_as::<_, Refund>(&format!(
-        "INSERT INTO payment_refunds (id, tenant_id, payment_id, amount_minor, reason, \
-         provider_ref) VALUES ($1, $2, $3, $4, $5, $6) RETURNING {REFUND_COLUMNS}"
-    ))
-    .bind(RefundId::new().as_str())
-    .bind(tenant.id())
-    .bind(&p.id)
-    .bind(amount)
-    .bind(r.reason.as_deref().unwrap_or("").trim())
-    .bind(&provider_ref)
-    .fetch_one(&mut *tx)
+    let done = refund(
+        &mut tx,
+        &providers,
+        &tenant,
+        &id,
+        r.amount_minor,
+        r.reason.as_deref().unwrap_or(""),
+    )
     .await?;
-    let refunded = p.refunded_minor + amount;
-    let next = PaymentStatus::after_refunds(p.amount_minor, refunded);
-    let payment: Payment = sqlx::query_as::<_, PaymentRow>(&format!(
-        "UPDATE payments SET refunded_minor = $3, status = $4, updated_at = now() \
-         WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
-    ))
-    .bind(tenant.id())
-    .bind(&p.id)
-    .bind(refunded)
-    .bind(next.as_str())
-    .fetch_one(&mut *tx)
-    .await?
-    .into();
-    tenant.publish(&mut tx, "payment.refunded", &refund).await?;
-    tenant.publish(&mut tx, "payment.updated", &payment).await?;
     tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(RefundResult { refund, payment })))
+    Ok((StatusCode::CREATED, Json(done)))
 }

@@ -9,9 +9,11 @@
 //! An order's `financial_status` follows its payments (whose reference is
 //! the order id): a subscriber recomputes it on every `payment.updated`.
 //! Canceling releases the stock held for it. [`fulfillments`] ship its
-//! lines and take them out of stock. Returns come in C12.
+//! lines and take them out of stock; [`returns`] bring units back and
+//! refund them.
 
 pub mod fulfillments;
+pub mod returns;
 mod routes;
 
 use std::sync::Arc;
@@ -68,7 +70,9 @@ impl Module for Orders {
     }
 
     fn mount(&self, app: App) -> App {
-        app.plugin(routes::mount).plugin(fulfillments::mount)
+        app.plugin(routes::mount)
+            .plugin(fulfillments::mount)
+            .plugin(returns::mount)
     }
 }
 

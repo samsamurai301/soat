@@ -71,7 +71,7 @@ layer.
 - [x] C9 Checkout: email, addresses, VAT number and shipping choice per cart, live totals with tax and what is missing, completion places the order, holds stock (an hour for card payments, until paid otherwise), closes the cart and starts the payment **alpha**
 - [x] C10 Orders: `place()` copies lines, tax, shipping and addresses in, per-shop numbers from 1001, financial status follows payments through a subscriber, cancel releases held stock, guest token and customer account views **alpha**
 - [x] C11 Fulfillment: ship some or all of an order's lines from a chosen or best-stocked location (recorded as `sold`, holds released), tracking, delivered, cancel a shipment to restock, order fulfillment status **alpha**
-- [ ] C12 Refunds and returns **alpha**
+- [x] C12 Refunds and returns: customers or staff request returns of shipped units, staff receive (restock where they shipped from, or not), reject, or refund them through the order's payments with optional shipping; goodwill refunds of any amount across payments **alpha**
 - [ ] C13 Discount codes **alpha**
 - [ ] C14 Automatic discounts, buy X get Y
 - [ ] C15 Gift cards and store credit
