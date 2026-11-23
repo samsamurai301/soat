@@ -35,6 +35,7 @@ mod customers;
 mod orders;
 mod pages;
 mod products;
+mod settings;
 mod theme;
 mod util;
 
@@ -138,6 +139,12 @@ impl Module for Admin {
             theme::edit_file,
             theme::save_file,
             theme::reset_file,
+        ))
+        .mount((
+            settings::index,
+            settings::show_area,
+            settings::act,
+            settings::act_on,
         ))
     }
 }

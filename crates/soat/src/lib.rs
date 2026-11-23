@@ -113,13 +113,19 @@ impl Settings {
 /// as pages for staff.
 pub fn modules(settings: Settings) -> Modules {
     let api = settings.clone();
-    let mcp = Mcp::new(move |app| shop_modules(api, Events::manual()).install(app));
-    let api = settings.clone();
-    let admin = Admin::new(move |app| shop_modules(api, Events::manual()).install(app));
-    shop_modules(settings, Events::new()).with(mcp).with(admin)
+    let admin = Admin::new(move |app| with_mcp(api, Events::manual()).install(app));
+    with_mcp(settings, Events::new()).with(admin)
 }
 
-/// Every module but `mcp`.
+/// Every module but `admin`. Admin pages call this API, the assistant's
+/// approvals included.
+fn with_mcp(settings: Settings, events: Events) -> Modules {
+    let api = settings.clone();
+    let mcp = Mcp::new(move |app| shop_modules(api, Events::manual()).install(app));
+    shop_modules(settings, events).with(mcp)
+}
+
+/// Every module but `mcp` and `admin`.
 fn shop_modules(settings: Settings, events: Events) -> Modules {
     #[allow(unused_mut)]
     let mut payments = Payments::new();

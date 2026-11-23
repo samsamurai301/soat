@@ -29,6 +29,23 @@ const FILES: &[(&str, &str)] = &[
     ("redirects", include_str!("../admin/redirects.html")),
     ("theme", include_str!("../admin/theme.html")),
     ("theme_file", include_str!("../admin/theme_file.html")),
+    ("settings_tabs", include_str!("../admin/settings_tabs.html")),
+    (
+        "settings_general",
+        include_str!("../admin/settings_general.html"),
+    ),
+    (
+        "settings_staff",
+        include_str!("../admin/settings_staff.html"),
+    ),
+    (
+        "settings_developers",
+        include_str!("../admin/settings_developers.html"),
+    ),
+    (
+        "settings_assistant",
+        include_str!("../admin/settings_assistant.html"),
+    ),
 ];
 
 pub(crate) struct Pages(BTreeMap<&'static str, Template>);

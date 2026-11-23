@@ -1,0 +1,18 @@
+{{> settings_tabs }}
+<section class="panel">
+  <h2>Staff</h2>
+  <table class="table"><tbody>{{#each staff }}<tr><td>{{ email }}</td><td>
+    <form method="post" action="{{ base }}/settings/staff/role/{{ user_id }}" class="inline tight"><select name="role" aria-label="Role">{{#each roles }}<option value="{{ name }}"{{#if selected }} selected{{/if}}>{{ name }}</option>{{/each}}</select><button class="link">Change</button></form>
+  </td></tr>{{/each}}</tbody></table>
+  <h3>Add someone</h3>
+  <form method="post" action="{{ base }}/settings/staff/add" class="inline">
+    <label>Email <input type="email" name="email" required></label>
+    <label>Password <span class="muted">(for a new account, 12+ characters)</span> <input type="password" name="password" autocomplete="new-password"></label>
+    <label>Role <select name="role">{{#each roles }}<option value="{{ name }}"{{#if built_in }}{{/if}}>{{ name }}</option>{{/each}}</select></label>
+    <button class="button">Add</button>
+  </form>
+</section>
+<section class="panel">
+  <h2>Roles</h2>
+  <table class="table"><tbody>{{#each roles }}<tr><td><strong>{{ name }}</strong>{{#if built_in }} <span class="muted">built in</span>{{/if}}</td><td class="small">{{#each permissions }}<code>{{ this }}</code> {{/each}}</td></tr>{{/each}}</tbody></table>
+</section>

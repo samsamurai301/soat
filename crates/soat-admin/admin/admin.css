@@ -55,3 +55,9 @@ td form { display: inline; }
 .code { font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 pre.code { background: var(--bg); padding: .75rem; border-radius: 6px; overflow: auto; }
 code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); padding: 0 .25rem; border-radius: 4px; }
+.small { font-size: .85rem; }
+.secret { user-select: all; word-break: break-all; white-space: pre-wrap; }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .25rem .75rem; }
+.inline.tight { margin: 0; align-items: center; }
+.proposal { border-top: 1px solid var(--line); padding: .75rem 0; }
+.proposal form { display: inline-block; margin-right: .75rem; }

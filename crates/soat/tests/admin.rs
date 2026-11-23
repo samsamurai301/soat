@@ -742,3 +742,196 @@ async fn staff_edit_content_and_theme() {
         .await
         .assert_status(404);
 }
+
+#[tokio::test]
+async fn owners_change_settings() {
+    let (client, t) = common::with_tenants(&["acme", "globex"]).await;
+    let admin = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+    let res = get(&client, &admin, "/admin/acme/settings").await;
+    assert_eq!(res.header("location"), Some("/admin/acme/settings/general"));
+    get(&client, &admin, "/admin/acme/settings/nothing")
+        .await
+        .assert_status(404);
+
+    // Languages and domains.
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/settings/general/languages",
+        json!({ "default_language": "en", "languages": "de, fr" }),
+    )
+    .await;
+    assert_eq!(
+        res.header("location"),
+        Some("/admin/acme/settings/general?done=1")
+    );
+    let html = get(&client, &admin, "/admin/acme/settings/general?done=1")
+        .await
+        .text();
+    assert!(html.contains("value=\"de, fr\"") && html.contains("Saved."));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/settings/general/languages",
+        json!({ "default_language": "english" }),
+    )
+    .await;
+    res.assert_status(422);
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/general/domains",
+        json!({ "domain": "shop.acme.example" }),
+    )
+    .await
+    .assert_status(303);
+    let html = get(&client, &admin, "/admin/acme/settings/general")
+        .await
+        .text();
+    assert!(html.contains("shop.acme.example"));
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/general/remove-domain/shop.acme.example",
+        json!({}),
+    )
+    .await
+    .assert_status(303);
+    let html = get(&client, &admin, "/admin/acme/settings/general")
+        .await
+        .text();
+    assert!(!html.contains("shop.acme.example"));
+
+    // Staff and their roles.
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/staff/add",
+        json!({ "email": "sam@example.com", "password": "a long password", "role": "staff" }),
+    )
+    .await
+    .assert_status(303);
+    let members: serde_json::Value = client
+        .get("/api/staff")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .send()
+        .await
+        .json();
+    let sam = members
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["email"] == "sam@example.com")
+        .unwrap()["user_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    post(
+        &client,
+        &admin,
+        &format!("/admin/acme/settings/staff/role/{sam}"),
+        json!({ "role": "owner" }),
+    )
+    .await
+    .assert_status(303);
+    let html = get(&client, &admin, "/admin/acme/settings/staff")
+        .await
+        .text();
+    assert!(html.contains("sam@example.com"));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/settings/staff/add",
+        json!({ "email": "sam@example.com", "role": "staff" }),
+    )
+    .await;
+    res.assert_status(409);
+
+    // An API key: its secret is shown once, and it works.
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/settings/developers/keys",
+        json!({ "name": "ERP" }),
+    )
+    .await;
+    res.assert_status(201);
+    let html = res.text();
+    let start = html.find("soat_sk_acme_").expect("the secret is shown");
+    let secret: String = html[start..].chars().take_while(|c| *c != '<').collect();
+    assert!(html.contains("it is not shown again"));
+    client
+        .get("/api/products")
+        .bearer(&secret)
+        .send()
+        .await
+        .assert_status(403);
+    let html = get(&client, &admin, "/admin/acme/settings/developers")
+        .await
+        .text();
+    assert!(!html.contains(&secret), "the secret is not shown again");
+    let keys: serde_json::Value = client
+        .get("/api/api-keys")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .send()
+        .await
+        .json();
+    let key = keys[0]["id"].as_str().unwrap().to_owned();
+    post(
+        &client,
+        &admin,
+        &format!("/admin/acme/settings/developers/revoke-key/{key}"),
+        json!({}),
+    )
+    .await
+    .assert_status(303);
+    client
+        .get("/api/products")
+        .bearer(&secret)
+        .send()
+        .await
+        .assert_status(401);
+
+    // Webhooks only go to public HTTPS addresses.
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/settings/developers/webhooks",
+        json!({ "url": "http://localhost/x" }),
+    )
+    .await;
+    res.assert_status(422);
+
+    // Claude's changes can run without review.
+    post(
+        &client,
+        &admin,
+        "/admin/acme/settings/assistant/approval",
+        json!({}),
+    )
+    .await
+    .assert_status(303);
+    let html = get(&client, &admin, "/admin/acme/settings/assistant")
+        .await
+        .text();
+    assert!(html.contains("name=\"review\" value=\"1\">") && html.contains("Nothing waiting."));
+    let s: serde_json::Value = client
+        .get("/api/assistant/settings")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .send()
+        .await
+        .json();
+    assert_eq!(s["approval"], "off");
+    // Another shop is untouched.
+    let s: serde_json::Value = client
+        .get("/api/assistant/settings")
+        .header("x-soat-tenant", "globex")
+        .bearer(&t)
+        .send()
+        .await
+        .json();
+    assert_eq!(s["approval"], "writes");
+}
