@@ -1,2 +1,39 @@
 <h1>{{#if query }}Results for “{{ query }}”{{else}}All products{{/if}}</h1>
-{{> product_list }}
+<form class="search-page" method="get" action="/search">
+  {{#if collection_handle }}<input type="hidden" name="collection" value="{{ collection_handle }}">{{/if}}
+  <div class="search-bar">
+    <input type="search" name="q" value="{{ query }}" placeholder="Search products" aria-label="Search products">
+    <label>Sort
+      <select name="sort">{{#each sorts }}<option value="{{ value }}"{{#if selected }} selected{{/if}}>{{ label }}</option>{{/each}}</select>
+    </label>
+    <button class="button" type="submit">Search</button>
+  </div>
+  <p class="muted">{{ total }} products{{#if filtered }} · <a href="{{ clear_url }}">Clear filters</a>{{/if}}</p>
+  <div class="search-layout">
+    <aside class="filters" aria-label="Filters">
+      {{#if facets.tags }}
+      <fieldset>
+        <legend>Tags</legend>
+        {{#each facets.tags }}<label class="choice"><input type="checkbox" name="tag" value="{{ value }}"{{#if selected }} checked{{/if}}> {{ value }} <span class="muted">({{ count }})</span></label>{{/each}}
+      </fieldset>
+      {{/if}}
+      {{#each facets.options }}
+      <fieldset>
+        <legend>{{ name }}</legend>
+        {{#each values }}<label class="choice"><input type="checkbox" name="{{ param }}" value="{{ value }}"{{#if selected }} checked{{/if}}> {{ value }} <span class="muted">({{ count }})</span></label>{{/each}}
+      </fieldset>
+      {{/each}}
+      {{#if facets.price }}
+      <fieldset>
+        <legend>Price ({{ facets.price.currency }})</legend>
+        <div class="pair">
+          <label>From <input name="price_from" inputmode="decimal" value="{{ facets.price.from }}" placeholder="{{ facets.price.min }}"></label>
+          <label>To <input name="price_to" inputmode="decimal" value="{{ facets.price.to }}" placeholder="{{ facets.price.max }}"></label>
+        </div>
+      </fieldset>
+      {{/if}}
+      <button class="button" type="submit">Apply</button>
+    </aside>
+    <section>{{> product_list }}</section>
+  </div>
+</form>

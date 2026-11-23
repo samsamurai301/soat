@@ -257,6 +257,18 @@ pub async fn collection_by_handle(
     ))
 }
 
+/// The currency most of the shop's active products are priced in.
+pub async fn main_currency(conn: &mut PgConnection, scope: &impl Scope) -> Result<Option<String>> {
+    let row: (Option<String>,) = sqlx::query_as(
+        "SELECT mode() WITHIN GROUP (ORDER BY currency) FROM products \
+         WHERE tenant_id = $1 AND status = 'active'",
+    )
+    .bind(scope.tenant_id())
+    .fetch_one(conn)
+    .await?;
+    Ok(row.0)
+}
+
 /// Most addresses one sitemap lists.
 pub const SITEMAP_LIMIT: i64 = 50_000;
 

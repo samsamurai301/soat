@@ -24,4 +24,5 @@ soat-theme.workspace = true
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true
+serde_urlencoded.workspace = true
 sqlx.workspace = true

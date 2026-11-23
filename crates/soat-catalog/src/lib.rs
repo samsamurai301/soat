@@ -11,6 +11,7 @@
 pub mod categories;
 pub mod collections;
 pub mod media;
+pub mod search;
 pub mod storefront;
 pub mod variants;
 
@@ -72,6 +73,7 @@ impl Module for Catalog {
         .plugin(categories::mount)
         .plugin(media::mount)
         .plugin(storefront::mount)
+        .plugin(search::mount)
     }
 }
 

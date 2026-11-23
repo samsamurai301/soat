@@ -91,7 +91,7 @@ layer.
 - [x] D6 Menus **alpha**
 - [ ] D7 Blog
 - [x] D8 SEO basics: SEO title and description for products and collections, canonical and Open Graph tags, product structured data, robots.txt, sitemap.xml, noindex on private pages, URL redirects (automatic when a handle changes) **alpha**
-- [ ] D9 Search with facets **alpha**
+- [x] D9 Search with facets: full-text search (prefix words over titles, SKUs, tags and descriptions, ranked), filters by tag, option value, price and collection with counts that keep each facet whole, sorting; an API and a storefront page **alpha**
 - [ ] D10 Translations and markets **alpha**
 - [ ] D11 Headless Storefront API
 - [ ] D12 Merchant-defined content types

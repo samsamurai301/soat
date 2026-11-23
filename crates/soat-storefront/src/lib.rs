@@ -15,6 +15,7 @@
 use serde_json::{json, Map, Value};
 use soat_cart::storefront::{self as carts, CartToken};
 use soat_cart::CartView;
+use soat_catalog::search::{self, SearchQuery};
 use soat_catalog::storefront::{self as catalog, ProductCard};
 use soat_checkout::{CheckoutChange, CheckoutView, Complete};
 use soat_core::address::country_name;
@@ -574,25 +575,92 @@ async fn content_page(
     v.render("page", StatusCode::OK).await
 }
 
-/// Search, or every product without `?q=`.
+/// Search with filters: `q`, `tag`, `option.<Name>`, `price_from` and
+/// `price_to` (in the shop's currency, e.g. `49.90`), `collection`, `sort`
+/// and `offset`. Every product without any of them.
 #[get("/search", tag = "storefront")]
 async fn search_page(
     db: Db,
     shop: Shop,
     storage: Storage,
     headers: HeaderMap,
-    params: ListParams,
+    uri: Uri,
 ) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
-    let q: String = params
-        .get("q")
-        .unwrap_or_default()
-        .chars()
-        .take(200)
+    let raw = uri.query().unwrap_or_default();
+    let pairs: Vec<(String, String)> = serde_urlencoded::from_str(raw).unwrap_or_default();
+    let mut query = SearchQuery::parse(raw);
+    query.limit = 24;
+    // Prices on the page are in the shop's main currency, not minor units.
+    let currency = catalog::main_currency(&mut v.tx, &shop)
+        .await?
+        .and_then(|c| Currency::parse(&c).ok());
+    let typed = |name: &str| {
+        pairs
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+    };
+    let (from, to) = (typed("price_from"), typed("price_to"));
+    query.min_price = None;
+    query.max_price = None;
+    if let Some(c) = currency {
+        query.min_price = from.as_deref().and_then(|p| c.parse_decimal(p));
+        query.max_price = to.as_deref().and_then(|p| c.parse_decimal(p));
+    }
+    let found = search::search(&mut v.tx, &shop, &storage, &query).await?;
+
+    // Links keep every filter but the page.
+    let keep: Vec<(String, String)> = pairs
+        .iter()
+        .filter(|(k, v)| k != "offset" && !v.trim().is_empty())
+        .take(60)
+        .cloned()
         .collect();
-    let query = format!("q={}&offset={}", encode(&q), offset(&params));
-    let page =
-        catalog::product_cards(&mut v.tx, &shop, &storage, &ListParams::from_query(&query)).await?;
+    let base = format!(
+        "/search?{}",
+        serde_urlencoded::to_string(&keep).unwrap_or_default()
+    );
+    let page = Paged {
+        items: found.items,
+        total: found.total,
+        limit: found.limit,
+        offset: found.offset,
+    };
+    list(&mut v, &page, base.trim_end_matches('?'));
+
+    let sorts: Vec<Value> = [
+        ("relevance", "Best match"),
+        ("newest", "Newest"),
+        ("price", "Price, low to high"),
+        ("-price", "Price, high to low"),
+        ("title", "Name"),
+    ]
+    .iter()
+    .filter(|(s, _)| *s != "relevance" || !query.q.trim().is_empty())
+    .map(|(s, label)| json!({ "value": s, "label": label, "selected": *s == found.sort }))
+    .collect();
+    let options: Vec<Value> = found
+        .facets
+        .options
+        .iter()
+        .map(|o| json!({ "name": o.name, "param": format!("option.{}", o.name), "values": o.values }))
+        .collect();
+    let price = found.facets.price.as_ref().map(|p| {
+        let c = Currency::parse(&p.currency).ok();
+        let show = |m: i64| c.map_or_else(|| m.to_string(), |c| c.decimal(m));
+        json!({
+            "currency": p.currency,
+            "min": show(p.min_minor),
+            "max": show(p.max_minor),
+            "from": from,
+            "to": to,
+        })
+    });
+    let filtered =
+        !query.tags.is_empty() || !query.options.is_empty() || from.is_some() || to.is_some();
+    let q = query.q.clone();
     v.set(
         "page_title",
         json!(if q.is_empty() {
@@ -601,8 +669,23 @@ async fn search_page(
             format!("Search: {q}")
         }),
     );
-    list(&mut v, &page, &format!("/search?q={}", encode(&q)));
     v.set("query", json!(q));
+    v.set("total", json!(found.total));
+    v.set("sorts", Value::Array(sorts));
+    v.set(
+        "facets",
+        json!({ "tags": found.facets.tags, "options": options, "price": price }),
+    );
+    v.set("filtered", json!(filtered));
+    v.set(
+        "clear_url",
+        json!(if q.is_empty() {
+            "/search".to_owned()
+        } else {
+            format!("/search?q={}", encode(&q))
+        }),
+    );
+    v.set("collection_handle", json!(query.collection));
     v.render("search", StatusCode::OK).await
 }
 

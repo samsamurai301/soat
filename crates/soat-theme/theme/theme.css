@@ -83,3 +83,15 @@ main.wrap { padding-top: 24px; padding-bottom: 48px; min-height: 60vh; }
 .account-link { text-decoration: none; color: var(--muted); }
 .auth { max-width: 440px; margin: 0 auto; }
 .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+.search-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.search-bar input[type=search] { flex: 1 1 220px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--text); font-size: 16px; }
+.search-bar label { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
+.search-bar select { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
+.search-layout { display: grid; gap: 24px; grid-template-columns: 1fr; }
+@media (min-width: 800px) { .search-layout { grid-template-columns: 220px 1fr; } }
+.filters { display: grid; gap: 12px; align-content: start; }
+.filters fieldset { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 6px; margin: 0; min-width: 0; }
+.filters legend { font-weight: 600; padding: 0 4px; }
+.filters .choice { display: flex; gap: 8px; align-items: center; }
+.filters input:not([type=checkbox]) { padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; min-width: 0; width: 100%; }
+.filters .pair label { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }

@@ -124,6 +124,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Claude runs your shop over MCP, with every change approved by a person
 - [x] Storefront in Rust from an editable theme (server-rendered with htmx)
 - [x] SEO basics: SEO fields, Open Graph, structured data, sitemap, robots.txt, redirects
+- [x] Search with facets (tags, options, price) in Postgres full-text search
 - [x] Checkout, order confirmation and customer account pages
 - [ ] Admin UI (htmx)
 - [ ] WASM plugin host, built into Zapline
