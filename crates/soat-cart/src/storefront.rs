@@ -412,23 +412,34 @@ async fn attach_customer(
     let (tx, customer) = signed_in.begin(&db).await?;
     tx.commit().await?;
     let (mut tx, id) = holder.open(&db, &id).await?;
+    let cart = attach(&mut tx, &holder.shop, &id, &customer).await?;
+    tx.commit().await?;
+    Ok(Json(cart))
+}
+
+/// Gives cart `id` to customer `customer`, whose email becomes the
+/// cart's. Run it in a transaction from [`CartToken::open`]. Publishes
+/// `cart.updated` with the customer as the actor.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn attach(tx: &mut TenantTx, shop: &Shop, id: &str, customer: &str) -> Result<CartView> {
     sqlx::query(
         "UPDATE carts SET customer_id = $3, \
          email = (SELECT email FROM customers WHERE tenant_id = $1 AND id = $3) \
          WHERE tenant_id = $1 AND id = $2",
     )
-    .bind(holder.shop.id())
-    .bind(&id)
-    .bind(&customer)
-    .execute(&mut *tx)
+    .bind(shop.id())
+    .bind(id)
+    .bind(customer)
+    .execute(&mut **tx)
     .await?;
     let acting = Acting {
-        shop: &holder.shop,
-        actor: Some(customer),
+        shop,
+        actor: Some(customer.to_owned()),
     };
-    let cart = touch_and_view(&mut tx, &acting, &id).await?;
-    tx.commit().await?;
-    Ok(Json(cart))
+    touch_and_view(tx, &acting, id).await
 }
 
 /// The open cart `id` if `token` holds it, read in the shop's transaction.

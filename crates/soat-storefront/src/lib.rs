@@ -3,8 +3,8 @@
 //!
 //! `/` (the `home` content page if published, and new products),
 //! `/products/{handle}`, `/collections/{handle}`, `/pages/{handle}`,
-//! `/search?q=`, `/cart`, `/checkout`, `/order` (the buyer's last order)
-//! and `/theme.css`. The shop comes from the request's
+//! `/search?q=`, `/cart`, `/checkout`, `/order` (the buyer's last order),
+//! `/account` (sign in, register, profile and orders) and `/theme.css`. The shop comes from the request's
 //! `Host` (one of the shop's domains) or the `x-soat-tenant` header. The
 //! cart lives in a cookie; adding to it and changing it are plain form
 //! posts that htmx upgrades in place, so every page works without
@@ -17,9 +17,10 @@ use soat_catalog::storefront::{self as catalog, ProductCard};
 use soat_checkout::{CheckoutChange, CheckoutView, Complete};
 use soat_core::address::country_name;
 use soat_core::Currency;
+use soat_customers::accounts::{self, SignedIn};
 use soat_module::Module;
-use soat_orders::{OrderToken, PostalAddress};
-use soat_payments::Providers;
+use soat_orders::{Order, OrderToken, PostalAddress};
+use soat_payments::{Payment, Providers};
 use soat_shipping::ShippingOption;
 use soat_tenancy::{Scope, Shop, TenantTx};
 use soat_theme::Theme;
@@ -27,6 +28,8 @@ use zapline::db::sqlx::PgConnection;
 use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::prelude::*;
 use zapline::storage::Storage;
+
+mod account;
 
 /// The cookie holding the buyer's cart: `<cart id>.<token>`.
 pub const CART_COOKIE: &str = "soat_cart";
@@ -44,7 +47,15 @@ impl Module for Storefront {
 
     fn depends_on(&self) -> &'static [&'static str] {
         &[
-            "files", "catalog", "cart", "shipping", "payments", "orders", "checkout", "cms",
+            "files",
+            "customers",
+            "catalog",
+            "cart",
+            "shipping",
+            "payments",
+            "orders",
+            "checkout",
+            "cms",
             "theme",
         ]
     }
@@ -64,6 +75,16 @@ impl Module for Storefront {
             checkout_complete,
             order_page,
             theme_css,
+        ))
+        .mount((
+            account::login_page,
+            account::login,
+            account::register_page,
+            account::register,
+            account::logout,
+            account::account_page,
+            account::update_account,
+            account::account_order,
         ))
     }
 }
@@ -92,14 +113,22 @@ fn encode(s: &str) -> String {
         .collect()
 }
 
-/// The `<id>.<token>` in the request's cookie `name`.
-fn id_cookie(headers: &HeaderMap, name: &str) -> Option<(String, String)> {
+/// The value of the request's cookie `name`, if not empty.
+fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .find_map(|pair| pair.trim().strip_prefix(name)?.strip_prefix('='))
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned)
+}
+
+/// The `<id>.<token>` in the request's cookie `name`.
+fn id_cookie(headers: &HeaderMap, name: &str) -> Option<(String, String)> {
+    cookie(headers, name)
+        .as_deref()
         .and_then(|v| v.split_once('.'))
         .filter(|(id, token)| !id.is_empty() && !token.is_empty())
         .map(|(id, token)| (id.to_owned(), token.to_owned()))
@@ -108,6 +137,14 @@ fn id_cookie(headers: &HeaderMap, name: &str) -> Option<(String, String)> {
 /// The `<cart id>.<token>` in the request's cookies.
 fn cart_cookie(headers: &HeaderMap) -> Option<(String, String)> {
     id_cookie(headers, CART_COOKIE)
+}
+
+/// `s` with its first letter capitalized, for messages shown as sentences.
+fn upper_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map(|f| f.to_uppercase().chain(c).collect())
+        .unwrap_or_default()
 }
 
 fn is_htmx(headers: &HeaderMap) -> bool {
@@ -120,6 +157,8 @@ struct View {
     tx: TenantTx,
     theme: Theme,
     data: Map<String, Value>,
+    /// The signed-in customer's id.
+    customer: Option<String>,
 }
 
 impl View {
@@ -146,7 +185,24 @@ impl View {
         data.insert("shop".to_owned(), json!({ "name": name }));
         data.insert("menus".to_owned(), Value::Object(menus));
         data.insert("cart".to_owned(), json!({ "count": count }));
-        Ok(Self { tx, theme, data })
+        let mut customer = None;
+        if let Some(token) = cookie(headers, account::CUSTOMER_COOKIE) {
+            let session = SignedIn::new(shop.clone(), &token);
+            if let Some(id) = session.customer(&mut tx).await? {
+                let me = accounts::profile(&mut tx, shop, &id).await?;
+                data.insert(
+                    "customer".to_owned(),
+                    serde_json::to_value(me).unwrap_or_default(),
+                );
+                customer = Some(id);
+            }
+        }
+        Ok(Self {
+            tx,
+            theme,
+            data,
+            customer,
+        })
     }
 
     fn set(&mut self, key: &str, value: Value) {
@@ -554,7 +610,7 @@ async fn cart_add(
     let mut res = match (&outcome, is_htmx(&headers)) {
         (Ok(cart), true) => cart_link(Some(cart.item_count), None),
         (Ok(_), false) => Redirect::to("/cart").into_response(),
-        (Err(e), true) => cart_link(None, Some(&e.to_string())),
+        (Err(e), true) => cart_link(None, Some(&upper_first(e.message()))),
         (Err(_), false) => return outcome.map(|_| StatusCode::OK.into_response()),
     };
     if outcome.is_ok() {
@@ -764,10 +820,13 @@ async fn render_checkout(
         Some((id, token)) => carts::held(&mut v.tx, shop, &id, &token).await?,
         None => None,
     };
-    let Some(cart) = cart.filter(|c| !c.lines.is_empty()) else {
+    let Some(mut cart) = cart.filter(|c| !c.lines.is_empty()) else {
         v.tx.commit().await?;
         return Ok(Redirect::to("/cart").into_response());
     };
+    if let (Some(customer), None) = (v.customer.clone(), &cart.customer_id) {
+        cart = carts::attach(&mut v.tx, shop, &cart.id, &customer).await?;
+    }
     let c = soat_checkout::checkout(&mut v.tx, shop, &cart.id).await?;
     checkout_values(&mut v, shop, &c, typed).await?;
     let status = if let Some(e) = error {
@@ -829,7 +888,14 @@ async fn checkout_update(
         Ok(v) => v,
         Err(e) => {
             drop(tx);
-            return render_checkout(&db, &shop, &headers, Some(e.to_string()), Some(&f)).await;
+            return render_checkout(
+                &db,
+                &shop,
+                &headers,
+                Some(upper_first(e.message())),
+                Some(&f),
+            )
+            .await;
         }
     };
     let asked = Some(field(&f.shipping_rate_id)).filter(|r| !r.is_empty());
@@ -857,7 +923,7 @@ async fn checkout_update(
                 ..blank_change()
             };
             if let Err(e) = soat_checkout::update(&mut tx, &shop, &id, &change).await {
-                problem = Some(e.to_string());
+                problem = Some(upper_first(e.message()));
                 let back = CheckoutChange {
                     discount_code: Some(current.unwrap_or_default()),
                     ..blank_change()
@@ -912,7 +978,8 @@ async fn checkout_complete(
     let done = match soat_checkout::complete(&db, &providers, &holder, &id, req).await {
         Ok(d) => d,
         Err(e) => {
-            return render_checkout(&db, &shop, &headers, Some(e.to_string()), None).await;
+            return render_checkout(&db, &shop, &headers, Some(upper_first(e.message())), None)
+                .await;
         }
     };
     let next = done
@@ -965,6 +1032,12 @@ async fn order_page(db: Db, shop: Shop, headers: HeaderMap) -> Result<Response> 
     let Some((order, payments)) = found else {
         return v.not_found().await;
     };
+    order_values(&mut v, &order, &payments);
+    v.render("order", StatusCode::OK).await
+}
+
+/// Sets the order page's values.
+fn order_values(v: &mut View, order: &Order, payments: &[Payment]) {
     let cur = order.currency.as_str();
     let lines: Vec<Value> = order
         .lines
@@ -973,6 +1046,12 @@ async fn order_page(db: Db, shop: Shop, headers: HeaderMap) -> Result<Response> 
         .collect();
     let payment = payments.first();
     let instructions = payment
+        .filter(|p| {
+            !matches!(
+                p.status.as_str(),
+                "paid" | "refunded" | "partially_refunded"
+            )
+        })
         .and_then(|p| p.next_action.as_ref())
         .filter(|a| a["type"] == "instructions")
         .and_then(|a| a["text"].as_str())
@@ -1002,8 +1081,31 @@ async fn order_page(db: Db, shop: Shop, headers: HeaderMap) -> Result<Response> 
             |p| payment_status(&p.status)
         )),
     );
-    v.set("order", serde_json::to_value(&order).unwrap_or_default());
-    v.render("order", StatusCode::OK).await
+    v.set(
+        "placed",
+        json!(order.placed_at.get(..10).unwrap_or_default()),
+    );
+    v.set(
+        "status",
+        json!(order_status(
+            &order.status,
+            &order.financial_status,
+            &order.fulfillment_status
+        )),
+    );
+    v.set("order", serde_json::to_value(order).unwrap_or_default());
+}
+
+/// An order's state in a buyer's words.
+fn order_status(status: &str, financial: &str, fulfillment: &str) -> &'static str {
+    match (status, financial, fulfillment) {
+        ("canceled", ..) => "Canceled",
+        (_, "refunded", _) => "Refunded",
+        (_, _, "fulfilled") => "Shipped",
+        (_, _, "partially_fulfilled") => "Partly shipped",
+        (_, "paid" | "partially_refunded", _) => "Paid",
+        _ => "Awaiting payment",
+    }
 }
 
 /// The theme's stylesheet.

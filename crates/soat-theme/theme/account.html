@@ -1,0 +1,30 @@
+<h1>Hello{{#if customer.first_name }}, {{ customer.first_name }}{{/if}}</h1>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+<div class="checkout">
+<section>
+  <h2>Your orders</h2>
+  {{#if orders }}
+  <table class="cart-lines">
+    <thead><tr><th>Order</th><th>Placed</th><th>Status</th><th>Total</th></tr></thead>
+    <tbody>
+    {{#each orders }}<tr><td><a href="/account/orders/{{ id }}">#{{ number }}</a></td><td>{{ placed }}</td><td>{{ status }}</td><td>{{ total }}</td></tr>{{/each}}
+    </tbody>
+  </table>
+  {{#if prev_url }}<a href="{{ prev_url }}">Newer</a>{{/if}} {{#if next_url }}<a href="{{ next_url }}">Older</a>{{/if}}
+  {{else}}
+  <p class="empty">No orders yet. <a href="/search">Start shopping</a></p>
+  {{/if}}
+</section>
+<aside class="summary">
+  <h2>Your details</h2>
+  <form class="fields" method="post" action="/account">
+    <label>Email <input type="email" value="{{ customer.email }}" disabled></label>
+    <label>First name <input name="first_name" value="{{ customer.first_name }}" autocomplete="given-name"></label>
+    <label>Last name <input name="last_name" value="{{ customer.last_name }}" autocomplete="family-name"></label>
+    <label>Phone <input type="tel" name="phone" value="{{ customer.phone }}" autocomplete="tel"></label>
+    <label class="choice"><input type="checkbox" name="accepts_marketing" value="true"{{#if customer.accepts_marketing }} checked{{/if}}> Send me news and offers</label>
+    <button class="button" type="submit">Save</button>
+  </form>
+  <form method="post" action="/account/logout"><button class="link" type="submit">Sign out</button></form>
+</aside>
+</div>

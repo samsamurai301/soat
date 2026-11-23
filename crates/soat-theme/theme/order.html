@@ -1,5 +1,11 @@
+{{#if account }}
+<p><a href="/account">← Your account</a></p>
+<h1>Order #{{ order.number }}</h1>
+<p class="muted">Placed {{ placed }} · {{ status }}</p>
+{{else}}
 <h1>Thank you!</h1>
-<p>Order <strong>#{{ order.number }}</strong> is placed. We sent a confirmation to {{ order.email }}.</p>
+<p>Order <strong>#{{ order.number }}</strong> is placed. A confirmation goes to {{ order.email }}.</p>
+{{/if}}
 {{#if instructions }}
 <div class="notice"><h2>How to pay</h2><p class="pre">{{ instructions }}</p></div>
 {{/if}}
@@ -26,4 +32,4 @@
 </aside>
 {{/if}}
 </div>
-<p><a class="button" href="/">Keep shopping</a></p>
+{{#if account }}{{else}}<p><a class="button" href="/">Keep shopping</a></p>{{/if}}

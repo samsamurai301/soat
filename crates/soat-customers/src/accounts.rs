@@ -14,6 +14,7 @@ use soat_auth::normalize_email;
 use soat_tenancy::{Shop, TenantTx};
 use zapline::auth::password::{hash, hash_token, new_token, verify, verify_missing};
 use zapline::auth::BearerToken;
+use zapline::db::sqlx::PgConnection;
 use zapline::db::{sqlx, Db};
 use zapline::extract::FromRequestParts;
 use zapline::prelude::*;
@@ -105,19 +106,41 @@ impl FromRequestParts for SignedIn {
 }
 
 impl SignedIn {
-    /// The shop's transaction and the customer's id; 401 for an unknown or
-    /// expired session.
-    pub async fn begin(&self, db: &Db) -> Result<(TenantTx, String)> {
-        let mut tx = self.shop.begin(db).await?;
+    /// The holder of session `token` in `shop`, e.g. from a cookie.
+    #[must_use]
+    pub fn new(shop: Shop, token: &str) -> Self {
+        Self {
+            shop,
+            token_hash: hash_token(token),
+        }
+    }
+
+    /// The session's customer, if it is valid, read in the shop's
+    /// transaction.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn customer(&self, conn: &mut PgConnection) -> Result<Option<String>> {
         let row: Option<(String,)> = sqlx::query_as(
             "SELECT customer_id FROM customer_sessions \
              WHERE tenant_id = $1 AND token_hash = $2 AND expires_at > now()",
         )
         .bind(self.shop.id())
         .bind(&self.token_hash)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(conn)
         .await?;
-        let (customer,) = row.ok_or_else(|| Error::unauthorized().with_code("invalid_session"))?;
+        Ok(row.map(|(c,)| c))
+    }
+
+    /// The shop's transaction and the customer's id; 401 for an unknown or
+    /// expired session.
+    pub async fn begin(&self, db: &Db) -> Result<(TenantTx, String)> {
+        let mut tx = self.shop.begin(db).await?;
+        let customer = self
+            .customer(&mut tx)
+            .await?
+            .ok_or_else(|| Error::unauthorized().with_code("invalid_session"))?;
         Ok((tx, customer))
     }
 }
@@ -151,9 +174,20 @@ async fn register(
     shop: Shop,
     Valid(Json(r)): Valid<Json<Register>>,
 ) -> Result<(StatusCode, Json<CustomerSession>)> {
+    let session = create_account(&db, &shop, r).await?;
+    Ok((StatusCode::CREATED, Json(session)))
+}
+
+/// Creates a customer account in `shop` and signs it in; see
+/// `POST /api/storefront/account/register`. Check `r` first.
+///
+/// # Errors
+///
+/// 409 `email_taken` or `activation_required`; database errors.
+pub async fn create_account(db: &Db, shop: &Shop, r: Register) -> Result<CustomerSession> {
     let email = normalize_email(&r.email);
     let password_hash = hash(&r.password).await?;
-    let mut tx = shop.begin(&db).await?;
+    let mut tx = shop.begin(db).await?;
     let existing: Option<(bool,)> = sqlx::query_as(
         "SELECT password_hash IS NOT NULL FROM customers WHERE tenant_id = $1 AND email = $2",
     )
@@ -200,9 +234,9 @@ async fn register(
         &serde_json::json!({ "id": me.id }),
     )
     .await?;
-    let session = start_session(&mut tx, &shop, me).await?;
+    let session = start_session(&mut tx, shop, me).await?;
     tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(session)))
+    Ok(session)
 }
 
 /// Sign in with email and password. Wrong credentials are a 401
@@ -213,7 +247,16 @@ async fn login(
     shop: Shop,
     Valid(Json(l)): Valid<Json<Login>>,
 ) -> Result<Json<CustomerSession>> {
-    let mut tx = shop.begin(&db).await?;
+    Ok(Json(sign_in(&db, &shop, l).await?))
+}
+
+/// Signs a customer in with email and password.
+///
+/// # Errors
+///
+/// 401 `invalid_credentials`, the same whether or not the email exists.
+pub async fn sign_in(db: &Db, shop: &Shop, l: Login) -> Result<CustomerSession> {
+    let mut tx = shop.begin(db).await?;
     let row: Option<(String, Option<String>)> = sqlx::query_as(
         "SELECT id, password_hash FROM customers WHERE tenant_id = $1 AND email = $2",
     )
@@ -229,42 +272,57 @@ async fn login(
     if !verify(l.password, password_hash).await? {
         return Err(Error::unauthorized().with_code("invalid_credentials"));
     }
-    let me = sqlx::query_as::<_, Me>(&format!(
+    let me = profile(&mut tx, shop, &id).await?;
+    let session = start_session(&mut tx, shop, me).await?;
+    tx.commit().await?;
+    Ok(session)
+}
+
+/// Customer `id`'s profile, read in the shop's transaction.
+///
+/// # Errors
+///
+/// Database errors (a missing customer among them).
+pub async fn profile(conn: &mut PgConnection, shop: &Shop, id: &str) -> Result<Me> {
+    Ok(sqlx::query_as::<_, Me>(&format!(
         "SELECT {ME} FROM customers WHERE tenant_id = $1 AND id = $2"
     ))
     .bind(shop.id())
-    .bind(&id)
-    .fetch_one(&mut *tx)
-    .await?;
-    let session = start_session(&mut tx, &shop, me).await?;
-    tx.commit().await?;
-    Ok(Json(session))
+    .bind(id)
+    .fetch_one(conn)
+    .await?)
 }
 
 /// Sign out: the token stops working.
 #[post("/api/storefront/account/logout", tag = "storefront", status = 204)]
 async fn logout(db: Db, signed_in: SignedIn) -> Result<StatusCode> {
-    let (mut tx, _) = signed_in.begin(&db).await?;
-    sqlx::query("DELETE FROM customer_sessions WHERE tenant_id = $1 AND token_hash = $2")
-        .bind(signed_in.shop.id())
-        .bind(&signed_in.token_hash)
-        .execute(&mut *tx)
-        .await?;
-    tx.commit().await?;
+    signed_in.sign_out(&db).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+impl SignedIn {
+    /// Ends this session; an unknown one is a 401.
+    ///
+    /// # Errors
+    ///
+    /// 401 `invalid_session`; database errors.
+    pub async fn sign_out(&self, db: &Db) -> Result<()> {
+        let (mut tx, _) = self.begin(db).await?;
+        sqlx::query("DELETE FROM customer_sessions WHERE tenant_id = $1 AND token_hash = $2")
+            .bind(self.shop.id())
+            .bind(&self.token_hash)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
 }
 
 /// The signed-in customer's profile.
 #[get("/api/storefront/account", tag = "storefront")]
 async fn get_me(db: Db, signed_in: SignedIn) -> Result<Json<Me>> {
     let (mut tx, customer) = signed_in.begin(&db).await?;
-    let me = sqlx::query_as::<_, Me>(&format!(
-        "SELECT {ME} FROM customers WHERE tenant_id = $1 AND id = $2"
-    ))
-    .bind(signed_in.shop.id())
-    .bind(&customer)
-    .fetch_one(&mut *tx)
-    .await?;
+    let me = profile(&mut tx, &signed_in.shop, &customer).await?;
     tx.commit().await?;
     Ok(Json(me))
 }
@@ -278,6 +336,18 @@ async fn update_me(
     Valid(Json(c)): Valid<Json<MeChange>>,
 ) -> Result<Json<Me>> {
     let (mut tx, customer) = signed_in.begin(&db).await?;
+    let me = change_profile(&mut tx, &signed_in.shop, &customer, &c).await?;
+    tx.commit().await?;
+    Ok(Json(me))
+}
+
+/// Changes customer `id`'s own profile; check `c` first. Publishes
+/// `customer.updated` with the customer as the actor.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn change_profile(tx: &mut TenantTx, shop: &Shop, id: &str, c: &MeChange) -> Result<Me> {
     let me = sqlx::query_as::<_, Me>(&format!(
         "UPDATE customers SET first_name = COALESCE($3, first_name), \
          last_name = COALESCE($4, last_name), phone = COALESCE($5, phone), \
@@ -286,18 +356,14 @@ async fn update_me(
          accepts_marketing = COALESCE($6, accepts_marketing) \
          WHERE tenant_id = $1 AND id = $2 RETURNING {ME}"
     ))
-    .bind(signed_in.shop.id())
-    .bind(&customer)
+    .bind(shop.id())
+    .bind(id)
     .bind(&c.first_name)
     .bind(&c.last_name)
     .bind(&c.phone)
     .bind(c.accepts_marketing)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
-    signed_in
-        .shop
-        .publish(&mut tx, Some(&customer), "customer.updated", &me)
-        .await?;
-    tx.commit().await?;
-    Ok(Json(me))
+    shop.publish(tx, Some(id), "customer.updated", &me).await?;
+    Ok(me)
 }

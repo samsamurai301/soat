@@ -1,0 +1,17 @@
+<div class="auth">
+<section>
+  <h1>Create an account</h1>
+  {{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+  <form class="fields" method="post" action="/account/register">
+    <div class="pair">
+      <label>First name <input name="first_name" value="{{ first_name }}" autocomplete="given-name"></label>
+      <label>Last name <input name="last_name" value="{{ last_name }}" autocomplete="family-name"></label>
+    </div>
+    <label>Email <input type="email" name="email" value="{{ email }}" autocomplete="email" required></label>
+    <label>Password (at least 10 characters) <input type="password" name="password" minlength="10" autocomplete="new-password" required></label>
+    <label class="choice"><input type="checkbox" name="accepts_marketing" value="true"> Send me news and offers</label>
+    <button class="button" type="submit">Create account</button>
+  </form>
+  <p>Have an account? <a href="/account/login">Sign in</a></p>
+</section>
+</div>

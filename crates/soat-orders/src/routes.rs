@@ -1,8 +1,9 @@
 //! Order endpoints: staff, signed-in customers and guests with a token.
 
 use soat_customers::accounts::SignedIn;
-use soat_tenancy::{Shop, Tenant, TenantListing, TenantTx};
+use soat_tenancy::{Scope, Shop, Tenant, TenantListing, TenantTx};
 use zapline::auth::password::hash_token;
+use zapline::db::sqlx::PgConnection;
 use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::extract::FromRequestParts;
 use zapline::prelude::*;
@@ -171,26 +172,52 @@ async fn my_orders(
     params: ListParams,
 ) -> Result<Json<Paged<OrderSummary>>> {
     let (mut tx, customer) = signed_in.begin(&db).await?;
-    let page = TenantListing::new("orders", SUMMARY)
-        .scope_text("customer_id", customer)
-        .sortable(["number"])
-        .default_sort("-number")
-        .fetch(&mut tx, &params)
-        .await?;
+    let page = customer_orders(&mut tx, &customer, &params).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+/// Customer `customer`'s orders, newest first, in the shop's transaction.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn customer_orders(
+    conn: &mut PgConnection,
+    customer: &str,
+    params: &ListParams,
+) -> Result<Paged<OrderSummary>> {
+    TenantListing::new("orders", SUMMARY)
+        .scope_text("customer_id", customer.to_owned())
+        .sortable(["number"])
+        .default_sort("-number")
+        .fetch(conn, params)
+        .await
+}
+
+/// Order `id` if it is customer `customer`'s, in the shop's transaction.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn customer_order(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    customer: &str,
+    id: &str,
+) -> Result<Option<Order>> {
+    Ok(load(conn, scope, id)
+        .await?
+        .filter(|o| o.customer_id.as_deref() == Some(customer)))
 }
 
 /// One of the signed-in customer's orders; anyone else's is a 404.
 #[get("/api/storefront/account/orders/{id}", tag = "storefront")]
 async fn my_order(db: Db, signed_in: SignedIn, Path(id): Path<String>) -> Result<Json<Order>> {
     let (mut tx, customer) = signed_in.begin(&db).await?;
-    let order = load(&mut tx, &signed_in.shop, &id).await?;
+    let order = customer_order(&mut tx, &signed_in.shop, &customer, &id).await?;
     tx.commit().await?;
-    order
-        .filter(|o| o.customer_id.as_deref() == Some(customer.as_str()))
-        .map(Json)
-        .ok_or_else(Error::not_found)
+    order.map(Json).ok_or_else(Error::not_found)
 }
 
 /// A guest holding an order's token (`x-soat-order-token`), for

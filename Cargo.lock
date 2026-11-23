@@ -1916,6 +1916,7 @@ dependencies = [
  "soat-checkout",
  "soat-cms",
  "soat-core",
+ "soat-customers",
  "soat-files",
  "soat-module",
  "soat-orders",

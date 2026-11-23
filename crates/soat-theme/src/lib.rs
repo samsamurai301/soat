@@ -1,7 +1,8 @@
 //! Themes: how the storefront looks.
 //!
 //! A theme is a set of files: page templates (`index`, `product`,
-//! `collection`, `search`, `page`, `cart`, `checkout`, `order`, `not_found`),
+//! `collection`, `search`, `page`, `cart`, `checkout`, `order`, `login`,
+//! `register`, `account`, `not_found`),
 //! the `layout` that wraps every page (it writes the page with
 //! `{{> content }}`), partials
 //! (`header`, `footer`, `product_card`, `product_list`, `blocks`, and any
@@ -57,6 +58,13 @@ pub const DEFAULT_FILES: &[(&str, Kind, &str)] = &[
         include_str!("../theme/checkout.html"),
     ),
     ("order", Kind::Page, include_str!("../theme/order.html")),
+    ("login", Kind::Page, include_str!("../theme/login.html")),
+    (
+        "register",
+        Kind::Page,
+        include_str!("../theme/register.html"),
+    ),
+    ("account", Kind::Page, include_str!("../theme/account.html")),
     (
         "not_found",
         Kind::Page,

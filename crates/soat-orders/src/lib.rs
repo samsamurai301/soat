@@ -16,7 +16,7 @@ pub mod fulfillments;
 pub mod returns;
 mod routes;
 
-pub use routes::OrderToken;
+pub use routes::{customer_order, customer_orders, OrderSummary, OrderToken};
 
 use std::sync::Arc;
 

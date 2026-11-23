@@ -464,3 +464,216 @@ async fn buyers_check_out_and_see_their_order() {
     page(&client, "acme", "/order", None, 404).await;
     page(&client, "globex", "/order", Some(&order), 404).await;
 }
+
+fn cookies(res: &zapline::test::TestResponse, names: &[&str]) -> Vec<String> {
+    names
+        .iter()
+        .filter_map(|n| res.cookie(n).map(|c| format!("{n}={}", c.value())))
+        .collect()
+}
+
+#[tokio::test]
+async fn customers_have_accounts() {
+    let (client, t) = common::with_tenants(&["acme", "globex"]).await;
+    shop_with_products(&client, &t).await;
+    let z = admin(
+        &client,
+        &t,
+        "POST",
+        "/api/shipping/zones",
+        json!({ "name": "DE", "countries": ["DE"] }),
+    )
+    .await;
+    admin(
+        &client,
+        &t,
+        "POST",
+        &format!("/api/shipping/zones/{}/rates", z["id"].as_str().unwrap()),
+        json!({ "name": "Standard", "currency": "EUR", "price_minor": 495 }),
+    )
+    .await;
+    let invoice = admin(
+        &client,
+        &t,
+        "POST",
+        "/api/payment-methods",
+        json!({ "provider": "manual", "name": "Invoice", "settings": { "instructions": "Pay in 14 days" } }),
+    )
+    .await;
+    let shoe = admin(&client, &t, "GET", "/api/products?q=trail", Value::Null).await["items"][0]
+        ["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let res = client
+        .get("/account")
+        .header("x-soat-tenant", "acme")
+        .send()
+        .await;
+    res.assert_status(303);
+    assert_eq!(res.header("location"), Some("/account/login"));
+    let login = page(&client, "acme", "/account/login", None, 200).await;
+    assert!(login.contains("action=\"/account/login\""));
+
+    // A guest's cart comes along when they register.
+    let res = client
+        .post("/cart/add")
+        .header("x-soat-tenant", "acme")
+        .form(&json!({ "product_id": shoe }))
+        .send()
+        .await;
+    let cart = cookies(&res, &["soat_cart"]).remove(0);
+    let short = form(
+        &client,
+        "acme",
+        "/account/register",
+        &cart,
+        json!({ "email": "ada@example.com", "password": "short", "first_name": "Ada" }),
+        422,
+    )
+    .await;
+    let text = short.text();
+    assert!(
+        text.contains("The password needs at least 10 characters"),
+        "{text}"
+    );
+    assert!(text.contains("value=\"ada@example.com\""));
+    let res = form(
+        &client,
+        "acme",
+        "/account/register",
+        &cart,
+        json!({ "email": "ada@example.com", "password": "correct horse", "first_name": "Ada" }),
+        303,
+    )
+    .await;
+    assert_eq!(res.header("location"), Some("/account"));
+    let session = res.cookie("soat_customer").unwrap();
+    assert!(session.http_only() && session.same_site() == Some("Lax"));
+    let me = format!("soat_customer={}", session.value());
+    let both = format!("{cart}; {me}");
+    form(
+        &client,
+        "acme",
+        "/account/register",
+        "",
+        json!({ "email": "ADA@example.com", "password": "correct horse" }),
+        422,
+    )
+    .await
+    .assert_contains("An account with this email exists");
+
+    let home = page(&client, "acme", "/", Some(&me), 200).await;
+    assert!(home.contains(">Ada</a>"), "the header greets them");
+    let checkout = page(&client, "acme", "/checkout", Some(&both), 200).await;
+    assert!(checkout.contains("value=\"ada@example.com\""), "{checkout}");
+    form(
+        &client,
+        "acme",
+        "/checkout",
+        &both,
+        json!({ "line1": "Hauptstr. 1", "postal_code": "10115", "city": "Berlin", "country": "DE" }),
+        303,
+    )
+    .await;
+    form(
+        &client,
+        "acme",
+        "/checkout/complete",
+        &both,
+        json!({ "payment_method_id": invoice["id"] }),
+        303,
+    )
+    .await;
+
+    let account = page(&client, "acme", "/account", Some(&me), 200).await;
+    assert!(account.contains("Hello, Ada"));
+    assert!(account.contains("#1001"), "{account}");
+    assert!(account.contains("Awaiting payment"));
+    assert!(account.contains("134.94 EUR"));
+    let order_id = account
+        .split("/account/orders/")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_owned();
+    let order = page(
+        &client,
+        "acme",
+        &format!("/account/orders/{order_id}"),
+        Some(&me),
+        200,
+    )
+    .await;
+    assert!(order.contains("<h1>Order #1001</h1>"), "{order}");
+    assert!(order.contains("Pay in 14 days"));
+    let orders = admin(&client, &t, "GET", "/api/orders", Value::Null).await;
+    assert!(orders["items"][0]["customer_id"].is_string(), "{orders}");
+
+    // Details change.
+    let res = form(
+        &client,
+        "acme",
+        "/account",
+        &me,
+        json!({ "first_name": " Grace ", "last_name": "H", "phone": "" }),
+        303,
+    )
+    .await;
+    assert_eq!(res.header("location"), Some("/account?saved=1"));
+    let account = page(&client, "acme", "/account?saved=1", Some(&me), 200).await;
+    assert!(account.contains("Hello, Grace") && account.contains("Saved."));
+
+    // Someone else sees none of it; nor does another shop.
+    let res = form(
+        &client,
+        "acme",
+        "/account/register",
+        "",
+        json!({ "email": "eve@example.com", "password": "another secret" }),
+        303,
+    )
+    .await;
+    let eve = cookies(&res, &["soat_customer"]).remove(0);
+    page(
+        &client,
+        "acme",
+        &format!("/account/orders/{order_id}"),
+        Some(&eve),
+        404,
+    )
+    .await;
+    assert!(!page(&client, "acme", "/account", Some(&eve), 200)
+        .await
+        .contains("#1001"));
+    page(&client, "globex", "/account", Some(&me), 303).await;
+
+    // Sign out, and back in.
+    let res = form(&client, "acme", "/account/logout", &me, json!({}), 303).await;
+    assert!(res.cookie("soat_customer").unwrap().is_removal());
+    page(&client, "acme", "/account", Some(&me), 303).await;
+    let wrong = form(
+        &client,
+        "acme",
+        "/account/login",
+        "",
+        json!({ "email": "ada@example.com", "password": "wrong password" }),
+        401,
+    )
+    .await;
+    assert!(wrong.text().contains("Wrong email or password."));
+    let res = form(
+        &client,
+        "acme",
+        "/account/login",
+        "",
+        json!({ "email": "ada@example.com", "password": "correct horse" }),
+        303,
+    )
+    .await;
+    let me = cookies(&res, &["soat_customer"]).remove(0);
+    page(&client, "acme", "/account", Some(&me), 200).await;
+}

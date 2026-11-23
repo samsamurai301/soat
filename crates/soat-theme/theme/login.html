@@ -1,0 +1,12 @@
+<div class="auth">
+<section>
+  <h1>Sign in</h1>
+  {{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+  <form class="fields" method="post" action="/account/login">
+    <label>Email <input type="email" name="email" value="{{ email }}" autocomplete="email" required></label>
+    <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="button" type="submit">Sign in</button>
+  </form>
+  <p>New here? <a href="/account/register">Create an account</a></p>
+</section>
+</div>

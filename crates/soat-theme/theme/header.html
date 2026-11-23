@@ -12,6 +12,7 @@
     <form class="search" action="/search" method="get" role="search">
       <input type="search" name="q" value="{{ query }}" placeholder="Search" aria-label="Search">
     </form>
+    <a class="account-link" href="/account">{{#if customer }}{{#if customer.first_name }}{{ customer.first_name }}{{else}}Account{{/if}}{{else}}Sign in{{/if}}</a>
     <a class="cart-link" href="/cart" id="cart-count">Cart{{#if cart.count }} ({{ cart.count }}){{/if}}</a>
   </div>
 </header>
