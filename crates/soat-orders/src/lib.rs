@@ -13,7 +13,8 @@
 //! refund them.
 
 pub mod fulfillments;
-pub mod returns;
+pub mod report;
+mod returns;
 mod routes;
 
 pub use routes::{customer_order, customer_orders, OrderSummary, OrderToken};
@@ -75,6 +76,7 @@ impl Module for Orders {
         app.plugin(routes::mount)
             .plugin(fulfillments::mount)
             .plugin(returns::mount)
+            .plugin(report::mount)
     }
 }
 

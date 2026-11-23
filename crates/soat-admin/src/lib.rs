@@ -32,6 +32,7 @@ macro_rules! page_or {
 mod api;
 mod content;
 mod customers;
+mod dashboard;
 mod orders;
 mod pages;
 mod products;
@@ -93,7 +94,14 @@ impl Module for Admin {
             pages: self.pages.clone(),
         })
         .wrap(guard)
-        .mount((login_page, login, logout, shop_list, home, styles))
+        .mount((
+            login_page,
+            login,
+            logout,
+            shop_list,
+            dashboard::home,
+            styles,
+        ))
         .mount((
             products::list,
             products::new_page,
@@ -428,28 +436,6 @@ async fn shop_list(
         &json!({ "page_title": "Your shops", "shops": list }),
         StatusCode::OK,
     ))
-}
-
-/// A shop's home: what is there and where to start.
-#[get("/admin/{shop}", tag = "admin")]
-async fn home(
-    s: State<Shared>,
-    db: Db,
-    headers: HeaderMap,
-    conn: ConnInfo,
-    Path(shop): Path<String>,
-) -> Result<Response> {
-    let mut cx = match Ctx::open(s.0, db, &headers, conn, &shop, "home").await {
-        Ok(cx) => cx,
-        Err(res) => return Ok(res),
-    };
-    let (status, products) = cx.call(Method::GET, "/api/products?limit=1", None).await;
-    if status == 200 {
-        cx.set("product_count", products["total"].clone());
-    }
-    let title = cx.data["shop"]["name"].clone();
-    cx.set("page_title", title);
-    Ok(cx.render("home", StatusCode::OK))
 }
 
 /// The admin's stylesheet.

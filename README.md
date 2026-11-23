@@ -130,7 +130,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Markets: prices in more currencies by country, with exchange rates and rounding
 - [x] Admin in the browser (htmx): sign in, pick a shop, manage products, orders, customers, content and the theme
 - [x] Admin settings: general, payments, shipping, taxes, email wording, invoices, staff, API keys and webhooks, the assistant
-- [ ] Admin dashboard
+- [x] Admin dashboard: orders waiting on staff, sales by day, best sellers, first steps for a new shop (`GET /api/orders/report`)
 - [ ] WASM plugin host, built into Zapline
 
 ## License

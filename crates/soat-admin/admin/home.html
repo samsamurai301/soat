@@ -1,5 +1,59 @@
 <h1>{{ shop.name }}</h1>
+{{#if first_steps}}
+<section class="panel">
+  <h2>First steps</h2>
+  <ol class="steps">
+    <li><a href="{{ base }}/products/new">Add your first product</a></li>
+    <li><a href="{{ base }}/settings/payments">Choose how customers pay</a></li>
+    <li><a href="{{ base }}/settings/shipping">Set up shipping</a></li>
+    <li><a href="{{ base }}/theme">Make the shop look like yours</a></li>
+  </ol>
+</section>
+{{/if}}
+{{#if report}}
+<h2>To do</h2>
 <div class="cards">
-  <a class="card" href="{{ base }}/products"><strong>{{ product_count }}</strong> products</a>
+  <a class="card" href="{{ base }}/orders?view=unpaid"><strong class="figure">{{ report.unpaid }}</strong> orders waiting for payment</a>
+  <a class="card" href="{{ base }}/orders?view=unfulfilled"><strong class="figure">{{ report.unfulfilled }}</strong> orders to ship</a>
+  {{#if product_count}}<a class="card" href="{{ base }}/products"><strong class="figure">{{ product_count }}</strong> products</a>{{/if}}
+</div>
+<div class="heading">
+  <h2>Sales</h2>
+  <nav class="tabs" aria-label="Period">
+    {{#each periods}}<a href="{{ base }}?days={{ days }}"{{#if current}} aria-current="page"{{/if}}>{{ days }} days</a>{{/each}}
+  </nav>
+</div>
+{{#if report.has_sales}}
+<div class="cards">
+  {{#each report.sales}}
+  <div class="card"><strong class="figure">{{ total }}</strong> from {{ orders }} orders <span class="muted">(average {{ average }})</span></div>
+  {{/each}}
+</div>
+{{#if report.chart}}
+<figure class="panel chart">
+  <svg viewBox="0 0 {{ report.chart.width }} {{ report.chart.height }}" preserveAspectRatio="none" role="img" aria-label="Sales per day in {{ report.chart.currency }}, best day {{ report.chart.best }}">
+    {{#each report.chart.bars}}<rect x="{{ x }}" y="{{ y }}" width="8" height="{{ height }}"><title>{{ label }}</title></rect>{{/each}}
+  </svg>
+  <figcaption class="muted">Per day in {{ report.chart.currency }} since {{ report.since }}. Best day: {{ report.chart.best }}.</figcaption>
+</figure>
+{{/if}}
+{{#if report.top}}
+<h2>Best sellers</h2>
+<table class="table">
+  <thead><tr><th>Product</th><th class="num">Sold</th><th class="num">Sales</th></tr></thead>
+  <tbody>
+  {{#each report.top}}
+  <tr><td>{{#if product_id}}<a href="{{ base }}/products/{{ product_id }}">{{ title }}</a>{{else}}{{ title }}{{/if}}</td><td class="num">{{ quantity }}</td><td class="num">{{ total }}</td></tr>
+  {{/each}}
+  </tbody>
+</table>
+{{/if}}
+{{else}}
+<p class="muted">No orders in the last {{ report.days }} days.</p>
+{{/if}}
+{{else}}
+<div class="cards">
+  {{#if product_count}}<a class="card" href="{{ base }}/products"><strong class="figure">{{ product_count }}</strong> products</a>{{/if}}
   <a class="card" href="{{ base }}/products/new">Add a product</a>
 </div>
+{{/if}}

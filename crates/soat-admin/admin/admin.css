@@ -63,3 +63,9 @@ code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: va
 .proposal form { display: inline-block; margin-right: .75rem; }
 .row.tight { display: inline-flex; gap: .25rem; align-items: center; }
 .head form { margin: 0; }
+.figure { display: block; font-size: 1.5rem; }
+.heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.chart { margin: 1rem 0; }
+.chart svg { width: 100%; height: 160px; display: block; }
+.chart rect { fill: var(--accent); }
+.steps { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: .35rem; }

@@ -66,7 +66,7 @@ async fn staff_sign_in_and_pick_a_shop() {
 
     let res = get(&client, &admin, "/admin/acme").await;
     res.assert_status(200);
-    assert!(res.text().contains("<strong>0</strong> products"));
+    assert!(res.text().contains("Add your first product"));
 
     // A staff member of one shop goes straight to it and cannot open
     // another.
@@ -272,11 +272,16 @@ impl soat_tenancy::Scope for In {
 
 /// An order of two tees, placed directly.
 async fn placed(url: &str, item: &str) -> String {
+    placed_in(url, "acme", item).await
+}
+
+async fn placed_in(url: &str, shop: &'static str, item: &str) -> String {
     use soat_orders::{place, NewOrder, NewOrderLine, NewShipping, PostalAddress};
     use zapline::db::sqlx::{self, PgPool};
     let pool = PgPool::connect(url).await.unwrap();
     let mut tx = pool.begin().await.unwrap();
-    sqlx::query("SELECT set_config('soat.tenant', 'acme', true)")
+    sqlx::query("SELECT set_config('soat.tenant', $1, true)")
+        .bind(shop)
         .execute(&mut *tx)
         .await
         .unwrap();
@@ -321,7 +326,7 @@ async fn placed(url: &str, item: &str) -> String {
         note: String::new(),
         discount_code: None,
     };
-    let (o, _) = place(&mut tx, &In("acme"), &order).await.unwrap();
+    let (o, _) = place(&mut tx, &In(shop), &order).await.unwrap();
     tx.commit().await.unwrap();
     o.id
 }
@@ -1154,4 +1159,84 @@ async fn owners_set_up_selling() {
         .await
         .text();
     assert!(html.contains("value=\"placed\" selected"));
+}
+
+#[tokio::test]
+async fn the_dashboard_shows_what_needs_doing() {
+    let (client, url) = common::client_and_url().await;
+    let t = common::setup_admin(&client).await;
+    common::create_tenants(&client, &t, &["acme", "globex"]).await;
+    let admin = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+    let html = get(&client, &admin, "/admin/acme").await.text();
+    assert!(
+        html.contains("First steps") && html.contains("No orders in the last 30 days."),
+        "{html}"
+    );
+
+    let report = |path: &'static str| {
+        let req = client.get(path).header("x-soat-tenant", "acme").bearer(&t);
+        async move { req.send().await }
+    };
+    report("/api/orders/report?days=0").await.assert_status(422);
+    report("/api/orders/report?days=367")
+        .await
+        .assert_status(422);
+
+    let kept = placed(&url, "prd_tee").await;
+    let gone = placed(&url, "prd_tee").await;
+    placed_in(&url, "globex", "prd_other").await;
+    client
+        .post(&format!("/api/orders/{gone}/cancel"))
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({}))
+        .send()
+        .await
+        .assert_status(200);
+    let res = report("/api/orders/report").await;
+    res.assert_status(200);
+    let r = res.json::<serde_json::Value>();
+    assert_eq!(r["days"], 30);
+    // The canceled order and globex's are left out.
+    assert_eq!(
+        r["sales"],
+        json!([{ "currency": "EUR", "orders": 1, "total_minor": 2875, "average_minor": 2875 }])
+    );
+    assert_eq!(r["by_day"].as_array().unwrap().len(), 1);
+    assert_eq!(r["top_products"][0]["product_id"], "prd_tee");
+    assert_eq!(r["top_products"][0]["quantity"], 2);
+    assert_eq!(r["to_do"], json!({ "unpaid": 1, "unfulfilled": 1 }));
+    assert!(!kept.is_empty());
+
+    let html = get(&client, &admin, "/admin/acme?days=7").await.text();
+    assert!(
+        html.contains("28.75 EUR") && html.contains("from 1 orders"),
+        "{html}"
+    );
+    assert!(html.contains("orders waiting for payment") && html.contains("orders to ship"));
+    assert!(html.contains("<rect") && html.contains("Best sellers"));
+    assert!(html.contains("?days=7\" aria-current=\"page\""), "{html}");
+
+    // Staff who may not see orders get the page without sales.
+    client
+        .put("/api/roles/viewer")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({ "permissions": ["products:read"] }))
+        .send()
+        .await
+        .assert_status(200);
+    client
+        .post("/api/staff")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({ "email": "viewer@example.com", "password": "a long password", "role": "viewer" }))
+        .send()
+        .await
+        .assert_status(201);
+    let viewer = sign_in(&client, "viewer@example.com", "a long password").await;
+    let res = get(&client, &viewer, "/admin/acme").await;
+    res.assert_status(200);
+    let html = res.text();
+    assert!(!html.contains("Sales") && !html.contains("28.75"), "{html}");
 }
