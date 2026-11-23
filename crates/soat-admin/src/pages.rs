@@ -19,6 +19,8 @@ const FILES: &[(&str, &str)] = &[
     ("product", include_str!("../admin/product.html")),
     ("orders", include_str!("../admin/orders.html")),
     ("order", include_str!("../admin/order.html")),
+    ("customers", include_str!("../admin/customers.html")),
+    ("customer", include_str!("../admin/customer.html")),
 ];
 
 pub(crate) struct Pages(BTreeMap<&'static str, Template>);

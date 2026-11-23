@@ -496,3 +496,79 @@ async fn staff_take_orders_through() {
         .await
         .assert_status(404);
 }
+
+#[tokio::test]
+async fn staff_look_after_customers() {
+    let (client, _) = common::with_tenants(&["acme", "globex"]).await;
+    let admin = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+    get(&client, &admin, "/admin/acme/customers/new")
+        .await
+        .assert_status(200);
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/customers",
+        json!({ "email": "not an email", "first_name": "Ada" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("value=\"Ada\""));
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/customers",
+        json!({
+            "email": "ada@example.com", "first_name": "Ada", "last_name": "Lovelace",
+            "accepts_marketing": "1", "tags": "VIP, wholesale", "note": "Prefers email"
+        }),
+    )
+    .await;
+    res.assert_status(303);
+    let location = res.header("location").unwrap().to_owned();
+    let page = location.trim_end_matches("?saved=1").to_owned();
+    let html = get(&client, &admin, &location).await.text();
+    assert!(html.contains("<h1>Ada Lovelace</h1>") && html.contains("value=\"vip, wholesale\""));
+    assert!(html.contains("name=\"accepts_marketing\" value=\"1\" checked"));
+    assert!(html.contains("No orders yet.") && html.contains("Guest: no account."));
+
+    let res = post(
+        &client,
+        &admin,
+        "/admin/acme/customers",
+        json!({ "email": "ada@example.com" }),
+    )
+    .await;
+    res.assert_status(409);
+
+    let html = get(&client, &admin, "/admin/acme/customers?tag=vip")
+        .await
+        .text();
+    assert!(html.contains("ada@example.com"));
+    let html = get(&client, &admin, "/admin/acme/customers?q=grace")
+        .await
+        .text();
+    assert!(html.contains("No customers here"));
+    let html = get(&client, &admin, "/admin/globex/customers").await.text();
+    assert!(!html.contains("ada@example.com"));
+
+    // Unticking the box withdraws consent.
+    let res = post(
+        &client,
+        &admin,
+        &page,
+        json!({ "email": "ada@example.com", "first_name": "Ada", "last_name": "Byron" }),
+    )
+    .await;
+    assert_eq!(res.header("location"), Some(location.as_str()));
+    let html = get(&client, &admin, &page).await.text();
+    assert!(html.contains("<h1>Ada Byron</h1>"));
+    assert!(html.contains("name=\"accepts_marketing\" value=\"1\">"));
+
+    let id = page.rsplit('/').next().unwrap();
+    get(&client, &admin, &format!("/admin/globex/customers/{id}"))
+        .await
+        .assert_status(404);
+    let res = post(&client, &admin, &format!("{page}/delete"), json!({})).await;
+    assert_eq!(res.header("location"), Some("/admin/acme/customers"));
+    get(&client, &admin, &page).await.assert_status(404);
+}

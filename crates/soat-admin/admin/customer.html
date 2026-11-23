@@ -1,0 +1,40 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/customers">All customers</a>
+</div>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<div class="columns">
+<form method="post" action="{{ base }}/customers{{#if customer.id }}/{{ customer.id }}{{/if}}" class="form">
+  <label>Email <input type="email" name="email" value="{{ customer.email }}" required></label>
+  <div class="row">
+    <label>First name <input name="first_name" value="{{ customer.first_name }}" maxlength="100"></label>
+    <label>Last name <input name="last_name" value="{{ customer.last_name }}" maxlength="100"></label>
+  </div>
+  <label>Phone <input name="phone" value="{{ customer.phone }}" maxlength="40"></label>
+  <label class="check"><input type="checkbox" name="accepts_marketing" value="1"{{#if customer.accepts_marketing }} checked{{/if}}> Agreed to news and offers{{#if customer.marketing_consent_at }} <span class="muted">(since {{ customer.marketing_consent_at }})</span>{{/if}}</label>
+  <label>Tags <span class="muted">(comma-separated)</span> <input name="tags" value="{{ customer.tags }}"></label>
+  <label>Note <span class="muted">(staff only)</span> <textarea name="note" rows="3">{{ customer.note }}</textarea></label>
+  <button class="button">{{#if creating }}Add customer{{else}}Save{{/if}}</button>
+</form>
+{{#if customer.id }}
+<div>
+  <section class="panel">
+    <h2>Orders</h2>
+    {{#if orders }}<table class="table"><tbody>{{#each orders }}<tr{{#if canceled }} class="muted"{{/if}}><td><a href="{{ base }}/orders/{{ id }}">#{{ number }}</a></td><td>{{ placed }}</td><td class="num">{{ total }}</td></tr>{{/each}}</tbody></table>
+    {{else}}<p class="muted">No orders yet.</p>{{/if}}
+  </section>
+  <section class="panel">
+    <h2>Addresses</h2>
+    {{#if addresses }}{{#each addresses }}<p>{{ line }}{{#if default }} <span class="badge on">Default</span>{{/if}}</p>{{/each}}
+    {{else}}<p class="muted">None saved.</p>{{/if}}
+    <p class="muted">{{#if customer.has_account }}Has an account.{{else}}Guest: no account.{{/if}}</p>
+  </section>
+</div>
+{{/if}}
+</div>
+{{#if customer.id }}
+<form method="post" action="{{ base }}/customers/{{ customer.id }}/delete" class="danger" hx-confirm="Delete this customer? Their orders stay.">
+  <button class="link">Delete customer</button>
+</form>
+{{/if}}

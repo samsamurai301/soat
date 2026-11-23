@@ -30,6 +30,7 @@ macro_rules! page_or {
 }
 
 mod api;
+mod customers;
 mod orders;
 mod pages;
 mod products;
@@ -105,6 +106,14 @@ impl Module for Admin {
             orders::cancel,
             orders::refund,
             orders::item_action,
+        ))
+        .mount((
+            customers::list,
+            customers::new_page,
+            customers::create,
+            customers::edit_page,
+            customers::update,
+            customers::delete,
         ))
     }
 }
