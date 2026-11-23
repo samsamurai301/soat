@@ -6,6 +6,7 @@
 
 pub use soat_auth::Auth;
 use soat_catalog::Catalog;
+use soat_customers::Customers;
 use soat_events::Events;
 use soat_fields::Fields;
 use soat_files::Files;
@@ -63,6 +64,7 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Catalog)
         .with(Inventory)
         .with(Pricing)
+        .with(Customers)
 }
 
 /// Builds the application on top of `db` (Postgres). `main` passes the real

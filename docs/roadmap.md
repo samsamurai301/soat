@@ -58,7 +58,7 @@ layer.
 
 ## C. Selling
 
-- [ ] C1 Customers **alpha**
+- [x] C1 Customers: profiles, unique email per shop, marketing consent with time, tags, addresses with one default, custom fields **alpha**
 - [ ] C2 Customer login **alpha**
 - [ ] C3 Cart **alpha**
 - [ ] C4 Tax zones and rates, EU VAT **alpha**

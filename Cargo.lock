@@ -1474,6 +1474,7 @@ dependencies = [
  "serde_json",
  "soat-auth",
  "soat-catalog",
+ "soat-customers",
  "soat-events",
  "soat-fields",
  "soat-files",
@@ -1521,6 +1522,21 @@ dependencies = [
  "getrandom",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "soat-customers"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-auth",
+ "soat-core",
+ "soat-fields",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
 ]
 
 [[package]]
