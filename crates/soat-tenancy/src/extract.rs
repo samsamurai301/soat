@@ -99,6 +99,69 @@ impl FromRequestParts for Tenant {
     }
 }
 
+/// Who a library function acts for: a shop and, when known, who acts in
+/// it. [`Tenant`] (staff and API keys) and [`Shop`] (public requests)
+/// both are one, so catalog, pricing and inventory helpers serve the admin
+/// API and the storefront alike.
+pub trait Scope: Sync {
+    /// The shop's id.
+    fn tenant_id(&self) -> &str;
+
+    /// Who acts, as recorded on events: `user_...`, `key_...`, `cus_...`,
+    /// or `None`.
+    fn actor_id(&self) -> Option<&str>;
+
+    /// Publishes a domain event in the transaction of the change.
+    fn publish(
+        &self,
+        conn: &mut PgConnection,
+        kind: &str,
+        payload: &(impl serde::Serialize + Sync),
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
+        async move {
+            soat_events::publish(conn, self.tenant_id(), self.actor_id(), kind, payload).await?;
+            Ok(())
+        }
+    }
+}
+
+impl Scope for Tenant {
+    fn tenant_id(&self) -> &str {
+        self.id()
+    }
+
+    fn actor_id(&self) -> Option<&str> {
+        Tenant::actor_id(self)
+    }
+}
+
+impl Scope for Shop {
+    fn tenant_id(&self) -> &str {
+        self.id()
+    }
+
+    fn actor_id(&self) -> Option<&str> {
+        None
+    }
+}
+
+/// A shop and who acts in it on a public request, e.g. a signed-in
+/// customer (`cus_...`).
+pub struct Acting<'a> {
+    pub shop: &'a Shop,
+    pub actor: Option<String>,
+}
+
+impl Scope for Acting<'_> {
+    fn tenant_id(&self) -> &str {
+        self.shop.id()
+    }
+
+    fn actor_id(&self) -> Option<&str> {
+        self.actor.as_deref()
+    }
+}
+
 /// The shop a public request (storefront, customer accounts) is for, with
 /// no staff or API key involved: from the `x-soat-tenant` header, else the
 /// `Host` among the shop's domains. Its data is reached with

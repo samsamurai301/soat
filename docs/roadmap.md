@@ -12,7 +12,9 @@ Lines marked **alpha** are in the public alpha (week of 2027-01-04).
 Each layer may use only the layers below it. Siblings in one layer talk
 through events, never by importing each other. Foundation crates are a stack
 (core, module, db, auth, events, tenancy, webhooks, fields, files, bottom up); in the catalog layer, inventory and
-pricing build on the catalog.
+pricing build on the catalog; selling is a stack too (customers; then cart,
+tax, shipping, payments and promotions side by side; orders; checkout;
+notifications).
 `crates/soat/tests/layers.rs` enforces this and fails for a crate without a
 layer.
 
@@ -60,7 +62,7 @@ layer.
 
 - [x] C1 Customers: profiles, unique email per shop, marketing consent with time, tags, addresses with one default, custom fields **alpha**
 - [x] C2 Customer login: storefront register, sign in, sign out, own profile; `Shop` extractor for public requests; claiming a known email waits for C16 **alpha**
-- [ ] C3 Cart **alpha**
+- [x] C3 Cart **alpha**
 - [ ] C4 Tax zones and rates, EU VAT **alpha**
 - [ ] C5 Tax provider trait
 - [ ] C6 Shipping zones and rates **alpha**

@@ -30,16 +30,18 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-catalog", 10),
     ("soat-inventory", 11),
     ("soat-pricing", 11),
-    // Selling.
+    // Selling, a stack: customers; then cart, tax, shipping, payments and
+    // promotions side by side; then orders; then checkout, which uses them
+    // all; then notifications.
     ("soat-customers", 20),
-    ("soat-cart", 20),
-    ("soat-tax", 20),
-    ("soat-shipping", 20),
-    ("soat-payments", 20),
-    ("soat-checkout", 20),
-    ("soat-orders", 20),
-    ("soat-promotions", 20),
-    ("soat-notify", 20),
+    ("soat-cart", 21),
+    ("soat-tax", 21),
+    ("soat-shipping", 21),
+    ("soat-payments", 21),
+    ("soat-promotions", 21),
+    ("soat-orders", 22),
+    ("soat-checkout", 23),
+    ("soat-notify", 24),
     // Content.
     ("soat-cms", 30),
     ("soat-i18n", 30),

@@ -5,6 +5,7 @@
 //! order, and [`app`] wires them into one Zapline app.
 
 pub use soat_auth::Auth;
+use soat_cart::Carts;
 use soat_catalog::Catalog;
 use soat_customers::Customers;
 use soat_events::Events;
@@ -65,6 +66,7 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Inventory)
         .with(Pricing)
         .with(Customers)
+        .with(Carts)
 }
 
 /// Builds the application on top of `db` (Postgres). `main` passes the real

@@ -15,7 +15,7 @@ use std::sync::Arc;
 use soat_catalog::stock_item;
 use soat_core::{id_kind, Currency, Permission};
 use soat_module::{Event, HandlerFuture, Module, Subscriber};
-use soat_tenancy::{Tenant, TenantListing, TenantTx};
+use soat_tenancy::{Scope, Tenant, TenantListing, TenantTx};
 use zapline::db::sqlx::{PgConnection, PgPool};
 use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::embed::Dir;
@@ -137,7 +137,7 @@ const COLUMNS: &str = "id, name, currency, priority, active";
 /// that currency (or does not exist). Run it in the tenant transaction.
 pub async fn resolve(
     conn: &mut PgConnection,
-    tenant: &Tenant,
+    scope: &impl Scope,
     item_id: &str,
     currency: Currency,
 ) -> Result<Option<ResolvedPrice>> {
@@ -147,7 +147,7 @@ pub async fn resolve(
          WHERE p.tenant_id = $1 AND p.item_id = $2 AND l.currency = $3 AND l.active \
          ORDER BY l.priority DESC, l.id LIMIT 1",
     )
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(item_id)
     .bind(currency.as_str())
     .fetch_optional(&mut *conn)
@@ -161,7 +161,7 @@ pub async fn resolve(
             price_list_id: Some(list),
         }));
     }
-    let item = stock_item(conn, tenant, item_id).await?;
+    let item = stock_item(conn, scope, item_id).await?;
     Ok(item
         .filter(|i| i.currency == currency.as_str())
         .map(|i| ResolvedPrice {

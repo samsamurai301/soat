@@ -7,7 +7,7 @@
 //! [`release`]; the API below serves headless and external carts.
 
 use soat_core::id_kind;
-use soat_tenancy::{Tenant, TenantListing, TenantTx};
+use soat_tenancy::{Scope, Tenant, TenantListing, TenantTx};
 use zapline::db::sqlx::PgConnection;
 use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::prelude::*;
@@ -89,7 +89,7 @@ const COLUMNS: &str = "id, item_id, quantity, reference, \
 /// The item's stock and active reservations.
 pub async fn availability(
     conn: &mut PgConnection,
-    tenant: &Tenant,
+    scope: &impl Scope,
     item_id: &str,
 ) -> Result<Availability> {
     let (on_hand, reserved, tracked, allow_backorder): (i64, i64, bool, bool) = sqlx::query_as(
@@ -103,7 +103,7 @@ pub async fn availability(
          COALESCE((SELECT allow_backorder FROM inventory_items \
                    WHERE tenant_id = $1 AND item_id = $2), FALSE)",
     )
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(item_id)
     .fetch_one(&mut *conn)
     .await?;
@@ -120,7 +120,7 @@ pub async fn availability(
 /// backorders has fewer available. Publishes `inventory.reserved`.
 pub async fn reserve(
     tx: &mut TenantTx,
-    tenant: &Tenant,
+    scope: &impl Scope,
     item_id: &str,
     quantity: i64,
     reference: &str,
@@ -130,12 +130,12 @@ pub async fn reserve(
     sqlx::query(
         "INSERT INTO inventory_items (tenant_id, item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(item_id)
     .execute(&mut **tx)
     .await?;
     sqlx::query("SELECT 1 FROM inventory_items WHERE tenant_id = $1 AND item_id = $2 FOR UPDATE")
-        .bind(tenant.id())
+        .bind(scope.tenant_id())
         .bind(item_id)
         .execute(&mut **tx)
         .await?;
@@ -143,11 +143,11 @@ pub async fn reserve(
         "DELETE FROM inventory_reservations \
          WHERE tenant_id = $1 AND item_id = $2 AND expires_at <= now()",
     )
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(item_id)
     .execute(&mut **tx)
     .await?;
-    let now = availability(tx, tenant, item_id).await?;
+    let now = availability(tx, scope, item_id).await?;
     if !now.can_sell(quantity) {
         return Err(
             Error::conflict(format!("only {} available", now.available()))
@@ -159,14 +159,14 @@ pub async fn reserve(
          VALUES ($1, $2, $3, $4, $5, now() + make_interval(secs => $6)) RETURNING {COLUMNS}"
     ))
     .bind(ReservationId::new().as_str())
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(item_id)
     .bind(quantity)
     .bind(reference)
     .bind(ttl_seconds.map(|s| s as f64))
     .fetch_one(&mut **tx)
     .await?;
-    tenant
+    scope
         .publish(tx, "inventory.reserved", &reservation)
         .await?;
     Ok(reservation)
@@ -174,18 +174,18 @@ pub async fn reserve(
 
 /// Releases every reservation of `reference` and returns how many units
 /// were freed. Publishes `inventory.released` when any were.
-pub async fn release(tx: &mut TenantTx, tenant: &Tenant, reference: &str) -> Result<i64> {
+pub async fn release(tx: &mut TenantTx, scope: &impl Scope, reference: &str) -> Result<i64> {
     let freed: Vec<(String, i64)> = sqlx::query_as(
         "DELETE FROM inventory_reservations WHERE tenant_id = $1 AND reference = $2 \
          RETURNING item_id, quantity",
     )
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(reference)
     .fetch_all(&mut **tx)
     .await?;
     let units = freed.iter().map(|(_, q)| q).sum();
     if !freed.is_empty() {
-        tenant
+        scope
             .publish(
                 tx,
                 "inventory.released",

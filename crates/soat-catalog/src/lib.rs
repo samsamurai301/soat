@@ -314,6 +314,9 @@ pub struct StockItem {
     pub id: String,
     pub product_id: String,
     pub sku: String,
+    /// What a buyer sees: the product title, with the variant's values
+    /// (`Tee - M / Red`).
+    pub title: String,
     /// Its own price, in minor units of `currency`.
     pub price_minor: i64,
     pub currency: String,
@@ -324,50 +327,53 @@ pub struct StockItem {
 /// `Ok(None)`. Run it in the tenant transaction.
 pub async fn stock_item(
     conn: &mut sqlx::PgConnection,
-    tenant: &Tenant,
+    scope: &impl soat_tenancy::Scope,
     id: &str,
 ) -> Result<Option<StockItem>> {
     if let Ok(vid) = variants::VariantId::parse(id) {
-        let row: Option<(String, String, i64, String)> = sqlx::query_as(
-            "SELECT v.product_id, v.sku, v.price_minor, p.currency FROM product_variants v \
+        let row: Option<(String, String, i64, String, String, Vec<String>)> = sqlx::query_as(
+            "SELECT v.product_id, v.sku, v.price_minor, p.currency, p.title, v.option_values \
+             FROM product_variants v \
              JOIN products p ON p.id = v.product_id WHERE v.tenant_id = $1 AND v.id = $2",
         )
-        .bind(tenant.id())
+        .bind(scope.tenant_id())
         .bind(vid.as_str())
         .fetch_optional(&mut *conn)
         .await?;
-        return Ok(
-            row.map(|(product_id, sku, price_minor, currency)| StockItem {
+        return Ok(row.map(
+            |(product_id, sku, price_minor, currency, title, values)| StockItem {
                 id: vid.to_string(),
                 product_id,
                 sku,
+                title: format!("{title} - {}", soat_core::options::variant_title(&values)),
                 price_minor,
                 currency,
-            }),
-        );
+            },
+        ));
     }
     let Ok(pid) = ProductId::parse(id) else {
         return Ok(None);
     };
-    let row: Option<(String, i64, String, bool)> = sqlx::query_as(
-        "SELECT sku, price_minor, currency, \
+    let row: Option<(String, String, i64, String, bool)> = sqlx::query_as(
+        "SELECT sku, title, price_minor, currency, \
          EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id) \
          FROM products p WHERE tenant_id = $1 AND id = $2",
     )
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(pid.as_str())
     .fetch_optional(&mut *conn)
     .await?;
     match row {
         None => Ok(None),
-        Some((_, _, _, true)) => Err(Error::unprocessable(
+        Some((_, _, _, _, true)) => Err(Error::unprocessable(
             "this product has variants: stock each variant instead",
         )
         .with_code("has_variants")),
-        Some((sku, price_minor, currency, false)) => Ok(Some(StockItem {
+        Some((sku, title, price_minor, currency, false)) => Ok(Some(StockItem {
             id: pid.to_string(),
             product_id: pid.to_string(),
             sku,
+            title,
             price_minor,
             currency,
         })),
