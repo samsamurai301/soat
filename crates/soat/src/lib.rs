@@ -9,6 +9,7 @@ use soat_catalog::Catalog;
 use soat_events::Events;
 use soat_module::Modules;
 use soat_tenancy::Tenancy;
+use soat_webhooks::Webhooks;
 use zapline::db::{Database, DbCheck};
 use zapline::middleware::SecurityHeaders;
 use zapline::openapi::OpenApi;
@@ -20,6 +21,7 @@ pub fn modules(auth: Auth) -> Modules {
         .with(auth)
         .with(Tenancy)
         .with(Events::new())
+        .with(Webhooks::new())
         .with(Catalog)
 }
 

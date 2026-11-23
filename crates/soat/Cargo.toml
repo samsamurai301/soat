@@ -12,6 +12,7 @@ soat-module.workspace = true
 soat-auth.workspace = true
 soat-tenancy.workspace = true
 soat-events.workspace = true
+soat-webhooks.workspace = true
 soat-catalog.workspace = true
 zapline.workspace = true
 

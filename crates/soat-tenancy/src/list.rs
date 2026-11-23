@@ -22,6 +22,7 @@ pub struct TenantListing {
     sortable: Vec<&'static str>,
     search: Vec<&'static str>,
     text_filters: Vec<&'static str>,
+    scopes: Vec<(&'static str, String)>,
     default_limit: i64,
     max_limit: i64,
 }
@@ -37,6 +38,7 @@ impl TenantListing {
             sortable: Vec::new(),
             search: Vec::new(),
             text_filters: Vec::new(),
+            scopes: Vec::new(),
             default_limit: 50,
             max_limit: 200,
         }
@@ -63,6 +65,12 @@ impl TenantListing {
     /// A text column callers may filter on exactly (`?currency=EUR`).
     pub fn filter_text(mut self, column: &'static str) -> Self {
         self.text_filters.push(column);
+        self
+    }
+
+    /// Always restricts `column` to `value`, e.g. the parent's id.
+    pub fn scope_text(mut self, column: &'static str, value: impl Into<String>) -> Self {
+        self.scopes.push((column, value.into()));
         self
     }
 
@@ -119,6 +127,10 @@ impl TenantListing {
         // Row-level security already limits rows to the tenant; this list
         // adds only the caller's filters.
         q.push(" WHERE TRUE");
+        for (column, value) in &self.scopes {
+            q.push(format!(" AND {column} = "));
+            q.push_bind(value.clone());
+        }
         for column in &self.text_filters {
             if let Some(value) = params.get(column).filter(|v| !v.is_empty()) {
                 q.push(format!(" AND {column} = "));
