@@ -1,4 +1,4 @@
-//! Creating shops.
+//! Creating shops, and the shops a user works for.
 
 use soat_auth::Staff;
 use soat_core::TenantId;
@@ -17,8 +17,40 @@ pub struct NewTenant {
     pub name: String,
 }
 
+/// A shop the signed-in user works for.
+#[model]
+#[derive(sqlx::FromRow)]
+pub struct MyTenant {
+    pub id: String,
+    pub name: String,
+    /// `owner` or `staff`; null for a platform admin who is no member.
+    pub role: Option<String>,
+}
+
 pub fn mount(app: App) -> App {
-    app.mount(create_tenant)
+    app.mount((create_tenant, my_tenants))
+}
+
+/// The shops the signed-in user works for, by name, with their role.
+/// Platform admins see every shop.
+#[get("/api/tenants", tag = "tenants")]
+async fn my_tenants(db: Db, staff: Staff) -> Result<Json<Vec<MyTenant>>> {
+    let mut tx = db.begin().await?;
+    sqlx::query("SELECT set_config('soat.user', $1, true)")
+        .bind(staff.user_id.as_str())
+        .execute(&mut *tx)
+        .await?;
+    let shops = sqlx::query_as::<_, MyTenant>(
+        "SELECT t.id, t.name, m.role FROM tenants t \
+         LEFT JOIN memberships m ON m.tenant_id = t.id AND m.user_id = $1 \
+         WHERE m.user_id IS NOT NULL OR $2 ORDER BY t.name, t.id",
+    )
+    .bind(staff.user_id.as_str())
+    .bind(staff.is_platform_admin)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(shops))
 }
 
 /// Create a shop. Platform admins only; the creator becomes its owner.

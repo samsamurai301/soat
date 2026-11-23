@@ -98,8 +98,8 @@ layer.
 
 ## E. Admin UI
 
-- [ ] E1 Admin shell **alpha**
-- [ ] E2 Products screens **alpha**
+- [x] E1 Admin shell **alpha**: `/admin` sign-in (HttpOnly, `SameSite=Strict` session cookie, same-origin form posts, no framing), shop picker (`GET /api/tenants`), sidebar layout with htmx; every page calls the shop API in process as the signed-in staff member
+- [x] E2 Products screens **alpha**: list with live search and status filter, create, edit (price, status, tags, description, SEO), delete; variants and media screens follow
 - [ ] E3 Orders screens **alpha**
 - [ ] E4 Customers screens **alpha**
 - [ ] E5 Content and theme screens **alpha**

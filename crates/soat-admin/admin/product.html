@@ -1,0 +1,32 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/products">All products</a>
+</div>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/products{{#if product.id }}/{{ product.id }}{{/if}}" class="form">
+  <label>Title <input name="title" value="{{ product.title }}" required maxlength="500"></label>
+  <div class="row">
+    <label>SKU <input name="sku" value="{{ product.sku }}" required maxlength="100"></label>
+    <label>Price ({{ product.currency }}) <input name="price" value="{{ product.price }}" inputmode="decimal" required></label>
+    {{#if creating }}<label>Currency <input name="currency" value="{{ product.currency }}" maxlength="3" required></label>{{/if}}
+    <label>Status <select name="status">
+      <option value="draft"{{#if state.draft }} selected{{/if}}>Draft</option>
+      <option value="active"{{#if state.active }} selected{{/if}}>Active</option>
+      <option value="archived"{{#if state.archived }} selected{{/if}}>Archived</option>
+    </select></label>
+  </div>
+  <label>Description <span class="muted">(Markdown)</span> <textarea name="description" rows="8">{{ product.description }}</textarea></label>
+  <label>Tags <span class="muted">(comma-separated)</span> <input name="tags" value="{{ product.tags }}"></label>
+  <fieldset><legend>Search engines</legend>
+    <label>Handle <input name="handle" value="{{ product.handle }}" placeholder="from the title"></label>
+    <label>SEO title <input name="seo_title" value="{{ product.seo_title }}"></label>
+    <label>SEO description <textarea name="seo_description" rows="2">{{ product.seo_description }}</textarea></label>
+  </fieldset>
+  <button class="button">{{#if creating }}Create product{{else}}Save{{/if}}</button>
+</form>
+{{#if product.id }}
+<form method="post" action="{{ base }}/products/{{ product.id }}/delete" class="danger" hx-confirm="Delete this product? This cannot be undone.">
+  <button class="link">Delete product</button>
+</form>
+{{/if}}

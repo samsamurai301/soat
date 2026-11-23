@@ -33,6 +33,7 @@ soat-i18n.workspace = true
 soat-theme.workspace = true
 soat-storefront.workspace = true
 soat-mcp.workspace = true
+soat-admin.workspace = true
 soat-stripe = { workspace = true, optional = true }
 soat-mollie = { workspace = true, optional = true }
 soat-paypal = { workspace = true, optional = true }

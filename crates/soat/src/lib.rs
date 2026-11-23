@@ -4,6 +4,7 @@
 //! a `Module`; [`modules`] lists the ones this build includes, in dependency
 //! order, and [`app`] wires them into one Zapline app.
 
+use soat_admin::Admin;
 pub use soat_auth::Auth;
 use soat_cart::Carts;
 use soat_catalog::Catalog;
@@ -108,11 +109,14 @@ impl Settings {
 }
 
 /// Every module in this build. A module must come after the ones it needs.
-/// The last, `mcp`, serves the others' API as tools for Claude.
+/// The last two serve the others' API: `mcp` as tools for Claude, `admin`
+/// as pages for staff.
 pub fn modules(settings: Settings) -> Modules {
     let api = settings.clone();
     let mcp = Mcp::new(move |app| shop_modules(api, Events::manual()).install(app));
-    shop_modules(settings, Events::new()).with(mcp)
+    let api = settings.clone();
+    let admin = Admin::new(move |app| shop_modules(api, Events::manual()).install(app));
+    shop_modules(settings, Events::new()).with(mcp).with(admin)
 }
 
 /// Every module but `mcp`.

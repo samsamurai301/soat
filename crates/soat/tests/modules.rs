@@ -30,7 +30,8 @@ fn module_list_is_valid_and_ordered() {
             "i18n",
             "theme",
             "storefront",
-            "mcp"
+            "mcp",
+            "admin"
         ]
     );
 }

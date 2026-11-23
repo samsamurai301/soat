@@ -1,0 +1,7 @@
+<h1>Sign in to your shop</h1>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="/admin/login" class="form" hx-boost="false">
+  <label>Email <input type="email" name="email" value="{{ email }}" autocomplete="username" required autofocus></label>
+  <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+  <button class="button">Sign in</button>
+</form>

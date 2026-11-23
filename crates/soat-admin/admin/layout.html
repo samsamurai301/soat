@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{ page_title }}{{#if shop }} · {{ shop.name }}{{/if}} · SOAT admin</title>
+<link rel="stylesheet" href="/admin/admin.css">
+<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" defer></script>
+</head>
+<body hx-boost="true">
+{{#if shop }}
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="{{ base }}">{{ shop.name }}</a>
+    <nav aria-label="Admin">
+      <a href="{{ base }}"{{#if section.home }} aria-current="page"{{/if}}>Home</a>
+      <a href="{{ base }}/products"{{#if section.products }} aria-current="page"{{/if}}>Products</a>
+    </nav>
+    <details class="switch"><summary>Shops</summary>
+      {{#each shops }}<a href="/admin/{{ id }}">{{ name }}</a>{{/each}}
+    </details>
+    <form method="post" action="/admin/logout"><button class="link">Sign out</button></form>
+  </aside>
+  <main class="main">
+    {{> content }}
+  </main>
+</div>
+{{else}}
+<main class="narrow">
+  {{> content }}
+</main>
+{{/if}}
+</body>
+</html>

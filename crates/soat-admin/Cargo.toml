@@ -1,0 +1,17 @@
+[package]
+name = "soat-admin"
+description = "The admin: staff run their shops in the browser, server-rendered with htmx, on top of the shop API."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+soat-module.workspace = true
+zapline = { workspace = true, features = ["cookies"] }
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+serde_urlencoded.workspace = true

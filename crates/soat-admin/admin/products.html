@@ -1,0 +1,26 @@
+<div class="head">
+  <h1>Products <span class="muted">{{ total }}</span></h1>
+  <a class="button" href="{{ base }}/products/new">Add product</a>
+</div>
+<form class="filters" method="get" action="{{ base }}/products" hx-get="{{ base }}/products" hx-trigger="input changed delay:300ms from:input, change from:select" hx-target="#results" hx-select="#results" hx-push-url="true">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search title, SKU or handle" aria-label="Search">
+  <select name="status" aria-label="Status">
+    <option value=""{{#if status.all }} selected{{/if}}>All</option>
+    <option value="active"{{#if status.active }} selected{{/if}}>Active</option>
+    <option value="draft"{{#if status.draft }} selected{{/if}}>Draft</option>
+    <option value="archived"{{#if status.archived }} selected{{/if}}>Archived</option>
+  </select>
+  <noscript><button class="button">Filter</button></noscript>
+</form>
+<div id="results">
+{{#if products }}
+<table class="table">
+  <thead><tr><th>Title</th><th>SKU</th><th>Status</th><th class="num">Price</th></tr></thead>
+  <tbody>
+  {{#each products }}<tr><td><a href="{{ base }}/products/{{ id }}">{{ title }}</a></td><td>{{ sku }}</td><td><span class="badge{{#if active }} on{{/if}}">{{ status }}</span></td><td class="num">{{ price }}</td></tr>{{/each}}
+  </tbody>
+</table>
+{{else}}<p class="muted">No products{{#if q }} match “{{ q }}”{{/if}}.</p>
+{{/if}}
+<nav class="pager">{{#if prev_url }}<a href="{{ prev_url }}">← Newer</a>{{/if}} {{#if next_url }}<a href="{{ next_url }}">Older →</a>{{/if}}</nav>
+</div>
