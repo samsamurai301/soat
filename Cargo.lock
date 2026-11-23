@@ -1420,6 +1420,7 @@ dependencies = [
 name = "soat-module"
 version = "0.0.1"
 dependencies = [
+ "soat-core",
  "zapline",
 ]
 

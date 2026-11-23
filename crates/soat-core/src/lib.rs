@@ -5,8 +5,10 @@
 
 mod id;
 mod money;
+mod permission;
 mod tenant;
 
 pub use id::{Id, IdError, IdKind};
 pub use money::{Currency, CurrencyError, Money, MoneyError};
+pub use permission::{is_permission_name, Permission};
 pub use tenant::{TenantId, TenantIdError};

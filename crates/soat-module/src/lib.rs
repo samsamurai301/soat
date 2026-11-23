@@ -30,6 +30,7 @@ mod migrations;
 use std::collections::HashSet;
 use std::fmt;
 
+use soat_core::{is_permission_name, Permission};
 use zapline::embed::Dir;
 use zapline::prelude::App;
 
@@ -58,8 +59,34 @@ pub trait Module: Send + Sync + 'static {
         None
     }
 
+    /// The permissions this module checks, e.g. `products:write`. Roles,
+    /// API keys and AI tools are all scoped by these names.
+    fn permissions(&self) -> &'static [Permission] {
+        &[]
+    }
+
     /// Mounts the module's routes and plugins.
     fn mount(&self, app: App) -> App;
+}
+
+/// Every permission of an app's modules, available to handlers as
+/// `State<Permissions>`.
+#[derive(Debug, Clone, Default)]
+pub struct Permissions(pub std::sync::Arc<Vec<Permission>>);
+
+impl Permissions {
+    pub fn all(&self) -> &[Permission] {
+        &self.0
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Permission> {
+        self.0.iter().find(|p| p.name == name)
+    }
+
+    /// The names the built-in `staff` role grants.
+    pub fn staff_defaults(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.0.iter().filter(|p| p.staff_default).map(|p| p.name)
+    }
 }
 
 /// Why a set of modules was rejected.
@@ -80,6 +107,11 @@ pub enum ModuleError {
     },
     /// A migration directory could not be read.
     Unreadable { module: &'static str, error: String },
+    /// A permission name is malformed or declared twice.
+    BadPermission {
+        module: &'static str,
+        permission: &'static str,
+    },
 }
 
 impl fmt::Display for ModuleError {
@@ -101,6 +133,11 @@ impl fmt::Display for ModuleError {
             Self::Unreadable { module, error } => {
                 write!(f, "cannot read the migrations of `{module}`: {error}")
             }
+            Self::BadPermission { module, permission } => write!(
+                f,
+                "module `{module}` declares `{permission}`, which is malformed \
+                 (use resource:action) or already declared"
+            ),
         }
     }
 }
@@ -145,7 +182,28 @@ impl Modules {
                 return Err(ModuleError::DuplicateName(module.name()));
             }
         }
+        let mut names = HashSet::new();
+        for module in &self.0 {
+            for p in module.permissions() {
+                if !is_permission_name(p.name) || !names.insert(p.name) {
+                    return Err(ModuleError::BadPermission {
+                        module: module.name(),
+                        permission: p.name,
+                    });
+                }
+            }
+        }
         self.migrations().map(|_| ())
+    }
+
+    /// Every module's permissions, in module order.
+    pub fn permissions(&self) -> Permissions {
+        let all = self
+            .0
+            .iter()
+            .flat_map(|m| m.permissions().iter().copied())
+            .collect();
+        Permissions(std::sync::Arc::new(all))
     }
 
     /// All modules' migrations as one directory, for `Database::migrations`.
@@ -158,8 +216,10 @@ impl Modules {
         merge_migrations(&dirs)
     }
 
-    /// Mounts every module on `app`, in order.
+    /// Mounts every module on `app`, in order, and makes the permission
+    /// list available as `State<Permissions>`.
     pub fn install(&self, app: App) -> App {
+        let app = app.state(self.permissions());
         self.0.iter().fold(app, |app, module| module.mount(app))
     }
 }
@@ -207,6 +267,38 @@ mod tests {
             .with(Stub("catalog", &[]))
             .with(Stub("catalog", &[]));
         assert_eq!(twice.validate(), Err(ModuleError::DuplicateName("catalog")));
+    }
+
+    struct Perms(&'static str, &'static [Permission]);
+
+    impl Module for Perms {
+        fn name(&self) -> &'static str {
+            self.0
+        }
+        fn permissions(&self) -> &'static [Permission] {
+            self.1
+        }
+        fn mount(&self, app: App) -> App {
+            app
+        }
+    }
+
+    #[test]
+    fn permissions_are_well_formed_and_unique() {
+        const READ: Permission = Permission::new("products:read", "See products").for_staff();
+        const BAD: Permission = Permission::new("Products", "Nope");
+        let ok = Modules::new().with(Perms("catalog", &[READ]));
+        assert_eq!(ok.validate(), Ok(()));
+        assert_eq!(
+            ok.permissions().staff_defaults().collect::<Vec<_>>(),
+            ["products:read"]
+        );
+
+        let twice = Modules::new()
+            .with(Perms("a", &[READ]))
+            .with(Perms("b", &[READ]));
+        assert!(twice.validate().is_err());
+        assert!(Modules::new().with(Perms("c", &[BAD])).validate().is_err());
     }
 
     #[test]

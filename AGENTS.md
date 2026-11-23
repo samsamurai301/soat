@@ -18,12 +18,16 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   https://samsamurai301.github.io/zapline/ (`llms.txt` there for agents).
 - **Every tenant-owned table has `tenant_id`, row-level security, and every
   query on it filters by it.** Take the `Tenant` extractor, open
-  `tenant.begin(&db)` and run every query on that transaction (`&mut *tx`),
-  then commit. Lists use `TenantListing`. The table's migration enables and
+  `tenant.begin_for(&db, &PERMISSION)` and run every query on that
+  transaction (`&mut *tx`), then commit. Lists use `TenantListing`. The table's migration enables and
   forces RLS with the `tenant_isolation` policy (copy it from the catalog's
   `..._products_row_level_security.up.sql`); a test fails for any `tenant_id`
   table without it. A foreign id must be a 404, never someone else's row. Add
   an API isolation test for every new tenant-owned resource.
+- **Every handler checks a permission.** Each module declares `resource:action`
+  permissions (`Module::permissions`, `Permission::new(..).for_staff()` when
+  the built-in staff role should have it). Roles, API keys and Claude's tools
+  are all scoped by these names, so a new endpoint without one is a hole.
 - **Postgres only.** Integer columns that map to `i64` are `BIGINT`. Ids are
   `TEXT` typed ids (`soat_core::Id`), generated in Rust.
 - **Money is integer minor units plus a `Currency`.** Never `f32`/`f64` for prices.

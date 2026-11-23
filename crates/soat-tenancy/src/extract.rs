@@ -5,8 +5,11 @@
 //! an API key (A7, A11), behind the same `Tenant` extractor, so handlers do
 //! not change.
 
+use std::collections::HashSet;
+
 use soat_auth::Staff;
-use soat_core::TenantId;
+use soat_core::{Permission, TenantId};
+use soat_module::Permissions;
 use zapline::db::sqlx::{PgConnection, Postgres, Transaction};
 use zapline::db::{sqlx, Db};
 use zapline::extract::FromRequestParts;
@@ -28,6 +31,7 @@ pub type TenantTx = Transaction<'static, Postgres>;
 pub struct Tenant {
     pub id: TenantId,
     pub staff: Staff,
+    permissions: Permissions,
 }
 
 impl FromRequestParts for Tenant {
@@ -43,42 +47,87 @@ impl FromRequestParts for Tenant {
         let id = TenantId::parse(&raw)
             .map_err(|e| Error::bad_request(e.to_string()).with_code("invalid_tenant"))?;
         let staff = Staff::from_request_parts(req).await?;
-        Ok(Tenant { id, staff })
+        let permissions = State::<Permissions>::from_request_parts(req)
+            .await
+            .map(|State(p)| p)
+            .unwrap_or_default();
+        Ok(Tenant {
+            id,
+            staff,
+            permissions,
+        })
     }
 }
 
-/// What a member may do in a shop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Role {
-    Owner,
-    Staff,
+/// The built-in role with every permission.
+pub const OWNER: &str = "owner";
+/// The built-in role with every permission a module marks `for_staff`.
+pub const STAFF: &str = "staff";
+
+/// What the caller may do in this shop.
+#[derive(Debug, Clone)]
+pub struct Access {
+    /// `owner`, `staff` or a custom role name. Platform admins count as owner.
+    pub role: String,
+    granted: Granted,
 }
 
-impl Tenant {
-    /// Opens a transaction scoped to this shop: the `soat.tenant` setting is
-    /// set for this transaction only, so the row-level security policy on
-    /// every tenant-owned table lets through this shop's rows and nothing
-    /// else, even if a query forgets its `WHERE tenant_id`.
-    ///
-    /// A shop that does not exist, or that the user is not a member of, is
-    /// the same 404 (`unknown_tenant`), so shop names do not leak. Platform
-    /// admins may act in any shop.
-    pub async fn begin(&self, db: &Db) -> Result<TenantTx> {
-        Ok(self.begin_with_role(db).await?.0)
+#[derive(Debug, Clone)]
+enum Granted {
+    All,
+    Only(HashSet<String>),
+}
+
+impl Access {
+    pub fn is_owner(&self) -> bool {
+        matches!(self.granted, Granted::All)
     }
 
-    /// [`begin`](Self::begin), then 403 (`owner_only`) unless the user owns
-    /// the shop or is a platform admin.
-    pub async fn begin_owner(&self, db: &Db) -> Result<TenantTx> {
-        let (tx, role) = self.begin_with_role(db).await?;
-        if role == Role::Owner {
-            Ok(tx)
-        } else {
-            Err(Error::forbidden().with_code("owner_only"))
+    pub fn allows(&self, permission: &str) -> bool {
+        match &self.granted {
+            Granted::All => true,
+            Granted::Only(set) => set.contains(permission),
         }
     }
 
-    async fn begin_with_role(&self, db: &Db) -> Result<(TenantTx, Role)> {
+    /// 403 (`missing_permission`) unless this access allows `permission`.
+    pub fn require(&self, permission: &Permission) -> Result<()> {
+        if self.allows(permission.name) {
+            Ok(())
+        } else {
+            Err(Error::new(
+                StatusCode::FORBIDDEN,
+                format!("this needs the {} permission", permission.name),
+            )
+            .with_code("missing_permission"))
+        }
+    }
+}
+
+impl Tenant {
+    /// Opens a transaction scoped to this shop for any member: the
+    /// `soat.tenant` setting is set for this transaction only, so the
+    /// row-level security policy on every tenant-owned table lets through
+    /// this shop's rows and nothing else, even if a query forgets its
+    /// `WHERE tenant_id`.
+    ///
+    /// A shop that does not exist, or that the user is not a member of, is
+    /// the same 404 (`unknown_tenant`), so shop names do not leak. Platform
+    /// admins may act in any shop, as owners.
+    pub async fn begin(&self, db: &Db) -> Result<TenantTx> {
+        Ok(self.begin_with_access(db).await?.0)
+    }
+
+    /// [`begin`](Self::begin), then 403 (`missing_permission`) unless the
+    /// caller's role grants `permission`.
+    pub async fn begin_for(&self, db: &Db, permission: &Permission) -> Result<TenantTx> {
+        let (tx, access) = self.begin_with_access(db).await?;
+        access.require(permission)?;
+        Ok(tx)
+    }
+
+    /// [`begin`](Self::begin), also returning what the caller may do.
+    pub async fn begin_with_access(&self, db: &Db) -> Result<(TenantTx, Access)> {
         let mut tx = db.begin().await?;
         let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE id = $1")
             .bind(self.id.as_str())
@@ -89,22 +138,59 @@ impl Tenant {
         }
         enter(&mut tx, &self.id).await?;
         if self.staff.is_platform_admin {
-            return Ok((tx, Role::Owner));
+            return Ok((tx, owner()));
         }
         let role: Option<(String,)> =
             sqlx::query_as("SELECT role FROM memberships WHERE user_id = $1")
                 .bind(self.staff.user_id.as_str())
                 .fetch_optional(&mut *tx)
                 .await?;
-        match role.as_ref().map(|(r,)| r.as_str()) {
-            Some("owner") => Ok((tx, Role::Owner)),
-            Some(_) => Ok((tx, Role::Staff)),
-            None => Err(unknown()),
-        }
+        let Some((role,)) = role else {
+            return Err(unknown());
+        };
+        let access = self.resolve(&mut tx, role).await?;
+        Ok((tx, access))
+    }
+
+    /// The access a role name grants in this shop. Call inside the shop's
+    /// transaction.
+    pub async fn resolve(&self, conn: &mut PgConnection, role: String) -> Result<Access> {
+        let granted = match role.as_str() {
+            OWNER => return Ok(owner()),
+            STAFF => self
+                .permissions
+                .staff_defaults()
+                .map(str::to_owned)
+                .collect(),
+            _ => {
+                let row: Option<(Vec<String>,)> =
+                    sqlx::query_as("SELECT permissions FROM roles WHERE name = $1")
+                        .bind(&role)
+                        .fetch_optional(&mut *conn)
+                        .await?;
+                row.map(|(p,)| p.into_iter().collect()).unwrap_or_default()
+            }
+        };
+        Ok(Access {
+            role,
+            granted: Granted::Only(granted),
+        })
+    }
+
+    /// Every permission the app's modules declare.
+    pub fn permissions(&self) -> &Permissions {
+        &self.permissions
     }
 
     pub fn id(&self) -> &str {
         self.id.as_str()
+    }
+}
+
+fn owner() -> Access {
+    Access {
+        role: OWNER.to_owned(),
+        granted: Granted::All,
     }
 }
 

@@ -21,13 +21,24 @@
 mod extract;
 mod list;
 pub mod routes;
+pub mod staff;
 
-pub use extract::{enter, Role, Tenant, TenantTx, HEADER, SETTING};
+pub use extract::{enter, Access, Tenant, TenantTx, HEADER, OWNER, SETTING, STAFF};
 pub use list::TenantListing;
 
+use soat_core::Permission;
 use soat_module::Module;
 use zapline::embed::Dir;
 use zapline::prelude::App;
+
+/// See the shop's staff and roles.
+pub const STAFF_READ: Permission =
+    Permission::new("staff:read", "See the shop's staff and roles").for_staff();
+/// Add staff and change their roles, up to the caller's own permissions.
+pub const STAFF_MANAGE: Permission = Permission::new(
+    "staff:manage",
+    "Add staff and change their roles (never beyond your own permissions)",
+);
 
 /// The tenancy module. List it before any module that owns tenant data.
 pub struct Tenancy;
@@ -45,7 +56,11 @@ impl Module for Tenancy {
         Some(zapline::embed!("migrations"))
     }
 
+    fn permissions(&self) -> &'static [Permission] {
+        &[STAFF_READ, STAFF_MANAGE]
+    }
+
     fn mount(&self, app: App) -> App {
-        app.plugin(routes::mount)
+        app.plugin(routes::mount).plugin(staff::mount)
     }
 }

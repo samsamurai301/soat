@@ -6,7 +6,7 @@
 //! on `tenant_id`, so one tenant can never read or change
 //! another's products: a foreign id is simply "not found".
 
-use soat_core::{id_kind, Currency};
+use soat_core::{id_kind, Currency, Permission};
 use soat_module::Module;
 use soat_tenancy::{Tenant, TenantListing};
 use zapline::db::{sqlx, Db, ListParams, Paged};
@@ -14,6 +14,12 @@ use zapline::embed::Dir;
 use zapline::prelude::*;
 
 id_kind!(ProductId, ProductKind, "prod");
+
+/// See products.
+pub const PRODUCTS_READ: Permission = Permission::new("products:read", "See products").for_staff();
+/// Create and change products.
+pub const PRODUCTS_WRITE: Permission =
+    Permission::new("products:write", "Create and change products").for_staff();
 
 /// The catalog module. Needs `tenancy`.
 pub struct Catalog;
@@ -29,6 +35,10 @@ impl Module for Catalog {
 
     fn migrations(&self) -> Option<Dir> {
         Some(zapline::embed!("migrations"))
+    }
+
+    fn permissions(&self) -> &'static [Permission] {
+        &[PRODUCTS_READ, PRODUCTS_WRITE]
     }
 
     fn mount(&self, app: App) -> App {
@@ -72,7 +82,7 @@ const COLUMNS: &str = "id, sku, title, price_minor, currency";
 /// Ids are time-ordered, so the default sort is oldest first.
 #[get("/api/products", tag = "catalog")]
 async fn list_products(db: Db, tenant: Tenant, params: ListParams) -> Result<Json<Paged<Product>>> {
-    let mut tx = tenant.begin(&db).await?;
+    let mut tx = tenant.begin_for(&db, &PRODUCTS_READ).await?;
     let page = TenantListing::new("products", COLUMNS)
         .sortable(["id", "sku", "title", "price_minor"])
         .search(["sku", "title"])
@@ -93,7 +103,7 @@ async fn create_product(
 ) -> Result<(StatusCode, Json<Product>)> {
     let currency = Currency::parse(&p.currency)
         .map_err(|e| Error::unprocessable(e.to_string()).with_code("invalid_currency"))?;
-    let mut tx = tenant.begin(&db).await?;
+    let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
     let product = sqlx::query_as::<_, Product>(&format!(
         "INSERT INTO products (id, tenant_id, sku, title, price_minor, currency) \
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING {COLUMNS}"
@@ -114,7 +124,7 @@ async fn create_product(
 #[get("/api/products/{id}", tag = "catalog")]
 async fn get_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<Json<Product>> {
     let id = ProductId::parse(&id).map_err(|_| Error::not_found())?;
-    let mut tx = tenant.begin(&db).await?;
+    let mut tx = tenant.begin_for(&db, &PRODUCTS_READ).await?;
     let product = sqlx::query_as::<_, Product>(&format!(
         "SELECT {COLUMNS} FROM products WHERE tenant_id = $1 AND id = $2"
     ))

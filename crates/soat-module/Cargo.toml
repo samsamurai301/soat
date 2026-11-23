@@ -8,4 +8,5 @@ license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
+soat-core.workspace = true
 zapline.workspace = true
