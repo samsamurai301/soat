@@ -13,6 +13,7 @@ use soat_fields::Fields;
 use soat_files::Files;
 use soat_inventory::Inventory;
 use soat_module::Modules;
+use soat_orders::Orders;
 use soat_payments::Payments;
 use soat_pricing::Pricing;
 use soat_shipping::Shipping;
@@ -86,7 +87,8 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Carts)
         .with(Taxes)
         .with(Shipping)
-        .with(payments);
+        .with(payments)
+        .with(Orders);
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {
         Some(config) => modules.with(soat_stripe::StripeWebhooks::new(config)),

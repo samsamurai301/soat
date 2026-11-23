@@ -1475,12 +1475,14 @@ dependencies = [
  "soat-auth",
  "soat-cart",
  "soat-catalog",
+ "soat-core",
  "soat-customers",
  "soat-events",
  "soat-fields",
  "soat-files",
  "soat-inventory",
  "soat-module",
+ "soat-orders",
  "soat-payments",
  "soat-pricing",
  "soat-shipping",
@@ -1625,6 +1627,22 @@ dependencies = [
  "serde",
  "serde_json",
  "soat-core",
+ "zapline",
+]
+
+[[package]]
+name = "soat-orders"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-customers",
+ "soat-inventory",
+ "soat-module",
+ "soat-payments",
+ "soat-tenancy",
+ "sqlx",
  "zapline",
 ]
 

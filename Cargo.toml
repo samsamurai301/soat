@@ -28,6 +28,7 @@ soat-tax = { path = "crates/soat-tax" }
 soat-shipping = { path = "crates/soat-shipping" }
 soat-payments = { path = "crates/soat-payments" }
 soat-stripe = { path = "crates/soat-stripe" }
+soat-orders = { path = "crates/soat-orders" }
 soat-testing = { path = "crates/soat-testing" }
 # Tracks Zapline main (newer than the crates.io release); Cargo.lock pins the exact commit.
 zapline = { git = "https://github.com/samsamurai301/zapline", features = ["postgres"] }

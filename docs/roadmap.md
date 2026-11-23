@@ -69,7 +69,7 @@ layer.
 - [x] C7 Payments core and manual payment: `PaymentProvider` trait registered on the module, payment methods per shop, payments with a status machine, capture, cancel, refunds, manual provider with instructions and mark-paid **alpha**
 - [x] C8 Stripe: PaymentIntents with one platform key and optional Connect account per method, client secret handed to the buyer once and never stored, manual capture, cancel, refunds, signed webhooks checked against the stored intent; behind the `stripe` feature **alpha**
 - [ ] C9 Checkout **alpha**
-- [ ] C10 Orders **alpha**
+- [x] C10 Orders: `place()` copies lines, tax, shipping and addresses in, per-shop numbers from 1001, financial status follows payments through a subscriber, cancel releases held stock, guest token and customer account views **alpha**
 - [ ] C11 Fulfillment **alpha**
 - [ ] C12 Refunds and returns **alpha**
 - [ ] C13 Discount codes **alpha**

@@ -11,6 +11,7 @@ mod id;
 pub mod media;
 mod money;
 pub mod options;
+pub mod order;
 pub mod payment;
 mod permission;
 pub mod tags;

@@ -20,7 +20,8 @@ fn module_list_is_valid_and_ordered() {
             "cart",
             "tax",
             "shipping",
-            "payments"
+            "payments",
+            "orders"
         ]
     );
 }
