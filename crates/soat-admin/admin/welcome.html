@@ -1,0 +1,64 @@
+<h1>Set up {{ progress.shop.name }}</h1>
+<p class="muted">{{ progress.done }} of {{ progress.total }} steps done. Each one can be changed later in Settings.</p>
+{{#if progress.ready }}<p class="notice" role="status">Your shop is ready to sell. <a href="{{ base }}">Go to the dashboard</a></p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+
+<section class="panel step" id="basics">
+  <h2>1. Where you sell from {{#if progress.steps.basics }}<span class="badge on">Done</span>{{/if}}</h2>
+  <form method="post" action="{{ base }}/welcome/basics" class="form">
+    <label>Shop name <input name="name" value="{{ progress.shop.name }}" maxlength="200" required></label>
+    <label>Country
+      <select name="country" required>
+        <option value="">Choose…</option>
+        {{#each countries }}<option value="{{ code }}"{{#if selected }} selected{{/if}}>{{ name }}</option>{{/each}}
+      </select>
+    </label>
+    <label>Currency
+      <select name="currency">{{#each currencies }}<option{{#if selected }} selected{{/if}}>{{ code }}</option>{{/each}}</select>
+    </label>
+    <button class="button">Save</button>
+  </form>
+</section>
+
+<section class="panel step" id="taxes">
+  <h2>2. Taxes {{#if progress.steps.taxes }}<span class="badge on">Done</span>{{/if}}</h2>
+  {{#if progress.steps.taxes }}<p>Tax rates are set. <a href="{{ base }}/settings/taxes">See them</a></p>
+  {{else}}{{#if eu }}
+  <p>{{ country_name }} is in the EU. Load every member state's VAT rates; prices include VAT.</p>
+  <form method="post" action="{{ base }}/welcome/taxes"><button class="button">Load EU VAT rates</button></form>
+  {{else}}
+  <p>Add the tax rates you charge in <a href="{{ base }}/settings/taxes">tax settings</a>.</p>
+  {{/if}}{{/if}}
+</section>
+
+<section class="panel step" id="payments">
+  <h2>3. How customers pay {{#if progress.steps.payments }}<span class="badge on">Done</span>{{/if}}</h2>
+  {{#if progress.steps.payments }}<p>Customers can pay. <a href="{{ base }}/settings/payments">Payment settings</a></p>
+  {{else}}
+  <form method="post" action="{{ base }}/welcome/payments" class="form">
+    <p>Start with bank transfer: customers see your instructions after ordering, and you mark orders paid.</p>
+    <label>Instructions <textarea name="instructions" rows="3" maxlength="2000" required>Please transfer the total to IBAN … and give your order number as the reference.</textarea></label>
+    <button class="button">Accept bank transfer</button>
+  </form>
+  <p class="muted">For cards, add Stripe, Mollie or PayPal in <a href="{{ base }}/settings/payments">payment settings</a>.</p>
+  {{/if}}
+</section>
+
+<section class="panel step" id="shipping">
+  <h2>4. Shipping {{#if progress.steps.shipping }}<span class="badge on">Done</span>{{/if}}</h2>
+  {{#if progress.steps.shipping }}<p>Shipping is set up. <a href="{{ base }}/settings/shipping">Shipping settings</a></p>
+  {{else}}{{#if progress.steps.basics }}
+  <form method="post" action="{{ base }}/welcome/shipping" class="form">
+    <p>One rate for orders to {{ country_name }}. Add other countries in shipping settings.</p>
+    <label>Price ({{ currency }}) <input name="price" inputmode="decimal" value="4.95" required></label>
+    <label>Free from ({{ currency }}, optional) <input name="free_from" inputmode="decimal" placeholder="50.00"></label>
+    <button class="button">Save shipping</button>
+  </form>
+  {{else}}<p class="muted">Choose where you sell from first.</p>{{/if}}{{/if}}
+</section>
+
+<section class="panel step" id="products">
+  <h2>5. Products {{#if progress.steps.products }}<span class="badge on">Done</span>{{/if}}</h2>
+  {{#if progress.steps.products }}<p><a href="{{ base }}/products">See your products</a></p>
+  {{else}}<p><a class="button" href="{{ base }}/products/new">Add your first product</a></p>{{/if}}
+</section>

@@ -88,6 +88,11 @@ const COUNTRY_NAMES: &[(&str, &str)] = &[
     ("ZA", "South Africa"),
 ];
 
+/// The common countries as `(code, English name)`, sorted by code.
+pub fn country_names() -> &'static [(&'static str, &'static str)] {
+    COUNTRY_NAMES
+}
+
 /// The English name of country `code`, if it is one of the common ones;
 /// otherwise the code itself is the best label.
 pub fn country_name(code: &str) -> Option<&'static str> {

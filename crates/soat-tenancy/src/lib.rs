@@ -24,6 +24,7 @@ pub mod event_log;
 mod extract;
 mod list;
 pub mod routes;
+pub mod shop;
 pub mod staff;
 
 pub use extract::{
@@ -69,6 +70,8 @@ impl Module for Tenancy {
             api_keys::API_KEYS_MANAGE,
             domains::DOMAINS_MANAGE,
             event_log::EVENTS_READ,
+            shop::SHOP_READ,
+            shop::SHOP_MANAGE,
         ]
     }
 
@@ -78,5 +81,6 @@ impl Module for Tenancy {
             .plugin(api_keys::mount)
             .plugin(domains::mount)
             .plugin(event_log::mount)
+            .plugin(shop::mount)
     }
 }

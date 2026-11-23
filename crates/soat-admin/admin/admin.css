@@ -68,4 +68,4 @@ code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: va
 .chart { margin: 1rem 0; }
 .chart svg { width: 100%; height: 160px; display: block; }
 .chart rect { fill: var(--accent); }
-.steps { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: .35rem; }
+.step h2 { margin-top: 0; }

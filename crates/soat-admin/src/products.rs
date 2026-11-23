@@ -218,8 +218,13 @@ pub(crate) async fn new_page(
     Path(shop): Path<String>,
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
+    // The shop's currency, else the latest product's, else euros.
+    let (_, profile) = cx.call(Method::GET, "/api/shop", None).await;
     let recent = page!(cx.get("/api/products?limit=1&sort=-id").await);
-    let currency = recent["items"][0]["currency"].as_str().unwrap_or("EUR");
+    let currency = profile["currency"]
+        .as_str()
+        .or_else(|| recent["items"][0]["currency"].as_str())
+        .unwrap_or("EUR");
     let form = ProductForm::default().typed(currency);
     Ok(show_form(cx, form, None, StatusCode::OK))
 }

@@ -120,7 +120,7 @@ layer.
 
 ## G. Onboarding and import
 
-- [ ] G1 Setup wizard **alpha**
+- [x] G1 Setup wizard **alpha**
 - [ ] G2 Sample data and store templates **alpha**
 - [ ] G3 Launch checklist
 - [ ] G4 CSV import and export **alpha**

@@ -33,6 +33,7 @@ mod api;
 mod content;
 mod customers;
 mod dashboard;
+mod onboarding;
 mod orders;
 mod pages;
 mod products;
@@ -101,6 +102,14 @@ impl Module for Admin {
             shop_list,
             dashboard::home,
             styles,
+        ))
+        .mount((
+            onboarding::setup_page,
+            onboarding::setup,
+            onboarding::new_shop_page,
+            onboarding::create_shop,
+            onboarding::welcome,
+            onboarding::welcome_step,
         ))
         .mount((
             products::list,
@@ -431,9 +440,25 @@ async fn shop_list(
             return Ok(Redirect::to(&format!("/admin/{id}")).into_response());
         }
     }
+    let (_, me) = s
+        .api
+        .send(
+            &db,
+            Method::GET,
+            "/api/auth/me",
+            None,
+            Some(&token),
+            None,
+            conn,
+        )
+        .await;
+    let admin = me["is_platform_admin"] == json!(true);
+    if admin && list.is_empty() {
+        return Ok(Redirect::to("/admin/new").into_response());
+    }
     Ok(s.pages.render(
         "shops",
-        &json!({ "page_title": "Your shops", "shops": list }),
+        &json!({ "page_title": "Your shops", "shops": list, "can_create": admin }),
         StatusCode::OK,
     ))
 }

@@ -1,13 +1,9 @@
 <h1>{{ shop.name }}</h1>
 {{#if first_steps}}
 <section class="panel">
-  <h2>First steps</h2>
-  <ol class="steps">
-    <li><a href="{{ base }}/products/new">Add your first product</a></li>
-    <li><a href="{{ base }}/settings/payments">Choose how customers pay</a></li>
-    <li><a href="{{ base }}/settings/shipping">Set up shipping</a></li>
-    <li><a href="{{ base }}/theme">Make the shop look like yours</a></li>
-  </ol>
+  <h2>Finish setting up</h2>
+  <p>A few steps are left before your shop can sell: where you sell from, taxes, payments, shipping and products.</p>
+  <p><a class="button" href="{{ base }}/welcome">Set up your shop</a></p>
 </section>
 {{/if}}
 {{#if report}}

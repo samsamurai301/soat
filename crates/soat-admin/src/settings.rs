@@ -33,7 +33,7 @@ fn bps(text: &str) -> Option<i64> {
 }
 
 /// An amount such as `4.95` in minor units of `currency`.
-fn amount(text: &str, currency: &str) -> Option<i64> {
+pub(crate) fn amount(text: &str, currency: &str) -> Option<i64> {
     Currency::parse(currency)
         .ok()?
         .parse_decimal(&text.trim().replace(',', "."))
@@ -51,14 +51,14 @@ fn percent(bps: &Value) -> String {
 }
 
 /// A form's fields; a name may repeat (checkboxes).
-struct Fields(Vec<(String, String)>);
+pub(crate) struct Fields(Vec<(String, String)>);
 
 impl Fields {
-    fn parse(body: &[u8]) -> Self {
+    pub(crate) fn parse(body: &[u8]) -> Self {
         Self(serde_urlencoded::from_bytes(body).unwrap_or_default())
     }
 
-    fn get(&self, name: &str) -> String {
+    pub(crate) fn get(&self, name: &str) -> String {
         self.0
             .iter()
             .find(|(k, _)| k == name)

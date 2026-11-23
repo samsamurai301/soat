@@ -66,7 +66,7 @@ async fn staff_sign_in_and_pick_a_shop() {
 
     let res = get(&client, &admin, "/admin/acme").await;
     res.assert_status(200);
-    assert!(res.text().contains("Add your first product"));
+    assert!(res.text().contains("Finish setting up"));
 
     // A staff member of one shop goes straight to it and cannot open
     // another.
@@ -1169,7 +1169,7 @@ async fn the_dashboard_shows_what_needs_doing() {
     let admin = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
     let html = get(&client, &admin, "/admin/acme").await.text();
     assert!(
-        html.contains("First steps") && html.contains("No orders in the last 30 days."),
+        html.contains("Finish setting up") && html.contains("No orders in the last 30 days."),
         "{html}"
     );
 

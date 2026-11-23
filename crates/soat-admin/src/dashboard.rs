@@ -40,7 +40,8 @@ pub(crate) async fn home(
         None
     };
     cx.set("product_count", json!(product_count));
-    cx.set("first_steps", json!(product_count == Some(0)));
+    let unfinished = crate::onboarding::unfinished(&cx).await;
+    cx.set("first_steps", json!(unfinished));
     // Staff without `orders:read` see the rest of the page without sales.
     let (status, report) = cx
         .call(
