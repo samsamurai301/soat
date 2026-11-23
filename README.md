@@ -133,6 +133,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Admin dashboard: orders waiting on staff, sales by day, best sellers, first steps for a new shop (`GET /api/orders/report`)
 - [x] Setup in the browser: the first admin at `/admin/setup`, a new shop, then welcome steps for country and currency, EU VAT, bank transfer, shipping and the first product, or sample products from a store template (clothing, coffee, home goods) removed again in one click
 - [x] CSV import and export of products (a row per variant, with stock) and customers, as spreadsheets save it (`;` or `,`, decimal commas)
+- [x] Moving from Shopify: its product and customer exports import as they are (descriptions turned into Markdown; images not yet)
 - [ ] WASM plugin host, built into Zapline
 
 ## License

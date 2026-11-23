@@ -257,3 +257,96 @@ async fn customers_round_trip_through_csv() {
     res.assert_status(403);
     assert!(res.text().contains("Your role does not allow this."));
 }
+
+/// Part of a product export as Shopify writes it.
+const SHOPIFY_PRODUCTS: &str = "Handle,Title,Body (HTML),Vendor,Product Category,Type,Tags,Published,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Option3 Name,Option3 Value,Variant SKU,Variant Grams,Variant Inventory Tracker,Variant Inventory Qty,Variant Inventory Policy,Variant Fulfillment Service,Variant Price,Variant Compare At Price,Variant Requires Shipping,Variant Taxable,Variant Barcode,Image Src,Image Position,Image Alt Text,Gift Card,SEO Title,SEO Description,Variant Image,Variant Weight Unit,Variant Tax Code,Cost per item,Status\n\
+linen-shirt,Linen Shirt,\"<p>Breathable <strong>linen</strong>.</p><ul><li>Relaxed fit</li><li>Made in Lithuania</li></ul>\",Acme,,Shirts,\"summer, linen\",TRUE,Size,S,Color,White,,,LIN-S-W,220.0,shopify,3,deny,manual,89.00,,TRUE,TRUE,,https://cdn.shopify.com/a.jpg,1,,FALSE,Linen shirt for summer,Breathable linen.,,g,,,active\n\
+linen-shirt,,,,,,,,,M,,White,,,LIN-M-W,220.0,shopify,5,deny,manual,89.00,,TRUE,TRUE,,https://cdn.shopify.com/b.jpg,2,,,,,,g,,,\n\
+linen-shirt,,,,,,,,,M,,Sand,,,LIN-M-S,220.0,shopify,0,deny,manual,92.00,,TRUE,TRUE,,,,,,,,,g,,,\n\
+linen-shirt,,,,,,,,,,,,,,,,,,,,,,,,,https://cdn.shopify.com/c.jpg,3,,,,,,,,,\n\
+gift-card,Gift Card,,Acme,,,,TRUE,Title,Default Title,,,,,GIFT,0.0,,0,deny,manual,50.00,,FALSE,FALSE,,,,,TRUE,,,,g,,,draft\n";
+
+#[tokio::test]
+async fn shopify_exports_import_as_they_are() {
+    let (client, t) = common::with_tenants(&["acme"]).await;
+    client
+        .patch("/api/shop")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({ "country": "DE", "currency": "EUR" }))
+        .send()
+        .await
+        .assert_status(200);
+    let me = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+    let res = upload(
+        &client,
+        &me,
+        "/admin/acme/transfer/products",
+        SHOPIFY_PRODUCTS,
+    )
+    .await;
+    let html = res.text();
+    assert_eq!(res.status(), 200, "{html}");
+    assert!(html.contains("2 created, 0 updated"), "{html}");
+
+    let api = |path: String| {
+        let req = client.get(&path).header("x-soat-tenant", "acme").bearer(&t);
+        async move {
+            let res = req.send().await;
+            res.assert_status(200);
+            res.json::<Value>()
+        }
+    };
+    let products = api("/api/products?sort=title".into()).await;
+    let card = &products["items"][0];
+    assert_eq!(card["handle"], "gift-card");
+    assert_eq!(card["sku"], "GIFT");
+    assert_eq!(card["status"], "draft");
+    assert_eq!(card["tax_class"], "exempt");
+    assert_eq!(card["price_minor"], 5000);
+    let shirt = &products["items"][1];
+    assert_eq!(
+        shirt["description"],
+        "Breathable **linen**.\n\n- Relaxed fit\n- Made in Lithuania"
+    );
+    assert_eq!(shirt["tags"], json!(["summer", "linen"]));
+    assert_eq!(shirt["seo_title"], "Linen shirt for summer");
+    assert_eq!(shirt["weight_grams"], 220);
+    let id = shirt["id"].as_str().unwrap();
+    let options = api(format!("/api/products/{id}/options")).await;
+    assert_eq!(
+        options,
+        json!([{ "name": "Size", "values": ["S", "M"] }, { "name": "Color", "values": ["White", "Sand"] }])
+    );
+    let variants = api(format!("/api/products/{id}/variants")).await;
+    assert_eq!(variants.as_array().unwrap().len(), 3);
+    assert_eq!(variants[2]["price_minor"], 9200);
+    let m = variants[1]["id"].as_str().unwrap();
+    assert_eq!(api(format!("/api/inventory/{m}")).await["on_hand"], 5);
+
+    // Problems name the line in Shopify's file.
+    let broken = SHOPIFY_PRODUCTS.replace(
+        "LIN-M-S,220.0,shopify,0,deny,manual,92.00",
+        "LIN-M-S,220.0,shopify,0,deny,manual,lots",
+    );
+    let res = upload(&client, &me, "/admin/acme/transfer/products", &broken).await;
+    res.assert_status(422);
+    assert!(
+        res.text()
+            .contains("Line 2: linen-shirt: line 4: the price “lots”"),
+        "{}",
+        res.text()
+    );
+
+    let customers = "First Name,Last Name,Email,Accepts Email Marketing,Default Address Company,Default Address Address1,Default Address City,Default Address Country Code,Default Address Phone,Phone,Accepts SMS Marketing,Total Spent,Total Orders,Note,Tax Exempt,Tags\n\
+        Ada,Lovelace,ada@example.com,yes,,Hauptstr. 1,Berlin,DE,'+493012345,,no,120.00,2,Likes tea,no,\"vip, newsletter\"\n\
+        Bob,,bob@example.com,no,,,,,,,no,0.00,0,,no,\n";
+    let res = upload(&client, &me, "/admin/acme/transfer/customers", customers).await;
+    res.assert_status(200);
+    assert!(res.text().contains("2 created, 0 updated"));
+    let list = api("/api/customers?sort=email".into()).await;
+    assert_eq!(list["items"][0]["phone"], "+493012345");
+    assert_eq!(list["items"][0]["accepts_marketing"], true);
+    assert_eq!(list["items"][0]["tags"], json!(["vip", "newsletter"]));
+    assert_eq!(list["items"][1]["accepts_marketing"], false);
+}

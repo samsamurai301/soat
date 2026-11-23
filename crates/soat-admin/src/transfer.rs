@@ -4,6 +4,7 @@
 
 use serde_json::{json, Map, Value};
 use soat_core::csv::{write, Table};
+use soat_core::shopify;
 use soat_core::Currency;
 use zapline::db::Db;
 use zapline::multipart::Multipart;
@@ -306,6 +307,12 @@ fn bad(message: impl Into<String>) -> Fail {
     (422, message.into())
 }
 
+/// Row `r`'s line in the uploaded file: its `line` cell when the rows were
+/// translated (Shopify's export), else after the header.
+fn line_of(t: &Table, r: usize) -> usize {
+    t.get(r, "line").parse().unwrap_or(r + 2)
+}
+
 fn reason(out: &Value) -> String {
     crate::util::message(out)
 }
@@ -333,6 +340,7 @@ pub(crate) async fn import_products(
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
     let table = match read(&mut form, "handle").await {
+        Ok(t) if shopify::is_products(&t) => shopify::products(&t),
         Ok(t) => t,
         Err(e) => return Ok(page(cx, None, Some(e), StatusCode::UNPROCESSABLE_ENTITY)),
     };
@@ -344,7 +352,7 @@ pub(crate) async fn import_products(
     for r in 0..table.rows.len() {
         let handle = table.get(r, "handle").to_lowercase();
         if handle.is_empty() {
-            out.problem(r + 2, "The handle is empty.");
+            out.problem(line_of(&table, r), "The handle is empty.");
             continue;
         }
         match groups.iter_mut().find(|(h, _)| *h == handle) {
@@ -353,7 +361,7 @@ pub(crate) async fn import_products(
         }
     }
     for (handle, rows) in groups {
-        let line = rows[0] + 2;
+        let line = line_of(&table, rows[0]);
         match import_product(&cx, &table, &handle, &rows, &profile, &mut location).await {
             Ok(true) => out.created += 1,
             Ok(false) => out.updated += 1,
@@ -434,6 +442,8 @@ async fn import_product(
         ("description", "description"),
         ("status", "status"),
         ("tax_class", "tax_class"),
+        ("seo_title", "seo_title"),
+        ("seo_description", "seo_description"),
     ] {
         let v = cell(first, column);
         if !v.is_empty() {
@@ -525,7 +535,11 @@ async fn import_product(
         for &r in rows {
             for (i, v) in values(r).into_iter().enumerate() {
                 if v.is_empty() {
-                    return Err(bad(format!("line {} has no value for {}", r + 2, names[i])));
+                    return Err(bad(format!(
+                        "line {} has no value for {}",
+                        line_of(t, r),
+                        names[i]
+                    )));
                 }
                 if !options[i].1.contains(&v) {
                     options[i].1.push(v);
@@ -553,9 +567,18 @@ async fn import_product(
         for &r in rows {
             let sku = cell(r, "sku");
             if sku.is_empty() {
-                return Err(bad(format!("line {} has no SKU for its variant", r + 2)));
+                return Err(bad(format!(
+                    "line {} has no SKU for its variant",
+                    line_of(t, r)
+                )));
             }
-            let price = price(r)?;
+            let price = price(r).map_err(|(s, e)| {
+                if r == first {
+                    (s, e)
+                } else {
+                    (s, format!("line {}: {e}", line_of(t, r)))
+                }
+            })?;
             let same = variants.iter().find(|v| v["sku"] == sku.as_str());
             let vid = match same {
                 Some(v) => {
@@ -566,7 +589,10 @@ async fn import_product(
                         let change = json!({ "price_minor": p });
                         let (status, out) = cx.call(Method::PATCH, &path, Some(&change)).await;
                         if status != 200 {
-                            return Err((status, format!("line {}: {}", r + 2, reason(&out))));
+                            return Err((
+                                status,
+                                format!("line {}: {}", line_of(t, r), reason(&out)),
+                            ));
                         }
                     }
                     text(&v["id"])
@@ -579,7 +605,7 @@ async fn import_product(
                     let path = format!("/api/products/{id}/variants");
                     let (status, out) = cx.call(Method::POST, &path, Some(&new)).await;
                     if status != 201 {
-                        return Err((status, format!("line {}: {}", r + 2, reason(&out))));
+                        return Err((status, format!("line {}: {}", line_of(t, r), reason(&out))));
                     }
                     text(&out["id"])
                 }
@@ -648,6 +674,7 @@ pub(crate) async fn import_customers(
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "customers").await);
     let table = match read(&mut form, "email").await {
+        Ok(t) if shopify::is_customers(&t) => shopify::customers(&t),
         Ok(t) => t,
         Err(e) => return Ok(page(cx, None, Some(e), StatusCode::UNPROCESSABLE_ENTITY)),
     };

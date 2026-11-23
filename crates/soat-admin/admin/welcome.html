@@ -60,7 +60,7 @@
 <section class="panel step" id="products">
   <h2>5. Products {{#if progress.steps.products }}<span class="badge on">Done</span>{{/if}}</h2>
   {{#if progress.steps.products }}<p><a href="{{ base }}/products">See your products</a></p>
-  {{else}}<p><a class="button" href="{{ base }}/products/new">Add your first product</a></p>{{/if}}
+  {{else}}<p><a class="button" href="{{ base }}/products/new">Add your first product</a> or <a href="{{ base }}/transfer">import a CSV file or your Shopify export</a></p>{{/if}}
   {{#if progress.samples }}
   <form method="post" action="{{ base }}/welcome/remove-sample" class="inline">
     <p>Sample products are in your shop. <button class="link">Remove the sample products</button></p>
