@@ -341,6 +341,10 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
             .as_ref()
             .and_then(|q| q.lines.get(lines.len()))
             .map_or(0, |l| l.tax_minor),
+        tax_rate_bps: tax
+            .as_ref()
+            .and_then(|q| q.lines.get(lines.len()))
+            .map_or(0, |l| l.rate_bps),
     });
     let draft = NewOrder {
         cart_id: Some(cart.id.clone()),

@@ -9,6 +9,7 @@ mod domain;
 pub mod fields;
 pub mod handle;
 mod id;
+pub mod invoice;
 pub mod media;
 mod money;
 pub mod options;

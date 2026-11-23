@@ -65,6 +65,7 @@ curl localhost:8080/api/products -H "authorization: Bearer $TOKEN" -H 'x-soat-te
 | `crates/soat-promotions` | Discount codes: percentage, fixed amount, free shipping, with dates, minimums and limits |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
+| `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |
 | `crates/soat-notify` | Transactional email: order, shipping, cancel and refund emails, staff notices, editable templates, sent log |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
 | `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
@@ -94,6 +95,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Fulfillment, returns and refunds
 - [x] Discount codes
 - [x] Transactional email with editable templates
+- [x] Invoices and credit notes
 - [ ] Admin UI and storefront in Rust (server-rendered with htmx)
 - [ ] WASM plugin host, built into Zapline
 

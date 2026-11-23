@@ -13,6 +13,7 @@ use soat_events::Events;
 use soat_fields::Fields;
 use soat_files::Files;
 use soat_inventory::Inventory;
+use soat_invoices::Invoices;
 use soat_module::Modules;
 use soat_notify::Notify;
 use soat_orders::Orders;
@@ -109,6 +110,7 @@ pub fn modules(settings: Settings) -> Modules {
         .with(Promotions)
         .with(Orders)
         .with(Checkout)
+        .with(Invoices)
         .with(Notify::new(settings.mailer, settings.mail_from));
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {

@@ -50,6 +50,7 @@ async fn placed(url: &str, item: &str, customer: &str) -> String {
             price_minor: 495,
             discount_minor: 0,
             tax_minor: 79,
+            tax_rate_bps: 1900,
         }),
         shipping_address: None,
         billing_address: None,

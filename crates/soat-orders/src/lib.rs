@@ -16,6 +16,8 @@ pub mod fulfillments;
 pub mod returns;
 mod routes;
 
+pub use routes::OrderToken;
+
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -151,6 +153,10 @@ pub struct Order {
     pub shipping_rate_id: Option<String>,
     pub shipping_name: Option<String>,
     pub shipping_tax_minor: i64,
+    /// The tax rate on shipping, in basis points.
+    pub shipping_tax_rate_bps: i64,
+    /// What a discount code took off shipping.
+    pub shipping_discount_minor: i64,
     pub note: String,
     pub cancel_reason: Option<String>,
     /// RFC 3339, UTC.
@@ -206,6 +212,7 @@ pub struct NewShipping {
     pub discount_minor: i64,
     /// Tax on the price after the discount.
     pub tax_minor: i64,
+    pub tax_rate_bps: i64,
 }
 
 /// An order to place.
@@ -318,9 +325,9 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
          currency, subtotal_minor, shipping_minor, tax_minor, total_minor, prices_include_tax, \
          tax_country, reverse_charge, vat_number, shipping_address, billing_address, \
          shipping_rate_id, shipping_name, shipping_tax_minor, note, discount_minor, \
-         discount_code) \
+         discount_code, shipping_tax_rate_bps, shipping_discount_minor) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, \
-         $18, $19, $20, $21, $22, $23, $24)",
+         $18, $19, $20, $21, $22, $23, $24, $25, $26)",
     )
     .bind(id.as_str())
     .bind(scope.tenant_id())
@@ -346,6 +353,8 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
     .bind(o.note.trim())
     .bind(t.discount)
     .bind(&o.discount_code)
+    .bind(o.shipping.as_ref().map_or(0, |s| s.tax_rate_bps))
+    .bind(o.shipping.as_ref().map_or(0, |s| s.discount_minor))
     .execute(&mut **tx)
     .await?;
     for (position, l) in o.lines.iter().enumerate() {
@@ -408,6 +417,8 @@ struct OrderRow {
     shipping_rate_id: Option<String>,
     shipping_name: Option<String>,
     shipping_tax_minor: i64,
+    shipping_tax_rate_bps: i64,
+    shipping_discount_minor: i64,
     note: String,
     cancel_reason: Option<String>,
     placed_at: String,
@@ -418,7 +429,7 @@ pub(crate) const ORDER_COLUMNS: &str = "id, number, cart_id, customer_id, email,
      status, financial_status, fulfillment_status, subtotal_minor, shipping_minor, tax_minor, \
      discount_minor, discount_code, total_minor, prices_include_tax, tax_country, reverse_charge, vat_number, \
      shipping_address, billing_address, shipping_rate_id, shipping_name, shipping_tax_minor, \
-     note, cancel_reason, \
+     shipping_tax_rate_bps, shipping_discount_minor, note, cancel_reason, \
      to_char(placed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS placed_at, \
      to_char(canceled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS canceled_at";
 
@@ -482,6 +493,8 @@ pub async fn load(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Resu
         shipping_rate_id: r.shipping_rate_id,
         shipping_name: r.shipping_name,
         shipping_tax_minor: r.shipping_tax_minor,
+        shipping_tax_rate_bps: r.shipping_tax_rate_bps,
+        shipping_discount_minor: r.shipping_discount_minor,
         note: r.note,
         cancel_reason: r.cancel_reason,
         placed_at: r.placed_at,

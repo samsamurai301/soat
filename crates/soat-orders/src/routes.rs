@@ -1,7 +1,7 @@
 //! Order endpoints: staff, signed-in customers and guests with a token.
 
 use soat_customers::accounts::SignedIn;
-use soat_tenancy::{Shop, Tenant, TenantListing};
+use soat_tenancy::{Shop, Tenant, TenantListing, TenantTx};
 use zapline::auth::password::hash_token;
 use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::extract::FromRequestParts;
@@ -193,10 +193,36 @@ async fn my_order(db: Db, signed_in: SignedIn, Path(id): Path<String>) -> Result
         .ok_or_else(Error::not_found)
 }
 
-/// A guest holding an order's token (`x-soat-order-token`).
-struct OrderToken {
-    shop: Shop,
+/// A guest holding an order's token (`x-soat-order-token`), for
+/// storefront routes about one order.
+pub struct OrderToken {
+    pub shop: Shop,
     hash: String,
+}
+
+impl OrderToken {
+    /// Opens the shop's transaction for order `id` if the token is its;
+    /// otherwise a 404. Returns the transaction and the order's id.
+    ///
+    /// # Errors
+    ///
+    /// `404` for an unknown order or a wrong token; database errors.
+    pub async fn open(&self, db: &Db, id: &str) -> Result<(TenantTx, String)> {
+        let id = OrderId::parse(id).map_err(|_| Error::not_found())?;
+        let mut tx = self.shop.begin(db).await?;
+        let ok: Option<(String,)> = sqlx::query_as(
+            "SELECT id FROM orders WHERE tenant_id = $1 AND id = $2 AND token_hash = $3",
+        )
+        .bind(self.shop.id())
+        .bind(id.as_str())
+        .bind(&self.hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+        match ok {
+            Some((id,)) => Ok((tx, id)),
+            None => Err(Error::not_found()),
+        }
+    }
 }
 
 impl FromRequestParts for OrderToken {
@@ -218,20 +244,8 @@ impl FromRequestParts for OrderToken {
 /// when it was placed); a wrong token is a 404.
 #[get("/api/storefront/orders/{id}", tag = "storefront")]
 async fn guest_order(db: Db, holder: OrderToken, Path(id): Path<String>) -> Result<Json<Order>> {
-    let id = OrderId::parse(&id).map_err(|_| Error::not_found())?;
-    let mut tx = holder.shop.begin(&db).await?;
-    let ok: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM orders WHERE tenant_id = $1 AND id = $2 AND token_hash = $3",
-    )
-    .bind(holder.shop.id())
-    .bind(id.as_str())
-    .bind(&holder.hash)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if ok.is_none() {
-        return Err(Error::not_found());
-    }
-    let order = load(&mut tx, &holder.shop, id.as_str()).await?;
+    let (mut tx, id) = holder.open(&db, &id).await?;
+    let order = load(&mut tx, &holder.shop, &id).await?;
     tx.commit().await?;
     order.map(Json).ok_or_else(Error::not_found)
 }

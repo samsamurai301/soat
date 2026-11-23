@@ -1564,6 +1564,7 @@ dependencies = [
  "soat-fields",
  "soat-files",
  "soat-inventory",
+ "soat-invoices",
  "soat-module",
  "soat-notify",
  "soat-orders",
@@ -1721,6 +1722,21 @@ dependencies = [
  "soat-catalog",
  "soat-core",
  "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-invoices"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-module",
+ "soat-orders",
+ "soat-payments",
  "soat-tenancy",
  "sqlx",
  "zapline",

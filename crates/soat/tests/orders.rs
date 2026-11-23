@@ -59,6 +59,7 @@ fn order(customer: Option<&str>) -> NewOrder {
             price_minor: 500,
             discount_minor: 0,
             tax_minor: 95,
+            tax_rate_bps: 1900,
         }),
         shipping_address: Some(PostalAddress {
             first_name: "Ada".into(),

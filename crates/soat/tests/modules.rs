@@ -24,6 +24,7 @@ fn module_list_is_valid_and_ordered() {
             "promotions",
             "orders",
             "checkout",
+            "invoices",
             "notify"
         ]
     );
