@@ -23,7 +23,7 @@ pub const LANGUAGE_HEADER: &str = "x-soat-language";
 pub const PATH_HEADER: &str = "x-soat-path";
 
 /// `/de/x` → `("de", "/x")`; `/de` → `("de", "/")`.
-fn split(path: &str) -> Option<(&str, &str)> {
+pub(crate) fn split(path: &str) -> Option<(&str, &str)> {
     let rest = path.strip_prefix('/')?;
     let (code, tail) = match rest.find('/') {
         Some(i) => (&rest[..i], &rest[i..]),
@@ -83,11 +83,14 @@ impl Lang {
     /// The asked-for language when the shop publishes it, else the
     /// default.
     pub fn of(headers: &HeaderMap, shop: ShopLanguages) -> Self {
-        let asked = headers
-            .get(LANGUAGE_HEADER)
-            .and_then(|v| v.to_str().ok())
-            .filter(|l| shop.has(l))
-            .map(str::to_owned);
+        let asked = headers.get(LANGUAGE_HEADER).and_then(|v| v.to_str().ok());
+        Self::asked(asked, shop)
+    }
+
+    /// `asked` when the shop publishes it in addition to its default
+    /// language, else the default.
+    pub fn asked(asked: Option<&str>, shop: ShopLanguages) -> Self {
+        let asked = asked.filter(|l| shop.has(l)).map(str::to_owned);
         match asked {
             Some(code) => Lang {
                 root: format!("/{code}"),

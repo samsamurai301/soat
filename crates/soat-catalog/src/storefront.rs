@@ -2,17 +2,13 @@
 //! handle, with no sign-in.
 
 use soat_files::FileView;
-use soat_tenancy::{Scope, Shop, TenantListing};
+use soat_tenancy::{Scope, TenantListing};
 use zapline::db::sqlx::PgConnection;
-use zapline::db::{sqlx, Db, ListParams, Paged};
+use zapline::db::{sqlx, ListParams, Paged};
 use zapline::prelude::*;
 use zapline::storage::Storage;
 
 use crate::variants::{load_options, load_variants, ProductOption};
-
-pub(crate) fn mount(app: App) -> App {
-    app.mount((shop_products, shop_product, shop_collection))
-}
 
 /// A picture of a product.
 #[model]
@@ -84,8 +80,9 @@ pub struct ShopProduct {
     pub variants: Vec<ShopVariant>,
 }
 
-/// A collection and its first page of products.
+/// A collection as buyers see it.
 #[model]
+#[derive(sqlx::FromRow)]
 pub struct ShopCollection {
     pub id: String,
     pub handle: String,
@@ -304,49 +301,22 @@ pub async fn sitemap_handles(
     ))
 }
 
-/// The shop's active products (no sign-in). `?q=` searches titles,
-/// `?tag=` filters, `?collection=<handle>` keeps one collection, `?sort=`
-/// by `title` or `price_minor`; 24 a page, at most 100.
-#[get("/api/storefront/products", tag = "storefront")]
-async fn shop_products(
-    db: Db,
-    shop: Shop,
-    storage: Storage,
-    params: ListParams,
-) -> Result<Json<Paged<ProductCard>>> {
-    let mut tx = shop.begin(&db).await?;
-    let page = product_cards(&mut tx, &shop, &storage, &params).await?;
-    tx.commit().await?;
-    Ok(Json(page))
-}
-
-/// An active product by handle, with pictures, options and variants (no
-/// sign-in). Drafts and archived products are a 404.
-#[get("/api/storefront/products/{handle}", tag = "storefront")]
-async fn shop_product(
-    db: Db,
-    shop: Shop,
-    storage: Storage,
-    Path(handle): Path<String>,
-) -> Result<Json<ShopProduct>> {
-    let mut tx = shop.begin(&db).await?;
-    let p = product_by_handle(&mut tx, &shop, &storage, &handle).await?;
-    tx.commit().await?;
-    p.map(Json).ok_or_else(Error::not_found)
-}
-
-/// A collection by handle (no sign-in). List its products with
-/// `GET /api/storefront/products?collection=<handle>`.
-#[get("/api/storefront/collections/{handle}", tag = "storefront")]
-async fn shop_collection(
-    db: Db,
-    shop: Shop,
-    Path(handle): Path<String>,
-) -> Result<Json<ShopCollection>> {
-    let mut tx = shop.begin(&db).await?;
-    let c = collection_by_handle(&mut tx, &shop, &handle).await?;
-    tx.commit().await?;
-    c.map(Json).ok_or_else(Error::not_found)
+/// The shop's collections, a page at a time, by title (`?q=` searches
+/// titles; 50 a page, at most 100).
+pub async fn collections_page(
+    conn: &mut PgConnection,
+    params: &ListParams,
+) -> Result<Paged<ShopCollection>> {
+    TenantListing::new(
+        "collections",
+        "id, handle, title, description, seo_title, seo_description",
+    )
+    .sortable(["title", "handle"])
+    .default_sort("title")
+    .search(["title"])
+    .page_size(50, 100)
+    .fetch(conn, params)
+    .await
 }
 
 /// Active products among `ids`, in that order, as cards.

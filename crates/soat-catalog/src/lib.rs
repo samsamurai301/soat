@@ -77,7 +77,6 @@ impl Module for Catalog {
         .plugin(media::mount)
         .plugin(downloads::mount)
         .plugin(bundles::mount)
-        .plugin(storefront::mount)
         .plugin(search::mount)
     }
 }

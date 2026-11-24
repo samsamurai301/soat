@@ -158,6 +158,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Admin command palette (Ctrl+K) and keyboard shortcuts
 - [x] Product variants and images in the admin
 - [x] Responsive product images: smaller copies made on upload, served with `srcset`
+- [x] Headless: the whole storefront as a JSON API in any language and market, callable from any origin ([guide](docs/headless.md))
 - [x] Smart collections picked by rules, and collection screens in the admin
 - [ ] WASM plugin host, built into Zapline
 

@@ -13,7 +13,7 @@ use soat_core::content::{check_blocks, check_menu};
 use soat_core::handle::{handleize, is_handle};
 use soat_core::{id_kind, Permission};
 use soat_module::Module;
-use soat_tenancy::{Scope, Shop, Tenant, TenantListing};
+use soat_tenancy::{Scope, Tenant, TenantListing};
 use zapline::db::sqlx::types::Json as SqlJson;
 use zapline::db::sqlx::PgConnection;
 use zapline::db::{sqlx, Db, ListParams, Paged};
@@ -79,8 +79,6 @@ impl Module for Cms {
             get_menu,
             update_menu,
             delete_menu,
-            storefront_page,
-            storefront_menu,
         ))
     }
 }
@@ -499,16 +497,6 @@ async fn delete_menu(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<S
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// A published page by handle, for the storefront (no sign-in). Drafts are
-/// a 404.
-#[get("/api/storefront/pages/{handle}", tag = "storefront")]
-async fn storefront_page(db: Db, shop: Shop, Path(handle): Path<String>) -> Result<Json<Page>> {
-    let mut tx = shop.begin(&db).await?;
-    let p = published_page(&mut tx, &shop, &handle).await?;
-    tx.commit().await?;
-    p.map(Json).ok_or_else(Error::not_found)
-}
-
 /// A published page by handle, for themes.
 pub async fn published_page(
     conn: &mut PgConnection,
@@ -559,13 +547,4 @@ pub async fn menu_by_handle(
     .fetch_optional(&mut *conn)
     .await?;
     Ok(row.map(Menu::from))
-}
-
-/// A menu by handle, for the storefront (no sign-in).
-#[get("/api/storefront/menus/{handle}", tag = "storefront")]
-async fn storefront_menu(db: Db, shop: Shop, Path(handle): Path<String>) -> Result<Json<Menu>> {
-    let mut tx = shop.begin(&db).await?;
-    let m = menu_by_handle(&mut tx, &shop, &handle).await?;
-    tx.commit().await?;
-    m.map(Json).ok_or_else(Error::not_found)
 }

@@ -34,6 +34,7 @@ use zapline::storage::Storage;
 
 mod account;
 mod blog;
+mod headless;
 mod i18n;
 mod seo;
 
@@ -100,8 +101,10 @@ impl Module for Storefront {
             choose_country,
         ))
         .mount((blog::blog_page, blog::feed, blog::post_page))
+        .plugin(headless::mount)
         .fallback(seo::fallback)
         .wrap(i18n::language_prefix)
+        .wrap(headless::cors)
     }
 }
 
