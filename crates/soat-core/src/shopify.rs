@@ -3,6 +3,9 @@
 //! are. Product descriptions turn from HTML into SOAT's Markdown.
 
 use crate::csv::Table;
+use serde_json::Value;
+
+use crate::import::{self, ProductRow, CUSTOMER_COLUMNS, PRODUCT_COLUMNS};
 
 /// Whether `t` is Shopify's product export.
 pub fn is_products(t: &Table) -> bool {
@@ -20,31 +23,7 @@ pub fn is_customers(t: &Table) -> bool {
 /// product's only `Default Title` variant becomes a product without
 /// options, and a variant that is not taxable is `exempt`.
 pub fn products(t: &Table) -> Table {
-    let headers: Vec<String> = [
-        "handle",
-        "title",
-        "description",
-        "status",
-        "tags",
-        "sku",
-        "price",
-        "currency",
-        "option1_name",
-        "option1_value",
-        "option2_name",
-        "option2_value",
-        "option3_name",
-        "option3_value",
-        "weight_grams",
-        "tax_class",
-        "stock",
-        "seo_title",
-        "seo_description",
-        "line",
-    ]
-    .iter()
-    .map(|h| (*h).to_owned())
-    .collect();
+    let headers: Vec<String> = PRODUCT_COLUMNS.iter().map(|h| (*h).to_owned()).collect();
     let mut rows = Vec::new();
     let mut last_handle = String::new();
     for r in 0..t.rows.len() {
@@ -114,18 +93,7 @@ pub fn products(t: &Table) -> Table {
 
 /// The customer export as SOAT's customer file.
 pub fn customers(t: &Table) -> Table {
-    let headers: Vec<String> = [
-        "email",
-        "first_name",
-        "last_name",
-        "phone",
-        "accepts_marketing",
-        "tags",
-        "note",
-    ]
-    .iter()
-    .map(|h| (*h).to_owned())
-    .collect();
+    let headers: Vec<String> = CUSTOMER_COLUMNS.iter().map(|h| (*h).to_owned()).collect();
     let marketing = if t.column("accepts email marketing").is_some() {
         "accepts email marketing"
     } else {
@@ -150,6 +118,99 @@ pub fn customers(t: &Table) -> Table {
         })
         .collect();
     Table { headers, rows }
+}
+
+/// Products from Shopify's Admin API (`products.json`) as SOAT's product
+/// file, like [`products`] does for the CSV export.
+pub fn api_products(list: &[Value]) -> Table {
+    let str_of = |v: &Value, k: &str| v[k].as_str().unwrap_or_default().trim().to_owned();
+    let mut rows = Vec::new();
+    for (n, p) in list.iter().enumerate() {
+        let handle = str_of(p, "handle");
+        if handle.is_empty() {
+            continue;
+        }
+        let names: Vec<String> = p["options"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|o| str_of(o, "name"))
+            .collect();
+        let variants = p["variants"].as_array().cloned().unwrap_or_default();
+        let default = variants.len() == 1
+            && names.first().map(String::as_str) == Some("Title")
+            && variants[0]["option1"] == "Default Title";
+        for (i, v) in variants.iter().enumerate() {
+            let mut row = ProductRow {
+                handle: handle.clone(),
+                sku: str_of(v, "sku"),
+                price: str_of(v, "price"),
+                line: n + 1,
+                ..ProductRow::default()
+            };
+            if i == 0 {
+                row.title = str_of(p, "title");
+                row.description = to_markdown(p["body_html"].as_str().unwrap_or_default());
+                row.status = match str_of(p, "status").as_str() {
+                    "active" => "active",
+                    _ => "draft",
+                }
+                .to_owned();
+                row.tags = str_of(p, "tags");
+                row.weight_grams = v["grams"]
+                    .as_i64()
+                    .map(|g| g.to_string())
+                    .unwrap_or_default();
+                if v["taxable"] == false {
+                    "exempt".clone_into(&mut row.tax_class);
+                }
+            }
+            if !default {
+                row.options = names
+                    .iter()
+                    .enumerate()
+                    .take(3)
+                    .map(|(k, name)| (name.clone(), str_of(v, &format!("option{}", k + 1))))
+                    .filter(|(_, value)| !value.is_empty())
+                    .collect();
+            }
+            if !str_of(v, "inventory_management").is_empty() {
+                row.stock = v["inventory_quantity"]
+                    .as_i64()
+                    .map(|q| q.max(0).to_string())
+                    .unwrap_or_default();
+            }
+            rows.push(row);
+        }
+    }
+    import::products(rows)
+}
+
+/// Customers from Shopify's Admin API (`customers.json`) as SOAT's
+/// customer file.
+pub fn api_customers(list: &[Value]) -> Table {
+    let str_of = |v: &Value, k: &str| v[k].as_str().unwrap_or_default().trim().to_owned();
+    let rows = list
+        .iter()
+        .filter(|c| !str_of(c, "email").is_empty())
+        .map(|c| {
+            let marketing = c["email_marketing_consent"]["state"] == "subscribed"
+                || c["accepts_marketing"] == true;
+            vec![
+                str_of(c, "email"),
+                str_of(c, "first_name"),
+                str_of(c, "last_name"),
+                str_of(c, "phone"),
+                if marketing { "yes" } else { "no" }.to_owned(),
+                str_of(c, "tags"),
+                str_of(c, "note"),
+            ]
+        })
+        .collect();
+    Table {
+        headers: CUSTOMER_COLUMNS.iter().map(|h| (*h).to_owned()).collect(),
+        rows,
+    }
 }
 
 /// Shopify's description HTML as Markdown: paragraphs, line breaks,
@@ -335,5 +396,41 @@ mod tests {
         assert_eq!(c.get(0, "phone"), "+4930123");
         assert_eq!(c.get(0, "accepts_marketing"), "yes");
         assert_eq!(c.get(0, "note"), "Likes tea");
+    }
+
+    #[test]
+    fn reads_the_admin_api() {
+        let list = serde_json::json!([
+            { "handle": "tee", "title": "Tee", "body_html": "<p>Soft</p>", "status": "active",
+              "tags": "tops, cotton", "options": [{ "name": "Size" }],
+              "variants": [
+                { "sku": "TEE-S", "price": "29.00", "option1": "S", "grams": 180,
+                  "taxable": true, "inventory_management": "shopify", "inventory_quantity": 4 },
+                { "sku": "TEE-M", "price": "31.00", "option1": "M", "grams": 180,
+                  "inventory_management": null, "inventory_quantity": 9 }
+              ] },
+            { "handle": "card", "title": "Card", "status": "draft", "options": [{ "name": "Title" }],
+              "variants": [{ "sku": "CARD", "price": "25.00", "option1": "Default Title",
+                             "taxable": false }] }
+        ]);
+        let t = api_products(list.as_array().unwrap());
+        assert_eq!(t.rows.len(), 3);
+        assert_eq!(t.get(0, "description"), "Soft");
+        assert_eq!(t.get(0, "option1_name"), "Size");
+        assert_eq!(t.get(0, "stock"), "4");
+        assert_eq!(t.get(0, "weight_grams"), "180");
+        assert_eq!(t.get(1, "title"), "");
+        assert_eq!(t.get(1, "option1_value"), "M");
+        assert_eq!(t.get(1, "stock"), "", "not tracked");
+        assert_eq!(t.get(2, "option1_name"), "");
+        assert_eq!(t.get(2, "status"), "draft");
+        assert_eq!(t.get(2, "tax_class"), "exempt");
+
+        let c = api_customers(&[serde_json::json!({
+            "email": "ada@example.com", "first_name": "Ada", "last_name": "Lovelace",
+            "email_marketing_consent": { "state": "subscribed" }, "tags": "vip"
+        })]);
+        assert_eq!(c.get(0, "accepts_marketing"), "yes");
+        assert_eq!(c.get(0, "last_name"), "Lovelace");
     }
 }

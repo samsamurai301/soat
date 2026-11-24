@@ -350,3 +350,87 @@ async fn shopify_exports_import_as_they_are() {
     assert_eq!(list["items"][0]["tags"], json!(["vip", "newsletter"]));
     assert_eq!(list["items"][1]["accepts_marketing"], false);
 }
+
+const WOO_PRODUCTS: &str = "ID,Type,SKU,Name,Published,Is featured?,Visibility in catalog,Short description,Description,Tax status,In stock?,Stock,Weight (kg),Sale price,Regular price,Categories,Tags,Images,Parent,Attribute 1 name,Attribute 1 value(s),Attribute 1 visible,Attribute 1 global\n\
+    21,simple,MUG,Enamel Mug,1,0,visible,,<p>A <em>sturdy</em> mug.</p>,taxable,1,7,0.35,,\"12,50\",Kitchen,\"gift, kitchen\",https://x/mug.jpg,,,,,\n\
+    22,variable,TEE,Organic Tee,1,0,visible,,<p>Soft.</p>,taxable,1,,,,,Tops,,,,Size,\"S, M\",1,0\n\
+    23,variation,TEE-S,Organic Tee - S,1,0,visible,,,taxable,1,4,0.18,,29.00,,,,id:22,Size,S,,0\n\
+    24,variation,TEE-M,Organic Tee - M,1,0,visible,,,taxable,1,2,0.2,,31.00,,,,id:22,Size,M,,0\n";
+
+const SHOPWARE_PRODUCTS: &str =
+    "id;parent_id;product_number;active;stock;name;description;price_net;price_gross;tax_rate\n\
+    a1;;SW-BAG;1;3;Canvas Bag;<p>Roomy.</p>;16,72;19,90;19\n\
+    b1;;SW-CAP;0;0;Wool Cap;;20,92;24,90;19\n\
+    b2;b1;SW-CAP-1;1;5;Wool Cap Grey;;;;19\n";
+
+#[tokio::test]
+async fn woocommerce_and_shopware_exports_import_as_they_are() {
+    let (client, t) = common::with_tenants(&["acme"]).await;
+    client
+        .patch("/api/shop")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({ "country": "DE", "currency": "EUR" }))
+        .send()
+        .await
+        .assert_status(200);
+    let me = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+    for (file, made) in [
+        (WOO_PRODUCTS, "2 created"),
+        (SHOPWARE_PRODUCTS, "2 created"),
+    ] {
+        let res = upload(&client, &me, "/admin/acme/transfer/products", file).await;
+        let html = res.text();
+        assert_eq!(res.status(), 200, "{html}");
+        assert!(html.contains(made), "{html}");
+    }
+    let api = |path: String| {
+        let req = client.get(&path).header("x-soat-tenant", "acme").bearer(&t);
+        async move {
+            let res = req.send().await;
+            res.assert_status(200);
+            res.json::<Value>()
+        }
+    };
+    let products = api("/api/products?sort=title&limit=10".into()).await;
+    let titles: Vec<&str> = products["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        titles,
+        ["Canvas Bag", "Enamel Mug", "Organic Tee", "Wool Cap"]
+    );
+    let mug = &products["items"][1];
+    assert_eq!(mug["description"], "A *sturdy* mug.");
+    assert_eq!(mug["price_minor"], 1250);
+    assert_eq!(mug["weight_grams"], 350);
+    assert_eq!(mug["tags"], json!(["gift", "kitchen"]));
+    let tee = &products["items"][2];
+    let id = tee["id"].as_str().unwrap();
+    let variants = api(format!("/api/products/{id}/variants")).await;
+    assert_eq!(variants.as_array().unwrap().len(), 2);
+    assert_eq!(variants[1]["sku"], "TEE-M");
+    assert_eq!(variants[1]["price_minor"], 3100);
+    let bag = &products["items"][0];
+    assert_eq!(bag["price_minor"], 1990);
+    assert_eq!(bag["description"], "Roomy.");
+    let cap = &products["items"][3];
+    assert_eq!(cap["status"], "draft");
+    let id = cap["id"].as_str().unwrap();
+    let options = api(format!("/api/products/{id}/options")).await;
+    assert_eq!(
+        options,
+        json!([{ "name": "Variant", "values": ["Wool Cap Grey"] }])
+    );
+
+    let customers = "id;customer_number;email;first_name;last_name;newsletter\n\
+        c1;10001;grace@example.com;Grace;Hopper;1\n";
+    let res = upload(&client, &me, "/admin/acme/transfer/customers", customers).await;
+    res.assert_status(200);
+    let found = api("/api/customers?q=grace".into()).await;
+    assert_eq!(found["items"][0]["last_name"], "Hopper");
+    assert_eq!(found["items"][0]["accepts_marketing"], true);
+}

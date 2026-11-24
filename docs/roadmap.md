@@ -126,7 +126,7 @@ layer.
 - [x] G4 CSV import and export **alpha**
 - [x] G5 Shopify importer **alpha** (from Shopify's product and customer CSV exports; images not yet)
 - [ ] G6 Shopify delta sync and cutover
-- [ ] G7 WooCommerce and Shopware importers
+- [x] G7 WooCommerce and Shopware importers: WooCommerce's product export (simple and variable products, variations as variants) and Shopware 6's product and customer exports (default profiles; variants under one `Variant` option) import as they are on the admin's import screen, prices and weights normalized; images not yet
 
 ## H. AI layer
 

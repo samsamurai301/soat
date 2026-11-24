@@ -4,8 +4,8 @@
 
 use serde_json::{json, Map, Value};
 use soat_core::csv::{write, Table};
-use soat_core::shopify;
 use soat_core::Currency;
+use soat_core::{shopify, shopware, woocommerce};
 use zapline::db::Db;
 use zapline::multipart::Multipart;
 use zapline::prelude::*;
@@ -279,10 +279,10 @@ async fn upload(form: &mut Multipart) -> std::result::Result<String, String> {
 
 /// What an import did: counts and a message per row that failed.
 #[derive(Default)]
-struct Outcome {
-    created: usize,
-    updated: usize,
-    problems: Vec<Value>,
+pub(crate) struct Outcome {
+    pub(crate) created: usize,
+    pub(crate) updated: usize,
+    pub(crate) problems: Vec<Value>,
 }
 
 impl Outcome {
@@ -291,7 +291,7 @@ impl Outcome {
             .push(json!({ "line": line, "message": message.into() }));
     }
 
-    fn view(self, kind: &str) -> Value {
+    pub(crate) fn view(self, kind: &str) -> Value {
         json!({
             "kind": kind, "created": self.created, "updated": self.updated,
             "problems": self.problems, "failed": !self.problems.is_empty(),
@@ -339,37 +339,26 @@ pub(crate) async fn import_products(
     mut form: Multipart,
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
-    let table = match read(&mut form, "handle").await {
-        Ok(t) if shopify::is_products(&t) => shopify::products(&t),
+    let table = match read(&mut form, "handle", |t| {
+        if shopify::is_products(&t) {
+            shopify::products(&t)
+        } else if woocommerce::is_products(&t) {
+            woocommerce::products(&t)
+        } else if shopware::is_products(&t) {
+            shopware::products(&t)
+        } else {
+            t
+        }
+    })
+    .await
+    {
         Ok(t) => t,
         Err(e) => return Ok(page(cx, None, Some(e), StatusCode::UNPROCESSABLE_ENTITY)),
     };
-    let (_, profile) = cx.call(Method::GET, "/api/shop", None).await;
-    let mut out = Outcome::default();
-    let mut location: Option<String> = None;
-    // Rows by handle, in the order handles first appear.
-    let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
-    for r in 0..table.rows.len() {
-        let handle = table.get(r, "handle").to_lowercase();
-        if handle.is_empty() {
-            out.problem(line_of(&table, r), "The handle is empty.");
-            continue;
-        }
-        match groups.iter_mut().find(|(h, _)| *h == handle) {
-            Some((_, rows)) => rows.push(r),
-            None => groups.push((handle, vec![r])),
-        }
-    }
-    for (handle, rows) in groups {
-        let line = line_of(&table, rows[0]);
-        match import_product(&cx, &table, &handle, &rows, &profile, &mut location).await {
-            Ok(true) => out.created += 1,
-            Ok(false) => out.updated += 1,
-            Err((401, _)) => return Ok(crate::to_login()),
-            Err((403, e)) => return Ok(cx.failed(403, &json!({ "error": e }))),
-            Err((_, e)) => out.problem(line, format!("{handle}: {e}")),
-        }
-    }
+    let out = match import_product_rows(&cx, &table).await {
+        Ok(out) => out,
+        Err(stop) => return Ok(stop.into_response(&cx)),
+    };
     let status = if out.problems.is_empty() {
         StatusCode::OK
     } else {
@@ -378,9 +367,16 @@ pub(crate) async fn import_products(
     Ok(page(cx, Some(out.view("products")), None, status))
 }
 
-async fn read(form: &mut Multipart, key: &str) -> std::result::Result<Table, String> {
+/// The uploaded CSV, turned into SOAT's file by `convert` when it is
+/// another platform's export.
+async fn read(
+    form: &mut Multipart,
+    key: &str,
+    convert: impl FnOnce(Table) -> Table,
+) -> std::result::Result<Table, String> {
     let text = upload(form).await?;
     let table = Table::parse(&text).map_err(|e| format!("The file is not valid CSV: {e}."))?;
+    let table = convert(table);
     if table.column(key).is_none() {
         return Err(format!("The file needs a `{key}` column."));
     }
@@ -673,11 +669,71 @@ pub(crate) async fn import_customers(
     mut form: Multipart,
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "customers").await);
-    let table = match read(&mut form, "email").await {
-        Ok(t) if shopify::is_customers(&t) => shopify::customers(&t),
+    let table = match read(&mut form, "email", |t| {
+        if shopify::is_customers(&t) {
+            shopify::customers(&t)
+        } else if shopware::is_customers(&t) {
+            shopware::customers(&t)
+        } else {
+            t
+        }
+    })
+    .await
+    {
         Ok(t) => t,
         Err(e) => return Ok(page(cx, None, Some(e), StatusCode::UNPROCESSABLE_ENTITY)),
     };
+    let out = match import_customer_rows(&cx, &table).await {
+        Ok(out) => out,
+        Err(stop) => return Ok(stop.into_response(&cx)),
+    };
+    let status = if out.problems.is_empty() {
+        StatusCode::OK
+    } else {
+        StatusCode::UNPROCESSABLE_ENTITY
+    };
+    Ok(page(cx, Some(out.view("customers")), None, status))
+}
+
+/// Imports SOAT's product file through the API.
+pub(crate) async fn import_product_rows(
+    cx: &Ctx,
+    table: &Table,
+) -> std::result::Result<Outcome, Stop> {
+    let (_, profile) = cx.call(Method::GET, "/api/shop", None).await;
+    let mut out = Outcome::default();
+    let mut location: Option<String> = None;
+    // Rows by handle, in the order handles first appear.
+    let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+    for r in 0..table.rows.len() {
+        let handle = table.get(r, "handle").to_lowercase();
+        if handle.is_empty() {
+            out.problem(line_of(table, r), "The handle is empty.");
+            continue;
+        }
+        match groups.iter_mut().find(|(h, _)| *h == handle) {
+            Some((_, rows)) => rows.push(r),
+            None => groups.push((handle, vec![r])),
+        }
+    }
+    for (handle, rows) in groups {
+        let line = line_of(table, rows[0]);
+        match import_product(cx, table, &handle, &rows, &profile, &mut location).await {
+            Ok(true) => out.created += 1,
+            Ok(false) => out.updated += 1,
+            Err((401, _)) => return Err(Stop::Login),
+            Err((403, e)) => return Err(Stop::Forbidden(json!({ "error": e }))),
+            Err((_, e)) => out.problem(line, format!("{handle}: {e}")),
+        }
+    }
+    Ok(out)
+}
+
+/// Imports SOAT's customer file through the API.
+pub(crate) async fn import_customer_rows(
+    cx: &Ctx,
+    table: &Table,
+) -> std::result::Result<Outcome, Stop> {
     let mut out = Outcome::default();
     for r in 0..table.rows.len() {
         let line = r + 2;
@@ -745,17 +801,29 @@ pub(crate) async fn import_customers(
         match status {
             200 => out.updated += 1,
             201 => out.created += 1,
-            401 => return Ok(crate::to_login()),
-            403 => return Ok(cx.failed(403, &res)),
+            401 => return Err(Stop::Login),
+            403 => return Err(Stop::Forbidden(res)),
             _ => out.problem(line, format!("{email}: {}", reason(&res))),
         }
     }
-    let status = if out.problems.is_empty() {
-        StatusCode::OK
-    } else {
-        StatusCode::UNPROCESSABLE_ENTITY
-    };
-    Ok(page(cx, Some(out.view("customers")), None, status))
+    Ok(out)
+}
+
+/// Why an import stopped before its end.
+pub(crate) enum Stop {
+    /// The session ended.
+    Login,
+    /// The staff member may not do this; the API's answer.
+    Forbidden(Value),
+}
+
+impl Stop {
+    pub(crate) fn into_response(self, cx: &Ctx) -> Response {
+        match self {
+            Self::Login => crate::to_login(),
+            Self::Forbidden(res) => cx.failed(403, &res),
+        }
+    }
 }
 
 #[cfg(test)]
