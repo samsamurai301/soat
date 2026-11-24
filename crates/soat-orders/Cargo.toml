@@ -12,6 +12,8 @@ soat-core.workspace = true
 soat-module.workspace = true
 soat-tenancy.workspace = true
 soat-inventory.workspace = true
+soat-catalog.workspace = true
+soat-tax.workspace = true
 soat-customers.workspace = true
 soat-payments.workspace = true
 zapline = { workspace = true, features = ["password"] }

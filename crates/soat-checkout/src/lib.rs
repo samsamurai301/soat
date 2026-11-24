@@ -33,6 +33,8 @@ use zapline::embed::Dir;
 use zapline::prelude::*;
 use zapline::Resources;
 
+pub mod drafts;
+
 /// How long stock is held for an order whose payment is still running.
 pub const HOLD_SECONDS: i64 = 3600;
 
@@ -49,6 +51,7 @@ impl Module for Checkout {
             "tenancy",
             "events",
             "catalog",
+            "customers",
             "inventory",
             "cart",
             "tax",
@@ -73,7 +76,7 @@ impl Module for Checkout {
     }
 
     fn mount(&self, app: App) -> App {
-        app.mount((get_checkout, update_checkout, complete_checkout))
+        drafts::mount(app).mount((get_checkout, update_checkout, complete_checkout))
     }
 }
 

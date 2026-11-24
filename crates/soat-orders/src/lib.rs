@@ -10,8 +10,9 @@
 //! the order id): a subscriber recomputes it on every `payment.updated`.
 //! Canceling releases the stock held for it. [`fulfillments`] ship its
 //! lines and take them out of stock; [`returns`] bring units back and
-//! refund them.
+//! refund them. Edits change an open order's lines.
 
+mod edits;
 pub mod fulfillments;
 pub mod report;
 mod returns;
@@ -57,7 +58,15 @@ impl Module for Orders {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy", "events", "customers", "inventory", "payments"]
+        &[
+            "tenancy",
+            "events",
+            "catalog",
+            "customers",
+            "inventory",
+            "tax",
+            "payments",
+        ]
     }
 
     fn migrations(&self) -> Option<Dir> {
@@ -75,6 +84,7 @@ impl Module for Orders {
     fn mount(&self, app: App) -> App {
         app.plugin(routes::mount)
             .plugin(fulfillments::mount)
+            .plugin(edits::mount)
             .plugin(returns::mount)
             .plugin(report::mount)
     }

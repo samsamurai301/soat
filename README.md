@@ -121,7 +121,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Shipping zones and rates
 - [x] Payments core and manual payment
 - [x] Stripe, Mollie and PayPal
-- [x] Orders
+- [x] Orders, draft orders and order edits
 - [x] Checkout
 - [x] Fulfillment, returns and refunds
 - [x] Discount codes, automatic discounts and buy X get Y

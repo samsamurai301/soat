@@ -79,7 +79,7 @@ layer.
 - [x] C17 Invoices and credit notes: shop legal details, an invoice per order when paid, placed or by hand, gapless numbers per series and year, lines with net, VAT and gross, totals per rate, reverse-charge note, immutable once issued; refunds issue credit notes split over the invoice's rates, staff issue more; printable HTML for staff and the buyer **alpha**
 - [x] C18 PayPal and Mollie: Mollie with one platform key or organization token and a profile per method, checkout redirect, capture, cancel, refunds, webhooks that re-read the payment from Mollie; PayPal Orders v2 with buyer approval, capture or authorize, partner merchant accounts, refunds and voids, webhooks verified with PayPal; both behind features, tested against local fakes **alpha**
 - [ ] C19 Carrier adapters and labels
-- [ ] C20 Order edits and draft orders
+- [x] C20 Order edits and draft orders: staff draft an order with catalog items at their prices or their own, shipping, a discount and a note, see totals with tax, and place it as paid or with a payment started; open orders change quantities, lose unshipped lines and gain items, with stock holds, totals and financial status following and the balance owed either way **alpha**
 
 ## D. Storefront and content
 
