@@ -68,6 +68,8 @@ impl Module for Storefront {
             "i18n",
             "pricing",
             "theme",
+            #[cfg(feature = "apps")]
+            "apps",
         ]
     }
 
@@ -223,6 +225,33 @@ const NOINDEX: &[&str] = &[
     "not_found",
 ];
 
+/// The blocks of installed apps the shop turned on: each script once
+/// (`app_scripts`), and the blocks by placement (`app_blocks.body`,
+/// `app_blocks.product`) for the theme to leave room for.
+#[cfg(feature = "apps")]
+async fn app_blocks(conn: &mut PgConnection, data: &mut Map<String, Value>) -> Result<()> {
+    let blocks = soat_apps::storefront_blocks(conn).await?;
+    let mut scripts: Vec<&str> = Vec::new();
+    for b in &blocks {
+        if !scripts.contains(&b.script_url.as_str()) {
+            scripts.push(&b.script_url);
+        }
+    }
+    let at = |placement: &str| -> Vec<Value> {
+        blocks
+            .iter()
+            .filter(|b| b.placement == placement)
+            .map(|b| json!({ "app": b.app_id, "handle": b.handle }))
+            .collect()
+    };
+    data.insert(
+        "app_blocks".to_owned(),
+        json!({ "body": at("body"), "product": at("product") }),
+    );
+    data.insert("app_scripts".to_owned(), json!(scripts));
+    Ok(())
+}
+
 /// One page being rendered: the shop's transaction, theme and the values
 /// every page has.
 struct View {
@@ -280,6 +309,8 @@ impl View {
         data.insert("here".to_owned(), json!(path));
         data.insert("menus".to_owned(), Value::Object(menus));
         data.insert("cart".to_owned(), json!({ "count": count }));
+        #[cfg(feature = "apps")]
+        app_blocks(&mut tx, &mut data).await?;
         let mut customer = None;
         if let Some(token) = cookie(headers, account::CUSTOMER_COOKIE) {
             let session = SignedIn::new(shop.clone(), &token);

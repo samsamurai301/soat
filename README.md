@@ -165,6 +165,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Content types of the shop's own (store locations, size charts, FAQs) with typed fields, on the storefront API
 - [x] Headless: the whole storefront as a JSON API in any language and market, callable from any origin ([guide](docs/headless.md))
 - [x] Smart collections picked by rules, and collection screens in the admin
+- [x] Apps: an app directory, install with consent for a key with exactly the granted permissions, admin links and storefront blocks ([guide](docs/apps.md))
 - [ ] WASM plugin host, built into Zapline
 
 ## License

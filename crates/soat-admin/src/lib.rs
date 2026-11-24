@@ -149,6 +149,7 @@ impl Module for Admin {
             apps::list,
             apps::directory,
             apps::uninstall,
+            apps::blocks,
             apps::authorize_page,
             apps::authorize,
         ))

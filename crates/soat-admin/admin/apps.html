@@ -14,7 +14,12 @@
     {{#each apps }}
     <tr>
       <td>{{ app_name }}{{#if connected }}{{else}} <span class="muted">(not connected yet)</span>{{/if}}</td>
-      <td><code>{{#each permissions }}{{ this }} {{/each}}</code></td>
+      <td><code>{{#each permissions }}{{ this }} {{/each}}</code>{{#if blocks }}
+        <form method="post" action="{{ base }}/apps/{{ id }}/blocks">
+          <p class="muted">On the storefront:</p>
+          {{#each blocks }}<label><input type="checkbox" name="block" value="{{ handle }}"{{#if enabled }} checked{{/if}}> {{ name }} <span class="muted">({{ placement }})</span></label><br>{{/each}}
+          <button class="button">Save blocks</button>
+        </form>{{/if}}</td>
       <td>{{ created_at }}</td>
       <td><form method="post" action="{{ base }}/apps/{{ id }}/uninstall"><button class="button">Uninstall</button></form></td>
     </tr>

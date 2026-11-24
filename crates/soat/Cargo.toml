@@ -57,7 +57,7 @@ sendcloud = ["dep:soat-sendcloud"]
 # Sync a Shopify store by its Admin API until cutover.
 shopify-sync = ["dep:soat-import"]
 # Third-party apps: registration, install with consent, OAuth codes for keys.
-apps = ["dep:soat-apps"]
+apps = ["dep:soat-apps", "soat-storefront/apps"]
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg"] }

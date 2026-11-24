@@ -17,6 +17,7 @@
       <button class="button" type="submit">{{ t.add_to_cart }}</button>
     </form>
     <div class="prose">{{ product.description | markdown }}</div>
+    {{#if app_blocks.product }}<div class="soat-app-blocks" data-product="{{ product.id }}">{{#each app_blocks.product }}<div class="soat-app-block" data-soat-app="{{ app }}" data-block="{{ handle }}"></div>{{/each}}</div>{{/if}}
   </div>
 </article>
 <script type="application/ld+json">{{ product_ld | json }}</script>

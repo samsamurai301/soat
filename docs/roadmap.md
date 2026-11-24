@@ -115,7 +115,7 @@ layer.
 - [x] F4 App installs and consent: developers register apps (`/api/apps`, client id and secret, https redirect URIs, declared permissions); an owner approves on the consent screen (`/admin/{shop}/apps/authorize`), the app trades a single-use code for an API key holding exactly the granted permissions in that shop, and uninstalling revokes the key at once (crate `soat-apps`, feature `apps`)
 - [ ] F5 `soat app new` and dev loop
 - [x] F6 Admin UI extensions: an app declares up to 10 admin links (`admin_links` on `PATCH /api/apps/{id}`) on the Apps page or next to a product, order or customer; once installed and connected they show there (`GET /api/app-links`, `apps:read`) and open the app with the shop and the record's id
-- [ ] F7 Storefront blocks from apps
+- [x] F7 Storefront blocks from apps: an app offers up to 10 blocks (`storefront_blocks`: a script it hosts, on every page or on product pages); the owner turns each on per install (`PUT /api/app-installations/{id}/blocks`, or the Apps page), and the default theme loads the script and leaves a `.soat-app-block` element for it (guide: `docs/apps.md`)
 - [x] F8 App directory: a developer lists an app (`PATCH /api/apps/{id}` with tagline, description, category, `app_url` and `listed`); shops search listed apps at `GET /api/app-directory` and `/admin/{shop}/apps/directory`, and installing starts at the app's `app_url?shop=…`, which sends the owner to the consent screen
 
 ## G. Onboarding and import

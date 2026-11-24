@@ -219,8 +219,11 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Notify::new(settings.mailer, settings.mail_from))
         .with(Cms)
         .with(I18n)
-        .with(Themes)
-        .with(Storefront);
+        .with(Themes);
+    // Apps before the storefront, which shows the blocks shops enable.
+    #[cfg(feature = "apps")]
+    let modules = modules.with(soat_apps::Apps);
+    let modules = modules.with(Storefront);
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {
         Some(config) => modules.with(soat_stripe::StripeWebhooks::new(config)),
@@ -242,8 +245,6 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
             .with_sealer(settings.sealer.clone())
             .with_api_base(settings.shopify_api_base.clone()),
     );
-    #[cfg(feature = "apps")]
-    let modules = modules.with(soat_apps::Apps);
     modules
 }
 

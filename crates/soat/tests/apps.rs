@@ -19,6 +19,7 @@ async fn call(
     let mut req = match method {
         "POST" => client.post(path),
         "PATCH" => client.patch(path),
+        "PUT" => client.put(path),
         "DELETE" => client.delete(path),
         _ => client.get(path),
     };
@@ -659,4 +660,174 @@ async fn apps_add_links_to_the_admin() {
         .await
         .text();
     assert!(html.contains("Open Reviews"), "{html}");
+}
+
+#[tokio::test]
+async fn shops_turn_on_storefront_blocks_from_apps() {
+    let (client, t) = common::with_tenants(&["acme", "globex"]).await;
+    let reg = call(
+        &client,
+        Some(&t),
+        None,
+        "POST",
+        "/api/apps",
+        json!({ "name": "Reviews", "redirect_uris": ["https://reviews.example.com/cb"],
+                "permissions": ["products:read"] }),
+        201,
+    )
+    .await;
+    let client_id = reg["app"]["id"].as_str().unwrap().to_owned();
+    let secret = reg["client_secret"].as_str().unwrap().to_owned();
+    let path = format!("/api/apps/{client_id}");
+    let stars = json!({ "handle": "stars", "name": "Star rating", "placement": "product",
+                        "script_url": "https://cdn.reviews.example.com/stars.js" });
+    for bad in [
+        json!([{ "handle": "Stars!", "name": "S", "placement": "product", "script_url": "https://x.example.com/s.js" }]),
+        json!([{ "handle": "s", "name": "S", "placement": "footer", "script_url": "https://x.example.com/s.js" }]),
+        json!([{ "handle": "s", "name": "S", "placement": "body", "script_url": "http://x.example.com/s.js" }]),
+        json!([stars, stars]),
+    ] {
+        call(
+            &client,
+            Some(&t),
+            None,
+            "PATCH",
+            &path,
+            json!({ "storefront_blocks": bad }),
+            422,
+        )
+        .await;
+    }
+    call(
+        &client,
+        Some(&t),
+        None,
+        "PATCH",
+        &path,
+        json!({ "storefront_blocks": [stars,
+            { "handle": "widget", "name": "Reviews widget", "placement": "body",
+              "script_url": "https://cdn.reviews.example.com/widget.js" }] }),
+        200,
+    )
+    .await;
+
+    // Installed and connected, with no block on yet.
+    let installed = call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "POST",
+        "/api/app-installations",
+        json!({ "client_id": client_id, "redirect_uri": "https://reviews.example.com/cb" }),
+        201,
+    )
+    .await;
+    let install_id = installed["installation"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(installed["installation"]["blocks"][0]["enabled"], false);
+    let code = query(installed["redirect_to"].as_str().unwrap(), "code");
+    call(
+        &client,
+        None,
+        None,
+        "POST",
+        "/api/apps/token",
+        json!({ "client_id": client_id, "client_secret": secret, "code": code,
+                "shop": "acme", "redirect_uri": "https://reviews.example.com/cb" }),
+        200,
+    )
+    .await;
+    for shop in ["acme", "globex"] {
+        call(
+            &client,
+            Some(&t),
+            Some(shop),
+            "POST",
+            "/api/products",
+            json!({ "sku": "TS", "title": "Trail Shoe", "handle": "trail-shoe",
+                    "price_minor": 100, "currency": "EUR", "status": "active" }),
+            201,
+        )
+        .await;
+    }
+    let product = |shop: &'static str| {
+        let client = &client;
+        async move {
+            let res = client
+                .get("/products/trail-shoe")
+                .header("x-soat-tenant", shop)
+                .send()
+                .await;
+            let html = res.text();
+            assert_eq!(res.status(), 200, "{html}");
+            html
+        }
+    };
+    assert!(!product("acme").await.contains("stars.js"));
+
+    // The owner turns one on; only that shop's storefront shows it.
+    let blocks = format!("/api/app-installations/{install_id}/blocks");
+    let e = call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "PUT",
+        &blocks,
+        json!({ "enabled": ["rockets"] }),
+        422,
+    )
+    .await;
+    assert_eq!(e["code"], "unknown_block");
+    call(
+        &client,
+        Some(&t),
+        Some("globex"),
+        "PUT",
+        &blocks,
+        json!({ "enabled": ["stars"] }),
+        404,
+    )
+    .await;
+    let res = client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let me = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let html = client
+        .get("/admin/acme/apps")
+        .header("cookie", &me)
+        .send()
+        .await
+        .text();
+    assert!(html.contains("Star rating"), "{html}");
+    let res = client
+        .post(&format!("/admin/acme/apps/{install_id}/blocks"))
+        .header("cookie", &me)
+        .form(&json!({ "block": "stars" }))
+        .send()
+        .await;
+    assert_eq!(res.status(), 303, "{}", res.text());
+    let html = product("acme").await;
+    assert!(
+        html.contains("<script src=\"https://cdn.reviews.example.com/stars.js\" defer></script>")
+            && html.contains(&format!(
+                "data-soat-app=\"{client_id}\" data-block=\"stars\""
+            ))
+            && !html.contains("widget.js"),
+        "{html}"
+    );
+    assert!(!product("globex").await.contains("stars.js"));
+
+    // Uninstalling takes the blocks off.
+    call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "DELETE",
+        &format!("/api/app-installations/{install_id}"),
+        Value::Null,
+        204,
+    )
+    .await;
+    assert!(!product("acme").await.contains("stars.js"));
 }

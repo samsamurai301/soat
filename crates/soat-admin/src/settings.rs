@@ -66,7 +66,7 @@ impl Fields {
             .unwrap_or_default()
     }
 
-    fn all(&self, name: &str) -> Vec<String> {
+    pub(crate) fn all(&self, name: &str) -> Vec<String> {
         self.0
             .iter()
             .filter(|(k, _)| k == name)

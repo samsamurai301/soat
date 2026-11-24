@@ -2308,6 +2308,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "soat-apps",
  "soat-cart",
  "soat-catalog",
  "soat-checkout",

@@ -26,5 +26,7 @@
 {{> content }}
 </main>
 {{> footer }}
-</body>
+{{#each app_blocks.body }}<div class="soat-app-block" data-soat-app="{{ app }}" data-block="{{ handle }}"></div>
+{{/each}}{{#each app_scripts }}<script src="{{ this }}" defer></script>
+{{/each}}</body>
 </html>

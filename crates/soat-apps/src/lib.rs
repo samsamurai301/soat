@@ -22,6 +22,12 @@
 //! An app can add links to the admin (`admin_links`): to itself, or next
 //! to a product, order or customer, opening the app with the shop and the
 //! record's id (`GET /api/app-links`).
+//!
+//! An app can offer storefront blocks (`storefront_blocks`): a script it
+//! hosts and where its block shows (`body`, or on `product` pages). A shop
+//! turns each one on (`PUT /api/app-installations/{id}/blocks`); the
+//! storefront then loads the script and leaves a
+//! `<div class="soat-app-block" data-soat-app=… data-block=…>` for it.
 
 use soat_auth::Staff;
 use soat_core::{id_kind, Permission, TenantId};
@@ -80,6 +86,7 @@ impl Module for Apps {
             update_app,
             directory,
             app_links,
+            set_blocks,
         ))
     }
 }
@@ -108,7 +115,53 @@ pub struct AppView {
     /// Links it adds to the admin of shops that installed it.
     #[sqlx(json)]
     pub admin_links: Vec<AdminLink>,
+    /// Blocks it offers the storefront.
+    #[sqlx(json)]
+    pub storefront_blocks: Vec<BlockSpec>,
     pub created_at: String,
+}
+
+/// Where on the storefront an app's block shows.
+pub const BLOCK_PLACEMENTS: &[&str] = &["body", "product"];
+
+/// A block an app offers the storefront.
+#[model]
+#[derive(PartialEq)]
+pub struct BlockSpec {
+    /// Unique within the app: lowercase letters, digits and `-`.
+    pub handle: String,
+    /// What shops see when turning it on, e.g. `Star rating`.
+    pub name: String,
+    /// `body` (every page) or `product` (product pages, with the
+    /// product's id).
+    pub placement: String,
+    /// The script that fills the block: `https://…`.
+    pub script_url: String,
+}
+
+/// A block of an installed app, and whether the shop turned it on.
+#[model]
+pub struct InstalledBlock {
+    pub handle: String,
+    pub name: String,
+    pub placement: String,
+    pub enabled: bool,
+}
+
+/// Body of `PUT /api/app-installations/{id}/blocks`.
+#[model]
+pub struct EnabledBlocks {
+    /// Handles of the blocks to turn on; the rest are off.
+    pub enabled: Vec<String>,
+}
+
+/// A block the storefront shows.
+#[model]
+pub struct StorefrontBlock {
+    pub app_id: String,
+    pub handle: String,
+    pub placement: String,
+    pub script_url: String,
 }
 
 /// Where in the admin an app's link shows.
@@ -176,6 +229,8 @@ pub struct UpdateApp {
     pub listed: Option<bool>,
     /// Up to 10 links the app adds to the admin; replaces them all.
     pub admin_links: Option<Vec<AdminLink>>,
+    /// Up to 10 storefront blocks; replaces them all.
+    pub storefront_blocks: Option<Vec<BlockSpec>>,
 }
 
 /// An app in the directory, as a shop sees it.
@@ -273,7 +328,39 @@ pub struct Installation {
     pub permissions: Vec<String>,
     /// Whether the app has traded its code for a key.
     pub connected: bool,
+    /// The storefront blocks it offers, and which are on.
+    #[sqlx(skip)]
+    pub blocks: Vec<InstalledBlock>,
     pub created_at: String,
+}
+
+/// An installation with what its blocks are made of.
+#[derive(sqlx::FromRow)]
+struct InstallRecord {
+    #[sqlx(flatten)]
+    installation: Installation,
+    #[sqlx(json)]
+    offered: Vec<BlockSpec>,
+    enabled_blocks: Vec<String>,
+}
+
+impl From<InstallRecord> for Installation {
+    fn from(r: InstallRecord) -> Self {
+        let blocks = r
+            .offered
+            .into_iter()
+            .map(|b| InstalledBlock {
+                enabled: r.enabled_blocks.contains(&b.handle),
+                handle: b.handle,
+                name: b.name,
+                placement: b.placement,
+            })
+            .collect();
+        Installation {
+            blocks,
+            ..r.installation
+        }
+    }
 }
 
 /// An install, and where to send the person consenting.
@@ -305,11 +392,11 @@ pub struct AppToken {
 }
 
 const APP_COLUMNS: &str = "id, name, redirect_uris, permissions, tagline, description, \
-     category, app_url, listed_at IS NOT NULL AS listed, admin_links, \
+     category, app_url, listed_at IS NOT NULL AS listed, admin_links, storefront_blocks, \
      to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at";
 
 const INSTALL_COLUMNS: &str = "i.id, i.app_id, a.name AS app_name, i.permissions, \
-     i.api_key_id IS NOT NULL AS connected, \
+     i.api_key_id IS NOT NULL AS connected, a.storefront_blocks AS offered, i.enabled_blocks, \
      to_char(i.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at";
 
 fn invalid(message: impl Into<String>) -> Error {
@@ -373,6 +460,118 @@ fn install_url(app_url: &str, shop: &str) -> String {
     let sep = if app_url.contains('?') { '&' } else { '?' };
     let query = serde_urlencoded::to_string([("shop", shop)]).unwrap_or_default();
     format!("{app_url}{sep}{query}")
+}
+
+fn check_blocks(blocks: Vec<BlockSpec>) -> Result<Vec<BlockSpec>> {
+    if blocks.len() > 10 {
+        return Err(invalid("an app offers up to 10 storefront blocks"));
+    }
+    let mut seen = Vec::new();
+    blocks
+        .into_iter()
+        .map(|b| {
+            let handle_ok = !b.handle.is_empty()
+                && b.handle.len() <= 40
+                && b.handle
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            if !handle_ok || seen.contains(&b.handle) {
+                return Err(invalid(format!(
+                    "{:?} is not a block handle: unique, lowercase letters, digits and -",
+                    b.handle
+                )));
+            }
+            seen.push(b.handle.clone());
+            let name = b.name.trim().to_owned();
+            if name.is_empty() || name.chars().count() > 60 {
+                return Err(invalid("a block's name is 1 to 60 characters"));
+            }
+            if !BLOCK_PLACEMENTS.contains(&b.placement.as_str()) {
+                return Err(invalid(format!(
+                    "a block's placement is one of {}",
+                    BLOCK_PLACEMENTS.join(", ")
+                )));
+            }
+            if !is_redirect(&b.script_url) {
+                return Err(invalid(format!(
+                    "{} is not a script address: https://…, or http://localhost while developing",
+                    b.script_url
+                )));
+            }
+            Ok(BlockSpec { name, ..b })
+        })
+        .collect()
+}
+
+/// The blocks the shop turned on, of apps that have their key, for the
+/// storefront to show. Runs on the shop's transaction.
+pub async fn storefront_blocks(conn: &mut PgConnection) -> Result<Vec<StorefrontBlock>> {
+    let rows: Vec<(String, sqlx::types::Json<Vec<BlockSpec>>, Vec<String>)> = sqlx::query_as(
+        "SELECT a.id, a.storefront_blocks, i.enabled_blocks FROM app_installations i \
+         JOIN apps a ON a.id = i.app_id \
+         WHERE i.api_key_id IS NOT NULL AND cardinality(i.enabled_blocks) > 0 \
+         AND i.tenant_id = current_setting('soat.tenant', true) ORDER BY i.created_at, a.id",
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .flat_map(|(app_id, offered, enabled)| {
+            offered
+                .0
+                .into_iter()
+                .filter(move |b| enabled.contains(&b.handle))
+                .map(move |b| StorefrontBlock {
+                    app_id: app_id.clone(),
+                    handle: b.handle,
+                    placement: b.placement,
+                    script_url: b.script_url,
+                })
+        })
+        .collect())
+}
+
+/// Turn an installed app's storefront blocks on or off (`apps:manage`).
+/// Publishes `app.blocks_changed`.
+#[put("/api/app-installations/{id}/blocks", tag = "apps")]
+async fn set_blocks(
+    db: Db,
+    tenant: Tenant,
+    Path(id): Path<String>,
+    Json(b): Json<EnabledBlocks>,
+) -> Result<Json<Installation>> {
+    let mut tx = tenant.begin_for(&db, &APPS_MANAGE).await?;
+    let found = match InstallationId::parse(&id) {
+        Ok(_) => installation(&mut tx, &id).await?,
+        Err(_) => None,
+    }
+    .ok_or_else(Error::not_found)?;
+    if let Some(h) = b
+        .enabled
+        .iter()
+        .find(|h| !found.blocks.iter().any(|o| &o.handle == *h))
+    {
+        return Err(
+            Error::unprocessable(format!("the app offers no block {h:?}"))
+                .with_code("unknown_block"),
+        );
+    }
+    let mut enabled = b.enabled;
+    enabled.sort();
+    enabled.dedup();
+    sqlx::query("UPDATE app_installations SET enabled_blocks = $2 WHERE id = $1")
+        .bind(&found.id)
+        .bind(&enabled)
+        .execute(&mut *tx)
+        .await?;
+    let updated = installation(&mut tx, &found.id)
+        .await?
+        .ok_or_else(Error::not_found)?;
+    tenant
+        .publish(&mut tx, "app.blocks_changed", &updated)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(updated))
 }
 
 fn check_links(links: Vec<AdminLink>) -> Result<Vec<AdminLink>> {
@@ -511,6 +710,10 @@ async fn update_app(
         .description
         .map(|d| d.trim().to_owned())
         .unwrap_or(app.description);
+    let storefront_blocks = match b.storefront_blocks {
+        Some(blocks) => check_blocks(blocks)?,
+        None => app.storefront_blocks,
+    };
     let admin_links = match b.admin_links {
         Some(links) => check_links(links)?,
         None => app.admin_links,
@@ -525,7 +728,7 @@ async fn update_app(
     let app = sqlx::query_as::<_, AppView>(&format!(
         "UPDATE apps SET name = $2, tagline = $3, description = $4, category = $5, \
          app_url = $6, listed_at = CASE WHEN $7 THEN coalesce(listed_at, now()) END, \
-         admin_links = $8 WHERE id = $1 RETURNING {APP_COLUMNS}"
+         admin_links = $8, storefront_blocks = $9 WHERE id = $1 RETURNING {APP_COLUMNS}"
     ))
     .bind(&app.id)
     .bind(&name)
@@ -535,6 +738,7 @@ async fn update_app(
     .bind(&app_url)
     .bind(listed)
     .bind(sqlx::types::Json(&admin_links))
+    .bind(sqlx::types::Json(&storefront_blocks))
     .fetch_one(&*db)
     .await?;
     Ok(Json(app))
@@ -672,13 +876,14 @@ async fn rotate_secret(
 }
 
 async fn installation(conn: &mut PgConnection, id: &str) -> Result<Option<Installation>> {
-    Ok(sqlx::query_as::<_, Installation>(&format!(
+    let found = sqlx::query_as::<_, InstallRecord>(&format!(
         "SELECT {INSTALL_COLUMNS} FROM app_installations i JOIN apps a ON a.id = i.app_id \
          WHERE i.id = $1"
     ))
     .bind(id)
     .fetch_optional(conn)
-    .await?)
+    .await?;
+    Ok(found.map(Installation::from))
 }
 
 /// What installing app `client_id` would grant, for the consent screen
@@ -821,7 +1026,7 @@ async fn install(
 #[get("/api/app-installations", tag = "apps")]
 async fn list_installations(db: Db, tenant: Tenant) -> Result<Json<Vec<Installation>>> {
     let mut tx = tenant.begin_for(&db, &APPS_MANAGE).await?;
-    let list = sqlx::query_as::<_, Installation>(&format!(
+    let list = sqlx::query_as::<_, InstallRecord>(&format!(
         "SELECT {INSTALL_COLUMNS} FROM app_installations i JOIN apps a ON a.id = i.app_id \
          WHERE i.tenant_id = $1 ORDER BY a.name"
     ))
@@ -829,7 +1034,7 @@ async fn list_installations(db: Db, tenant: Tenant) -> Result<Json<Vec<Installat
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(list))
+    Ok(Json(list.into_iter().map(Installation::from).collect()))
 }
 
 /// Uninstall an app (`apps:manage`): its key stops working at once.

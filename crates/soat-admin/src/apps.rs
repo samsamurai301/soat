@@ -77,6 +77,30 @@ pub(crate) async fn uninstall(
     }
 }
 
+/// Turn an app's storefront blocks on or off (a form post of the checked
+/// `block` handles).
+#[post("/admin/{shop}/apps/{id}/blocks", tag = "admin")]
+pub(crate) async fn blocks(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, id)): Path<(String, String)>,
+    body: Bytes,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "settings").await);
+    let enabled = Fields::parse(&body).all("block");
+    let path = format!("/api/app-installations/{}/blocks", encode(&id));
+    let (status, out) = cx
+        .call(Method::PUT, &path, Some(&json!({ "enabled": enabled })))
+        .await;
+    match status {
+        200 => Ok(Redirect::to(&format!("/admin/{shop}/apps")).into_response()),
+        401 => Ok(crate::to_login()),
+        s => Ok(cx.failed(s, &out)),
+    }
+}
+
 /// The consent screen: what the app asks to do in the shop.
 #[get("/admin/{shop}/apps/authorize", tag = "admin")]
 pub(crate) async fn authorize_page(

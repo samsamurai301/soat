@@ -7,6 +7,10 @@ rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
 
+[features]
+# Blocks from installed apps on the storefront.
+apps = ["dep:soat-apps"]
+
 [dependencies]
 soat-core.workspace = true
 soat-module.workspace = true
@@ -23,6 +27,7 @@ soat-cms.workspace = true
 soat-theme.workspace = true
 soat-i18n.workspace = true
 soat-pricing.workspace = true
+soat-apps = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true

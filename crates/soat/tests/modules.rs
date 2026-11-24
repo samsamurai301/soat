@@ -29,12 +29,12 @@ fn module_list_is_valid_and_ordered() {
         "cms",
         "i18n",
         "theme",
-        "storefront",
     ];
-    #[cfg(feature = "shopify-sync")]
-    expected.push("import");
     #[cfg(feature = "apps")]
     expected.push("apps");
+    expected.push("storefront");
+    #[cfg(feature = "shopify-sync")]
+    expected.push("import");
     expected.extend(["mcp", "admin"]);
     assert_eq!(modules.names(), expected);
 }
