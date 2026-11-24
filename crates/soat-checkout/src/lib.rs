@@ -24,6 +24,7 @@ use soat_orders::{NewOrder, NewOrderLine, NewShipping, Order, PostalAddress};
 use soat_payments::{Payment, Providers, StartPayment};
 use soat_promotions::{AppliedDiscount, DiscountContext, DiscountLine};
 use soat_shipping::{ShippingOption, ShippingQuery};
+pub use soat_tax::providers::TaxProviders;
 use soat_tax::{QuoteInput, TaxQuote};
 use soat_tenancy::{Scope, Shop, TenantTx};
 use zapline::db::sqlx::types::Json as SqlJson;
@@ -241,7 +242,12 @@ struct Built {
     discount_error: Option<Error>,
 }
 
-async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Result<Built> {
+async fn build(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    taxes: &TaxProviders,
+    cart_id: &str,
+) -> Result<Built> {
     let cart = view(conn, scope, cart_id).await?;
     let d = sqlx::query_as::<_, Details>(
         "SELECT email, shipping_address, billing_address, vat_number, shipping_rate_id, \
@@ -396,8 +402,10 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
         let quote = soat_tax::quote(
             conn,
             scope,
+            taxes,
             &QuoteInput {
                 country: addr.country.clone(),
+                postal_code: Some(addr.postal_code.clone()).filter(|p| !p.is_empty()),
                 vat_number: d.vat_number.clone(),
                 lines: amounts,
             },
@@ -525,10 +533,11 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
 async fn get_checkout(
     db: Db,
     holder: CartToken,
+    taxes: State<TaxProviders>,
     Path(id): Path<String>,
 ) -> Result<Json<CheckoutView>> {
     let (mut tx, id) = holder.open(&db, &id).await?;
-    let built = build(&mut tx, &holder.shop, &id).await?;
+    let built = build(&mut tx, &holder.shop, &taxes, &id).await?;
     tx.commit().await?;
     Ok(Json(built.view))
 }
@@ -543,6 +552,7 @@ async fn get_checkout(
 pub async fn update(
     tx: &mut TenantTx,
     shop: &Shop,
+    taxes: &TaxProviders,
     id: &str,
     c: &CheckoutChange,
 ) -> Result<CheckoutView> {
@@ -603,7 +613,7 @@ pub async fn update(
     .bind(c.use_store_credit)
     .execute(&mut **tx)
     .await?;
-    let mut built = build(tx, shop, id).await?;
+    let mut built = build(tx, shop, taxes, id).await?;
     if c.discount_code
         .as_deref()
         .is_some_and(|c| !c.trim().is_empty())
@@ -628,9 +638,10 @@ pub async fn update(
 pub async fn checkout(
     conn: &mut PgConnection,
     scope: &impl Scope,
+    taxes: &TaxProviders,
     id: &str,
 ) -> Result<CheckoutView> {
-    Ok(build(conn, scope, id).await?.view)
+    Ok(build(conn, scope, taxes, id).await?.view)
 }
 
 /// Give the checkout's email, addresses, VAT number, shipping choice or
@@ -640,11 +651,12 @@ pub async fn checkout(
 async fn update_checkout(
     db: Db,
     holder: CartToken,
+    taxes: State<TaxProviders>,
     Path(id): Path<String>,
     Valid(Json(c)): Valid<Json<CheckoutChange>>,
 ) -> Result<Json<CheckoutView>> {
     let (mut tx, id) = holder.open(&db, &id).await?;
-    let view = update(&mut tx, &holder.shop, &id, &c).await?;
+    let view = update(&mut tx, &holder.shop, &taxes, &id, &c).await?;
     tx.commit().await?;
     Ok(Json(view))
 }
@@ -657,13 +669,14 @@ async fn update_checkout(
 pub async fn complete(
     db: &Db,
     providers: &Providers,
+    taxes: &TaxProviders,
     holder: &CartToken,
     id: &str,
     c: Complete,
 ) -> Result<Completed> {
     let (mut tx, id) = holder.open(db, id).await?;
     let shop = &holder.shop;
-    let mut built = build(&mut tx, shop, &id).await?;
+    let mut built = build(&mut tx, shop, taxes, &id).await?;
     if let Some(e) = built.discount_error.take() {
         return Err(e);
     }
@@ -789,10 +802,11 @@ async fn complete_checkout(
     db: Db,
     holder: CartToken,
     providers: State<Providers>,
+    taxes: State<TaxProviders>,
     Path(id): Path<String>,
     Valid(Json(c)): Valid<Json<Complete>>,
 ) -> Result<(StatusCode, Json<Completed>)> {
-    let done = complete(&db, &providers, &holder, &id, c).await?;
+    let done = complete(&db, &providers, &taxes, &holder, &id, c).await?;
     Ok((StatusCode::CREATED, Json(done)))
 }
 

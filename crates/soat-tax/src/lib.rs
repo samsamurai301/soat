@@ -13,11 +13,18 @@
 //!
 //! When prices include tax, the gross price stays the same in every
 //! country and the tax is taken out of it; otherwise tax is added on top.
-//! [`quote`] does the sums; checkout (C9) calls it. Tax providers come in
-//! C5.
+//! [`quote`] does the sums; checkout (C9) calls it. A shop can let a tax
+//! service work out tax instead ([`providers`]).
 
 mod presets;
+pub mod providers;
 mod zones;
+
+use std::sync::Arc;
+
+use providers::{Asked, TaxProvider, TaxProviders, TaxRequest};
+use serde_json::Value;
+use soat_core::secret::Sealer;
 
 use soat_core::tax::{self, is_eu, tax_on, vat_number_country, EXEMPT, STANDARD};
 use soat_core::Permission;
@@ -40,8 +47,41 @@ pub const TAX_READ: Permission =
 pub const TAX_MANAGE: Permission =
     Permission::new("tax:manage", "Change tax settings, zones and rates");
 
-/// The tax module.
-pub struct Taxes;
+/// The tax module, with the tax providers this install offers (the
+/// built-in `http` adapter to start with).
+pub struct Taxes {
+    providers: Vec<Arc<dyn TaxProvider>>,
+    sealer: Option<Sealer>,
+}
+
+impl Default for Taxes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Taxes {
+    pub fn new() -> Self {
+        Self {
+            providers: vec![Arc::new(providers::HttpTaxProvider)],
+            sealer: None,
+        }
+    }
+
+    /// Offers `provider` to shops, replacing one of the same name.
+    pub fn with(mut self, provider: impl TaxProvider + 'static) -> Self {
+        self.providers.retain(|p| p.name() != provider.name());
+        self.providers.push(Arc::new(provider));
+        self
+    }
+
+    /// Seals providers' credentials with `sealer`; without one, shops
+    /// cannot pick a provider.
+    pub fn with_sealer(mut self, sealer: Option<Sealer>) -> Self {
+        self.sealer = sealer;
+        self
+    }
+}
 
 impl Module for Taxes {
     fn name(&self) -> &'static str {
@@ -61,9 +101,14 @@ impl Module for Taxes {
     }
 
     fn mount(&self, app: App) -> App {
-        app.mount((get_settings, put_settings, quote_route))
-            .plugin(zones::mount)
-            .plugin(presets::mount)
+        app.state(TaxProviders::new(
+            self.providers.clone(),
+            self.sealer.clone(),
+        ))
+        .mount((get_settings, put_settings, quote_route))
+        .plugin(zones::mount)
+        .plugin(providers::mount)
+        .plugin(presets::mount)
     }
 }
 
@@ -161,6 +206,8 @@ async fn put_settings(
 pub struct QuoteInput {
     /// The buyer's (shipping) country.
     pub country: String,
+    /// The buyer's postal code, for providers that tax by address.
+    pub postal_code: Option<String>,
     /// A business buyer's VAT number, for the reverse charge.
     pub vat_number: Option<String>,
     /// `(tax_class, amount_minor)`: line totals after discounts, gross or
@@ -181,6 +228,11 @@ pub struct TaxQuote {
     pub lines: Vec<TaxLine>,
     /// Sum of the lines' tax.
     pub tax_minor: i64,
+    /// Who worked it out: `zones`, or the shop's provider, e.g. `http`.
+    pub source: String,
+    /// Why the shop's provider was not used, when it failed and the zones
+    /// stood in.
+    pub provider_error: Option<String>,
 }
 
 /// Tax on one amount.
@@ -193,10 +245,67 @@ pub struct TaxLine {
     pub tax_minor: i64,
 }
 
-/// Works out the tax on `input` with the shop's settings and zones. A VAT
-/// number that is not shaped like an EU one is a 422. Run it in the
-/// shop's transaction.
+/// Works out the tax on `input` with the shop's tax provider, if it has
+/// one, or else its settings and zones; when the provider fails, the
+/// zones stand in and the quote says why. A VAT number that is not shaped
+/// like an EU one is a 422. Run it in the shop's transaction.
 pub async fn quote(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    providers: &TaxProviders,
+    input: &QuoteInput,
+) -> Result<TaxQuote> {
+    let mut out = zones_quote(conn, scope, input).await?;
+    let settings = settings(conn, scope).await?;
+    let asked = providers::ask(
+        conn,
+        scope,
+        providers,
+        TaxRequest {
+            credentials: &Value::Null,
+            settings: &Value::Null,
+            origin_country: settings.origin_country.as_deref(),
+            country: &out.tax_country,
+            postal_code: input.postal_code.as_deref(),
+            vat_number: input.vat_number.as_deref(),
+            prices_include_tax: settings.prices_include_tax,
+            lines: &input.lines,
+        },
+    )
+    .await?;
+    match asked {
+        Asked::NoProvider => {}
+        Asked::Failed(name, why) => out.provider_error = Some(format!("{name}: {why}")),
+        Asked::Answered(name, lines) => {
+            let fits = lines.iter().zip(&input.lines).all(|(l, (_, amount))| {
+                (0..=10_000).contains(&l.rate_bps)
+                    && l.tax_minor >= 0
+                    && l.tax_minor <= amount.unsigned_abs() as i64
+            });
+            let total = lines
+                .iter()
+                .try_fold(0i64, |sum, l| sum.checked_add(l.tax_minor));
+            match total {
+                Some(total) if fits => {
+                    for (line, answer) in out.lines.iter_mut().zip(lines) {
+                        line.rate_bps = answer.rate_bps;
+                        line.tax_minor = answer.tax_minor;
+                    }
+                    out.tax_minor = total;
+                    out.source = name;
+                }
+                _ => {
+                    out.provider_error =
+                        Some(format!("{name} answered with tax that cannot be right"))
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The tax by the shop's own settings and zones.
+async fn zones_quote(
     conn: &mut PgConnection,
     scope: &impl Scope,
     input: &QuoteInput,
@@ -269,6 +378,8 @@ pub async fn quote(
         reverse_charge,
         lines,
         tax_minor: total,
+        source: "zones".to_owned(),
+        provider_error: None,
     })
 }
 
@@ -277,6 +388,7 @@ pub async fn quote(
 pub struct QuoteRequest {
     /// The buyer's country, e.g. `FR`.
     pub country: String,
+    pub postal_code: Option<String>,
     /// A business buyer's VAT number.
     pub vat_number: Option<String>,
     pub lines: Vec<QuoteRequestLine>,
@@ -297,6 +409,7 @@ pub struct QuoteRequestLine {
 async fn quote_route(
     db: Db,
     tenant: Tenant,
+    providers: State<TaxProviders>,
     Json(q): Json<QuoteRequest>,
 ) -> Result<Json<TaxQuote>> {
     if q.lines.len() > MAX_QUOTE_LINES {
@@ -328,10 +441,11 @@ async fn quote_route(
     }
     let input = QuoteInput {
         country: q.country,
+        postal_code: q.postal_code,
         vat_number: q.vat_number,
         lines,
     };
-    let out = quote(&mut tx, &tenant, &input).await?;
+    let out = quote(&mut tx, &tenant, &providers, &input).await?;
     tx.commit().await?;
     Ok(Json(out))
 }

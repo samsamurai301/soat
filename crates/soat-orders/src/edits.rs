@@ -7,6 +7,7 @@
 
 use serde_json::json;
 use soat_core::tax::tax_on;
+use soat_tax::providers::TaxProviders;
 use soat_tax::QuoteInput;
 use soat_tenancy::Tenant;
 use zapline::db::{sqlx, Db};
@@ -72,6 +73,7 @@ fn invalid(m: impl Into<String>) -> Error {
 async fn edit_order(
     db: Db,
     tenant: Tenant,
+    taxes: State<TaxProviders>,
     Path(id): Path<String>,
     Valid(Json(e)): Valid<Json<OrderEdit>>,
 ) -> Result<Json<EditedOrder>> {
@@ -184,8 +186,10 @@ async fn edit_order(
                 let q = soat_tax::quote(
                     &mut tx,
                     &tenant,
+                    &taxes,
                     &QuoteInput {
                         country: addr.country.clone(),
+                        postal_code: Some(addr.postal_code.clone()).filter(|p| !p.is_empty()),
                         vat_number: order.vat_number.clone(),
                         lines: vec![(item.tax_class.clone(), gross)],
                     },

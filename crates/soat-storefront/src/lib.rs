@@ -17,7 +17,7 @@ use soat_cart::storefront::{self as carts, CartToken};
 use soat_cart::CartView;
 use soat_catalog::search::{self, SearchQuery};
 use soat_catalog::storefront::{self as catalog, ProductCard};
-use soat_checkout::{CheckoutChange, CheckoutView, Complete};
+use soat_checkout::{CheckoutChange, CheckoutView, Complete, TaxProviders};
 use soat_core::address::country_name;
 use soat_core::Currency;
 use soat_customers::accounts::{self, SignedIn};
@@ -1172,6 +1172,7 @@ async fn checkout_values(
 async fn render_checkout(
     db: &Db,
     shop: &Shop,
+    taxes: &TaxProviders,
     headers: &HeaderMap,
     error: Option<String>,
     typed: Option<&CheckoutForm>,
@@ -1188,7 +1189,7 @@ async fn render_checkout(
     if let (Some(customer), None) = (v.customer.clone(), &cart.customer_id) {
         cart = carts::attach(&mut v.tx, shop, &cart.id, &customer).await?;
     }
-    let c = soat_checkout::checkout(&mut v.tx, shop, &cart.id).await?;
+    let c = soat_checkout::checkout(&mut v.tx, shop, taxes, &cart.id).await?;
     checkout_values(&mut v, shop, &c, typed).await?;
     let status = if let Some(e) = error {
         v.set("error", json!(e));
@@ -1201,8 +1202,13 @@ async fn render_checkout(
 
 /// The checkout: contact, address, shipping, discount code, then payment.
 #[get("/checkout", tag = "storefront")]
-async fn checkout_page(db: Db, shop: Shop, headers: HeaderMap) -> Result<Response> {
-    render_checkout(&db, &shop, &headers, None, None).await
+async fn checkout_page(
+    db: Db,
+    shop: Shop,
+    headers: HeaderMap,
+    taxes: State<TaxProviders>,
+) -> Result<Response> {
+    render_checkout(&db, &shop, &taxes, &headers, None, None).await
 }
 
 fn blank_change() -> CheckoutChange {
@@ -1226,6 +1232,7 @@ async fn checkout_update(
     db: Db,
     shop: Shop,
     headers: HeaderMap,
+    taxes: State<TaxProviders>,
     Form(f): Form<CheckoutForm>,
 ) -> Result<Response> {
     let Some((id, token)) = cart_cookie(&headers) else {
@@ -1238,7 +1245,7 @@ async fn checkout_update(
         if !e.contains('@') || e.len() > 254 {
             drop(tx);
             let msg = format!("{e} is not an email address");
-            return render_checkout(&db, &shop, &headers, Some(msg), Some(&f)).await;
+            return render_checkout(&db, &shop, &taxes, &headers, Some(msg), Some(&f)).await;
         }
     }
     let change = CheckoutChange {
@@ -1247,13 +1254,14 @@ async fn checkout_update(
         vat_number: f.vat_number.as_ref().map(|v| v.trim().to_owned()),
         ..blank_change()
     };
-    let view = match soat_checkout::update(&mut tx, &shop, &id, &change).await {
+    let view = match soat_checkout::update(&mut tx, &shop, &taxes, &id, &change).await {
         Ok(v) => v,
         Err(e) => {
             drop(tx);
             return render_checkout(
                 &db,
                 &shop,
+                &taxes,
                 &headers,
                 Some(upper_first(e.message())),
                 Some(&f),
@@ -1275,7 +1283,7 @@ async fn checkout_update(
             shipping_rate_id: Some(rate),
             ..blank_change()
         };
-        soat_checkout::update(&mut tx, &shop, &id, &change).await?;
+        soat_checkout::update(&mut tx, &shop, &taxes, &id, &change).await?;
     }
     let mut problem = None;
     if let Some(code) = f.discount_code.as_ref().map(|c| c.trim().to_owned()) {
@@ -1285,13 +1293,13 @@ async fn checkout_update(
                 discount_code: Some(code),
                 ..blank_change()
             };
-            if let Err(e) = soat_checkout::update(&mut tx, &shop, &id, &change).await {
+            if let Err(e) = soat_checkout::update(&mut tx, &shop, &taxes, &id, &change).await {
                 problem = Some(upper_first(e.message()));
                 let back = CheckoutChange {
                     discount_code: Some(current.unwrap_or_default()),
                     ..blank_change()
                 };
-                soat_checkout::update(&mut tx, &shop, &id, &back).await?;
+                soat_checkout::update(&mut tx, &shop, &taxes, &id, &back).await?;
             }
         }
     }
@@ -1310,18 +1318,18 @@ async fn checkout_update(
             use_store_credit: store_credit,
             ..blank_change()
         };
-        if let Err(e) = soat_checkout::update(&mut tx, &shop, &id, &change).await {
+        if let Err(e) = soat_checkout::update(&mut tx, &shop, &taxes, &id, &change).await {
             problem.get_or_insert(upper_first(e.message()));
             let change = CheckoutChange {
                 use_store_credit: store_credit,
                 ..blank_change()
             };
-            soat_checkout::update(&mut tx, &shop, &id, &change).await?;
+            soat_checkout::update(&mut tx, &shop, &taxes, &id, &change).await?;
         }
     }
     tx.commit().await?;
     match problem {
-        Some(p) => render_checkout(&db, &shop, &headers, Some(p), Some(&f)).await,
+        Some(p) => render_checkout(&db, &shop, &taxes, &headers, Some(p), Some(&f)).await,
         None => Ok(Redirect::to(&format!("{}/checkout", root_of(&headers))).into_response()),
     }
 }
@@ -1359,6 +1367,7 @@ async fn checkout_complete(
     headers: HeaderMap,
     conn: ConnInfo,
     providers: State<Providers>,
+    taxes: State<TaxProviders>,
     Form(f): Form<PlaceOrder>,
 ) -> Result<Response> {
     let Some((id, token)) = cart_cookie(&headers) else {
@@ -1369,11 +1378,18 @@ async fn checkout_complete(
         payment_method_id: f.payment_method_id,
         return_url: return_url(&headers, conn.secure),
     };
-    let done = match soat_checkout::complete(&db, &providers, &holder, &id, req).await {
+    let done = match soat_checkout::complete(&db, &providers, &taxes, &holder, &id, req).await {
         Ok(d) => d,
         Err(e) => {
-            return render_checkout(&db, &shop, &headers, Some(upper_first(e.message())), None)
-                .await;
+            return render_checkout(
+                &db,
+                &shop,
+                &taxes,
+                &headers,
+                Some(upper_first(e.message())),
+                None,
+            )
+            .await;
         }
     };
     let next = done

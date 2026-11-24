@@ -208,7 +208,7 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Pricing)
         .with(Customers)
         .with(Carts)
-        .with(Taxes)
+        .with(Taxes::new().with_sealer(settings.sealer.clone()))
         .with(shipping)
         .with(payments)
         .with(Promotions)

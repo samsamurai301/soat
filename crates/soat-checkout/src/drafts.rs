@@ -12,6 +12,7 @@ use soat_orders::{
     NewOrder, NewOrderLine, NewShipping, Order, PostalAddress, ORDERS_READ, ORDERS_WRITE,
 };
 use soat_payments::{Payment, Providers, StartPayment};
+use soat_tax::providers::TaxProviders;
 use soat_tax::QuoteInput;
 use soat_tenancy::{Scope, Tenant, TenantListing, TenantTx};
 use zapline::db::sqlx::types::Json as SqlJson;
@@ -169,6 +170,7 @@ fn address(v: &Option<SqlJson<Value>>) -> Option<PostalAddress> {
 async fn work_out(
     conn: &mut PgConnection,
     scope: &impl Scope,
+    taxes: &TaxProviders,
     r: Row,
 ) -> Result<(DraftOrder, NewOrder)> {
     let currency = Currency::parse(&r.currency).map_err(|e| Error::internal(e.to_string()))?;
@@ -267,8 +269,10 @@ async fn work_out(
         let quote = soat_tax::quote(
             conn,
             scope,
+            taxes,
             &QuoteInput {
                 country: addr.country.clone(),
+                postal_code: Some(addr.postal_code.clone()).filter(|p| !p.is_empty()),
                 vat_number: r.vat_number.clone(),
                 lines: amounts,
             },
@@ -368,9 +372,14 @@ async fn row(conn: &mut PgConnection, scope: &impl Scope, id: &str, lock: bool) 
     .ok_or_else(Error::not_found)
 }
 
-async fn load(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Result<DraftOrder> {
+async fn load(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    taxes: &TaxProviders,
+    id: &str,
+) -> Result<DraftOrder> {
     let r = row(conn, scope, id, false).await?;
-    Ok(work_out(conn, scope, r).await?.0)
+    Ok(work_out(conn, scope, taxes, r).await?.0)
 }
 
 async fn write(
@@ -483,6 +492,7 @@ async fn write(
 async fn list_drafts(
     db: Db,
     tenant: Tenant,
+    taxes: State<TaxProviders>,
     params: ListParams,
 ) -> Result<Json<Paged<DraftOrder>>> {
     let mut tx = tenant.begin_for(&db, &ORDERS_READ).await?;
@@ -495,7 +505,7 @@ async fn list_drafts(
         .await?;
     let mut items = Vec::with_capacity(page.items.len());
     for r in page.items {
-        items.push(work_out(&mut tx, &tenant, r).await?.0);
+        items.push(work_out(&mut tx, &tenant, &taxes, r).await?.0);
     }
     tx.commit().await?;
     Ok(Json(Paged {
@@ -511,13 +521,14 @@ async fn list_drafts(
 async fn create_draft(
     db: Db,
     tenant: Tenant,
+    taxes: State<TaxProviders>,
     Valid(Json(d)): Valid<Json<DraftInput>>,
 ) -> Result<(StatusCode, Json<DraftOrder>)> {
     let mut tx = tenant.begin_for(&db, &ORDERS_WRITE).await?;
     let id = write(&mut tx, &tenant, DraftOrderId::new().as_str(), &d, true)
         .await?
         .ok_or_else(|| Error::internal("insert returned nothing"))?;
-    let draft = load(&mut tx, &tenant, &id).await?;
+    let draft = load(&mut tx, &tenant, &taxes, &id).await?;
     tenant
         .publish(&mut tx, "draft_order.created", &draft)
         .await?;
@@ -527,9 +538,14 @@ async fn create_draft(
 
 /// One draft order with today's totals (`orders:read`).
 #[get("/api/draft-orders/{id}", tag = "orders")]
-async fn get_draft(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<Json<DraftOrder>> {
+async fn get_draft(
+    db: Db,
+    tenant: Tenant,
+    taxes: State<TaxProviders>,
+    Path(id): Path<String>,
+) -> Result<Json<DraftOrder>> {
     let mut tx = tenant.begin_for(&db, &ORDERS_READ).await?;
-    let draft = load(&mut tx, &tenant, &id).await?;
+    let draft = load(&mut tx, &tenant, &taxes, &id).await?;
     tx.commit().await?;
     Ok(Json(draft))
 }
@@ -540,6 +556,7 @@ async fn get_draft(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<Jso
 async fn update_draft(
     db: Db,
     tenant: Tenant,
+    taxes: State<TaxProviders>,
     Path(id): Path<String>,
     Valid(Json(d)): Valid<Json<DraftInput>>,
 ) -> Result<Json<DraftOrder>> {
@@ -549,7 +566,7 @@ async fn update_draft(
         return Err(completed());
     }
     write(&mut tx, &tenant, &current.id, &d, false).await?;
-    let draft = load(&mut tx, &tenant, &current.id).await?;
+    let draft = load(&mut tx, &tenant, &taxes, &current.id).await?;
     tenant
         .publish(&mut tx, "draft_order.updated", &draft)
         .await?;
@@ -616,6 +633,7 @@ pub struct CompletedDraft {
 async fn complete_draft(
     db: Db,
     tenant: Tenant,
+    taxes: State<TaxProviders>,
     providers: State<Providers>,
     Path(id): Path<String>,
     Valid(Json(c)): Valid<Json<CompleteDraft>>,
@@ -625,7 +643,7 @@ async fn complete_draft(
     if r.status != "open" {
         return Err(completed());
     }
-    let (_, order) = work_out(&mut tx, &tenant, r).await?;
+    let (_, order) = work_out(&mut tx, &tenant, &taxes, r).await?;
     let draft_id = DraftOrderId::parse(&id).map_err(|_| Error::not_found())?;
     let mut missing = Vec::new();
     if order.lines.is_empty() {
@@ -686,7 +704,7 @@ async fn complete_draft(
     .bind(&placed.id)
     .execute(&mut *tx)
     .await?;
-    let draft = load(&mut tx, &tenant, draft_id.as_str()).await?;
+    let draft = load(&mut tx, &tenant, &taxes, draft_id.as_str()).await?;
     tenant
         .publish(&mut tx, "draft_order.completed", &draft)
         .await?;

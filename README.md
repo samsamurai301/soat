@@ -83,7 +83,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-pricing` | Price lists per currency, customer groups and quantity tiers, compare-at prices, price resolution |
 | `crates/soat-customers` | Customers, addresses, marketing consent |
 | `crates/soat-cart` | Carts: storefront carts by token, live prices and stock |
-| `crates/soat-tax` | Tax zones and rates per tax class, EU VAT (OSS, reverse charge), tax quotes |
+| `crates/soat-tax` | Tax zones and rates per tax class, EU VAT (OSS, reverse charge), tax quotes, tax providers |
 | `crates/soat-shipping` | Shipping zones and rates by order value and weight; carrier accounts and the label adapter trait |
 | `crates/soat-payments` | Payment provider trait, payment methods, payments and refunds, manual payment |
 | `crates/soat-stripe` | Stripe provider: PaymentIntents, Connect accounts, refunds, signed webhooks (feature `stripe`) |
@@ -166,6 +166,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Headless: the whole storefront as a JSON API in any language and market, callable from any origin ([guide](docs/headless.md))
 - [x] Smart collections picked by rules, and collection screens in the admin
 - [x] Apps: an app directory, install with consent for a key with exactly the granted permissions, admin links and storefront blocks ([guide](docs/apps.md))
+- [x] Tax by an outside tax service when zones are not enough, with the zones standing in when it is down ([guide](docs/tax-providers.md))
 - [ ] WASM plugin host, built into Zapline
 
 ## License
