@@ -56,7 +56,7 @@ layer.
 - [x] B9 Stock reservations: by reference (cart or order), optional expiry, locked per item so nothing oversells **alpha**
 - [x] B10 Price lists and currencies: lists per currency with priority, compare-at prices, `GET /api/prices/{item}?currency=` resolution **alpha**
 - [x] B11 Group and tier prices: a price list can be for one customer tag (a group); prices can start at a quantity (tiers); carts and draft orders price lines for the customer and quantity
-- [ ] B12 Digital products and bundles
+- [x] B12 Digital products and bundles: digital products ship nothing, are untracked by default, are delivered on payment and open their downloads (signed links) to the buyer; bundles sell a set of items from their stock (availability, holds, shipping and restocking go to the items)
 
 ## C. Selling
 

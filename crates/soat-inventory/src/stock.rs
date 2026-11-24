@@ -243,9 +243,30 @@ pub async fn apply(
 /// Takes `quantity` of a shipped item out of stock for `reference` (an
 /// order): from `location`, or else the location with the most on hand,
 /// recorded as `sold`, and lets go of as much of the reference's
-/// reservation. Untracked items only lose the reservation. Returns the
-/// location used, if any.
+/// reservation. Untracked items only lose the reservation. A bundle ships
+/// its items. Returns the location used, if any (for a bundle, its first
+/// item's).
 pub async fn ship(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    item: &str,
+    quantity: i64,
+    location: Option<&str>,
+    reference: &str,
+) -> Result<Option<String>> {
+    let parts = soat_catalog::bundles::bundle_items(tx, scope, item).await?;
+    if parts.is_empty() {
+        return ship_one(tx, scope, item, quantity, location, reference).await;
+    }
+    let mut first = None;
+    for (part, per) in &parts {
+        let used = ship_one(tx, scope, part, quantity * per, location, reference).await?;
+        first = first.or(used);
+    }
+    Ok(first)
+}
+
+async fn ship_one(
     tx: &mut TenantTx,
     scope: &impl Scope,
     item: &str,
@@ -287,7 +308,8 @@ pub async fn ship(
 }
 
 /// Puts `quantity` of an item back at `location` for `reference`, recorded
-/// as `restocked`. Untracked items are left alone.
+/// as `restocked`; a bundle puts back its items. Untracked items are left
+/// alone.
 pub async fn restock(
     tx: &mut TenantTx,
     scope: &impl Scope,
@@ -296,7 +318,29 @@ pub async fn restock(
     location: &str,
     reference: &str,
 ) -> Result<()> {
-    apply(tx, scope, item, location, quantity, "restocked", reference).await?;
+    let parts = soat_catalog::bundles::bundle_items(tx, scope, item).await?;
+    if parts.is_empty() {
+        apply(tx, scope, item, location, quantity, "restocked", reference).await?;
+    }
+    for (part, per) in &parts {
+        let (tracked,): (bool,) = sqlx::query_as(&format!("SELECT {}", crate::TRACKED))
+            .bind(scope.tenant_id())
+            .bind(part)
+            .fetch_one(&mut **tx)
+            .await?;
+        if tracked {
+            apply(
+                tx,
+                scope,
+                part,
+                location,
+                quantity * per,
+                "restocked",
+                reference,
+            )
+            .await?;
+        }
+    }
     Ok(())
 }
 

@@ -245,7 +245,13 @@ async fn work_out(
         tax_rate_bps: 0,
     });
     let mut tax = None;
-    if let Some(addr) = &shipping_address {
+    // Tax follows the shipping address, or the billing one when nothing ships.
+    let taxed_at = if lines.iter().any(|l| l.requires_shipping) {
+        shipping_address.as_ref()
+    } else {
+        billing_address.as_ref()
+    };
+    if let Some(addr) = taxed_at {
         let mut amounts: Vec<(String, i64)> = lines
             .iter()
             .map(|l| {
@@ -628,8 +634,11 @@ async fn complete_draft(
     if order.email.is_empty() {
         missing.push("email");
     }
-    if order.shipping_address.is_none() {
+    let ships = order.lines.iter().any(|l| l.requires_shipping);
+    if ships && order.shipping_address.is_none() {
         missing.push("shipping_address");
+    } else if !ships && order.billing_address.is_none() {
+        missing.push("billing_address");
     }
     if !missing.is_empty() {
         return Err(Error::unprocessable(format!(

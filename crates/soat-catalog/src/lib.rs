@@ -8,6 +8,7 @@
 //! on `tenant_id`, so one tenant can never read or change
 //! another's products: a foreign id is simply "not found".
 
+pub mod bundles;
 pub mod categories;
 pub mod collections;
 pub mod downloads;
@@ -75,6 +76,7 @@ impl Module for Catalog {
         .plugin(categories::mount)
         .plugin(media::mount)
         .plugin(downloads::mount)
+        .plugin(bundles::mount)
         .plugin(storefront::mount)
         .plugin(search::mount)
     }

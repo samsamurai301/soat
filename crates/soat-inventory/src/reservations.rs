@@ -92,6 +92,34 @@ pub async fn availability(
     scope: &impl Scope,
     item_id: &str,
 ) -> Result<Availability> {
+    let parts = soat_catalog::bundles::bundle_items(conn, scope, item_id).await?;
+    if parts.is_empty() {
+        return single(conn, scope, item_id).await;
+    }
+    // A bundle: as many as its scarcest limited item allows.
+    let mut units: Option<i64> = None;
+    for (part, per) in &parts {
+        let a = single(conn, scope, part).await?;
+        if !a.tracked || a.allow_backorder {
+            continue;
+        }
+        let can = a.available().max(0) / per;
+        units = Some(units.map_or(can, |u| u.min(can)));
+    }
+    Ok(Availability {
+        on_hand: units.unwrap_or(0),
+        reserved: 0,
+        tracked: units.is_some(),
+        allow_backorder: false,
+    })
+}
+
+/// The availability of one item that is no bundle.
+async fn single(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    item_id: &str,
+) -> Result<Availability> {
     let (on_hand, reserved, tracked, allow_backorder): (i64, i64, bool, bool) =
         sqlx::query_as(&format!(
             "SELECT \
@@ -119,8 +147,28 @@ pub async fn availability(
 
 /// Holds `quantity` of an item for `reference`, for `ttl_seconds` or until
 /// released. 409 `insufficient_stock` when a tracked item without
-/// backorders has fewer available. Publishes `inventory.reserved`.
+/// backorders has fewer available. A bundle holds its items instead (the
+/// last of their reservations is returned). Publishes `inventory.reserved`.
 pub async fn reserve(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    item_id: &str,
+    quantity: i64,
+    reference: &str,
+    ttl_seconds: Option<i64>,
+) -> Result<Reservation> {
+    let parts = soat_catalog::bundles::bundle_items(tx, scope, item_id).await?;
+    let mut last = None;
+    for (part, per) in &parts {
+        last = Some(reserve_one(tx, scope, part, quantity * per, reference, ttl_seconds).await?);
+    }
+    match last {
+        Some(r) => Ok(r),
+        None => reserve_one(tx, scope, item_id, quantity, reference, ttl_seconds).await,
+    }
+}
+
+async fn reserve_one(
     tx: &mut TenantTx,
     scope: &impl Scope,
     item_id: &str,
@@ -151,7 +199,7 @@ pub async fn reserve(
     .bind(item_id)
     .execute(&mut **tx)
     .await?;
-    let now = availability(tx, scope, item_id).await?;
+    let now = single(tx, scope, item_id).await?;
     if !now.can_sell(quantity) {
         return Err(
             Error::conflict(format!("only {} available", now.available()))
@@ -177,8 +225,25 @@ pub async fn reserve(
 }
 
 /// Lets go of up to `quantity` units of `item` held for `reference`, e.g.
-/// once they shipped.
+/// once they shipped; for a bundle, of its items.
 pub async fn take(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    reference: &str,
+    item: &str,
+    quantity: i64,
+) -> Result<()> {
+    let parts = soat_catalog::bundles::bundle_items(tx, scope, item).await?;
+    if parts.is_empty() {
+        return take_one(tx, scope, reference, item, quantity).await;
+    }
+    for (part, per) in &parts {
+        take_one(tx, scope, reference, part, quantity * per).await?;
+    }
+    Ok(())
+}
+
+async fn take_one(
     tx: &mut TenantTx,
     scope: &impl Scope,
     reference: &str,
