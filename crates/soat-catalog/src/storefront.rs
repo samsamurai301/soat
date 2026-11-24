@@ -19,6 +19,10 @@ pub(crate) fn mount(app: App) -> App {
 pub struct ShopImage {
     pub url: String,
     pub alt: String,
+    /// Smaller copies and the original, for `<img srcset>`; empty without.
+    pub srcset: String,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
 }
 
 impl From<FileView> for ShopImage {
@@ -26,6 +30,9 @@ impl From<FileView> for ShopImage {
         Self {
             url: f.url,
             alt: f.alt,
+            srcset: f.srcset,
+            width: f.width,
+            height: f.height,
         }
     }
 }
@@ -128,10 +135,7 @@ pub async fn first_images(
         let file = firsts.iter().find(|(p, _)| *p == card.id).map(|(_, f)| f);
         card.image = file
             .and_then(|f| views.iter().find(|v| &v.id == f))
-            .map(|v| ShopImage {
-                url: v.url.clone(),
-                alt: v.alt.clone(),
-            });
+            .map(|v| ShopImage::from(v.clone()));
     }
     Ok(())
 }

@@ -51,7 +51,7 @@ layer.
 - [x] B4 Categories (a tree, up to 8 deep, listing includes subtrees) and product tags (`?tag=`) **alpha**
 - [x] B5 Custom fields: `soat-fields` (foundation), typed definitions per resource type, product values at `/api/products/{id}/fields` **alpha**
 - [x] B6 Files and media: `soat-files` (foundation) on Zapline storage, type from content (no HTML/SVG), signed links, ordered product media **alpha**
-- [ ] B7 Image pipeline
+- [x] B7 Image pipeline: JPEG and PNG uploads get smaller copies at 320, 640, 1280 and 1920 px wide (never upscaled), with decoding bounded in size; the storefront serves them as `srcset` with `width`/`height`, and `POST /api/files/{id}/sizes` makes them again
 - [x] B8 Inventory and locations: stock per variant (or variant-less product) and location, adjustments with reasons, counts, transfers, a ledger **alpha**
 - [x] B9 Stock reservations: by reference (cart or order), optional expiry, locked per item so nothing oversells **alpha**
 - [x] B10 Price lists and currencies: lists per currency with priority, compare-at prices, `GET /api/prices/{item}?currency=` resolution **alpha**

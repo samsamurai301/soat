@@ -1,6 +1,6 @@
 <article class="product">
   <div class="gallery">
-    {{#each product.images }}<img src="{{ url }}" alt="{{ alt }}">{{/each}}
+    {{#each product.images }}<img src="{{ url }}"{{#if srcset }} srcset="{{ srcset }}" sizes="(max-width: 800px) 100vw, 640px"{{/if}}{{#if width }} width="{{ width }}" height="{{ height }}"{{/if}} alt="{{ alt }}">{{/each}}
     {{#if product.images }}{{else}}<span class="no-image large"></span>{{/if}}
   </div>
   <div class="details">

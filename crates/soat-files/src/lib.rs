@@ -7,8 +7,13 @@
 //! (a local directory, or S3 with `S3_BUCKET`); every view carries a
 //! signed `url` valid for an hour.
 //!
+//! JPEG and PNG images also get smaller copies (the image pipeline): each
+//! view lists them with a ready `srcset`.
+//!
 //! Modules that attach files (product media, CMS images) keep the file ids
 //! and call [`views`] to show them.
+
+mod images;
 
 use std::time::Duration;
 
@@ -73,7 +78,14 @@ impl Module for Files {
                     .max_field_size(MAX_UPLOAD as u64)
                     .max_fields(4),
             )
-            .mount((upload, list_files, get_file, update_file, delete_file))
+            .mount((
+                upload,
+                list_files,
+                get_file,
+                update_file,
+                delete_file,
+                make_sizes,
+            ))
     }
 }
 
@@ -92,6 +104,22 @@ pub struct FileView {
     pub alt: String,
     /// A link to the bytes, valid for an hour.
     pub url: String,
+    /// Pixel size of an image, when known.
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    /// Smaller copies of a JPEG or PNG image, narrowest first.
+    pub sizes: Vec<ImageSize>,
+    /// The copies and the original for an `<img srcset>`; empty without
+    /// copies.
+    pub srcset: String,
+}
+
+/// A smaller copy of an image.
+#[model]
+pub struct ImageSize {
+    pub width: i32,
+    /// Valid for an hour.
+    pub url: String,
 }
 
 /// Body of an update request.
@@ -109,22 +137,81 @@ struct Row {
     content_type: String,
     size: i64,
     alt: String,
+    width: Option<i32>,
+    height: Option<i32>,
+    sizes: Vec<i32>,
 }
 
 impl Row {
     fn view(self, storage: &Storage) -> FileView {
+        let url = storage.url(&self.key, LINK_TTL);
+        let sizes: Vec<ImageSize> = self
+            .sizes
+            .iter()
+            .map(|w| ImageSize {
+                width: *w,
+                url: storage.url(&images::size_key(&self.key, *w), LINK_TTL),
+            })
+            .collect();
+        let srcset = match (sizes.is_empty(), self.width) {
+            (false, Some(w)) => sizes
+                .iter()
+                .map(|s| format!("{} {}w", s.url, s.width))
+                .chain(std::iter::once(format!("{url} {w}w")))
+                .collect::<Vec<_>>()
+                .join(", "),
+            _ => String::new(),
+        };
         FileView {
-            url: storage.url(&self.key, LINK_TTL),
+            url,
             id: self.id,
             file_name: self.file_name,
             content_type: self.content_type,
             size: self.size,
             alt: self.alt,
+            width: self.width,
+            height: self.height,
+            sizes,
+            srcset,
         }
     }
 }
 
-const COLUMNS: &str = "id, key, file_name, content_type, size, alt";
+const COLUMNS: &str = "id, key, file_name, content_type, size, alt, width, height, sizes";
+
+/// Makes and stores the smaller copies of an image at `key`; returns its
+/// width, height and the widths made (none for files that are no JPEG or
+/// PNG, or do not decode).
+async fn sized(
+    storage: &Storage,
+    key: &str,
+    bytes: &zapline::Bytes,
+    kind: soat_core::media::MediaType,
+) -> Result<(Option<i32>, Option<i32>, Vec<i32>)> {
+    if !images::sizable(kind) {
+        return Ok((None, None, Vec::new()));
+    }
+    let data = bytes.clone();
+    let made = tokio::task::spawn_blocking(move || images::make(&data, kind))
+        .await
+        .map_err(|e| Error::internal(e.to_string()))?;
+    let Some(made) = made else {
+        return Ok((None, None, Vec::new()));
+    };
+    let mut widths = Vec::new();
+    for (w, copy) in made.copies {
+        let w = w as i32;
+        storage
+            .put_with(
+                &images::size_key(key, w),
+                copy,
+                PutOptions::new().content_type(kind.mime),
+            )
+            .await?;
+        widths.push(w);
+    }
+    Ok((Some(made.width as i32), Some(made.height as i32), widths))
+}
 
 async fn row(conn: &mut PgConnection, tenant: &Tenant, id: &str) -> Result<Row> {
     let id = FileId::parse(id).map_err(|_| Error::not_found())?;
@@ -186,14 +273,16 @@ async fn upload(
     let file_name = safe_file_name(&name, kind);
     let key = format!("{}/{}/{}", tenant.id(), id, file_name);
     let size = bytes.len() as i64;
+    let (width, height, widths) = sized(&storage, &key, &bytes, kind).await?;
     storage
         .put_with(&key, bytes, PutOptions::new().content_type(kind.mime))
         .await?;
     let saved = async {
         let mut tx = tenant.begin_for(&db, &FILES_WRITE).await?;
         let row = sqlx::query_as::<_, Row>(&format!(
-            "INSERT INTO files (id, tenant_id, key, file_name, content_type, size, alt) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {COLUMNS}"
+            "INSERT INTO files (id, tenant_id, key, file_name, content_type, size, alt, \
+             width, height, sizes) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING {COLUMNS}"
         ))
         .bind(id.as_str())
         .bind(tenant.id())
@@ -202,6 +291,9 @@ async fn upload(
         .bind(kind.mime)
         .bind(size)
         .bind(&alt)
+        .bind(width)
+        .bind(height)
+        .bind(&widths)
         .fetch_one(&mut *tx)
         .await?;
         let view = row.view(&storage);
@@ -215,6 +307,9 @@ async fn upload(
         Err(e) => {
             // Leave no bytes without a row.
             let _ = storage.delete(&key).await;
+            for w in widths {
+                let _ = storage.delete(&images::size_key(&key, w)).await;
+            }
             Err(e)
         }
     }
@@ -311,7 +406,41 @@ async fn delete_file(
     tx.commit().await?;
     // The row is gone; a failed delete of the bytes only leaves garbage.
     let _ = storage.delete(&current.key).await;
+    for w in &current.sizes {
+        let _ = storage.delete(&images::size_key(&current.key, *w)).await;
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Make an image's smaller copies again (`files:write`), e.g. for images
+/// uploaded before sizes existed. Publishes `file.updated`.
+#[post("/api/files/{id}/sizes", tag = "files")]
+async fn make_sizes(
+    db: Db,
+    tenant: Tenant,
+    storage: Storage,
+    Path(id): Path<String>,
+) -> Result<Json<FileView>> {
+    let mut tx = tenant.begin_for(&db, &FILES_WRITE).await?;
+    let current = row(&mut tx, &tenant, &id).await?;
+    let bytes = storage.get(&current.key).await?;
+    let kind = detect(&bytes).ok_or_else(|| Error::internal("a stored file lost its type"))?;
+    let (width, height, widths) = sized(&storage, &current.key, &bytes, kind).await?;
+    let updated = sqlx::query_as::<_, Row>(&format!(
+        "UPDATE files SET width = $3, height = $4, sizes = $5 \
+         WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
+    ))
+    .bind(tenant.id())
+    .bind(&current.id)
+    .bind(width)
+    .bind(height)
+    .bind(&widths)
+    .fetch_one(&mut *tx)
+    .await?;
+    let view = updated.view(&storage);
+    tenant.publish(&mut tx, "file.updated", &view).await?;
+    tx.commit().await?;
+    Ok(Json(view))
 }
 
 /// Stores `bytes` as a file of the shop, named after `name`, in the
@@ -336,12 +465,14 @@ pub async fn store(
     let file_name = safe_file_name(name, kind);
     let key = format!("{}/{}/{}", scope.tenant_id(), id, file_name);
     let size = bytes.len() as i64;
+    let (width, height, widths) = sized(storage, &key, &bytes, kind).await?;
     storage
         .put_with(&key, bytes, PutOptions::new().content_type(kind.mime))
         .await?;
     let row = sqlx::query_as::<_, Row>(&format!(
-        "INSERT INTO files (id, tenant_id, key, file_name, content_type, size, alt) \
-         VALUES ($1, $2, $3, $4, $5, $6, '') RETURNING {COLUMNS}"
+        "INSERT INTO files (id, tenant_id, key, file_name, content_type, size, alt, \
+         width, height, sizes) \
+         VALUES ($1, $2, $3, $4, $5, $6, '', $7, $8, $9) RETURNING {COLUMNS}"
     ))
     .bind(id.as_str())
     .bind(scope.tenant_id())
@@ -349,6 +480,9 @@ pub async fn store(
     .bind(&file_name)
     .bind(kind.mime)
     .bind(size)
+    .bind(width)
+    .bind(height)
+    .bind(&widths)
     .fetch_one(&mut **tx)
     .await?;
     let view = row.view(storage);

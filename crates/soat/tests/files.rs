@@ -195,3 +195,73 @@ async fn files_stay_in_their_shop() {
         .json();
     assert_eq!(list["total"], 0);
 }
+
+/// B7: JPEG and PNG images get smaller copies for `srcset`.
+#[tokio::test]
+async fn images_get_smaller_sizes() {
+    let (client, admin) = common::with_tenants(&["acme"]).await;
+    let mut photo = Vec::new();
+    image::RgbImage::from_pixel(1000, 500, image::Rgb([10, 120, 200]))
+        .write_with_encoder(image::codecs::jpeg::JpegEncoder::new(&mut photo))
+        .unwrap();
+    let file: Value = client
+        .post("/api/files")
+        .header("x-soat-tenant", "acme")
+        .bearer(&admin)
+        .multipart(MultipartForm::new().file("file", "Beach.jpg", "image/jpeg", photo))
+        .send()
+        .await
+        .assert_status(201)
+        .json();
+    assert_eq!(
+        (file["width"].as_i64(), file["height"].as_i64()),
+        (Some(1000), Some(500))
+    );
+    let widths: Vec<i64> = file["sizes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["width"].as_i64().unwrap())
+        .collect();
+    assert_eq!(widths, [320, 640]);
+    let srcset = file["srcset"].as_str().unwrap();
+    assert!(srcset.contains(" 320w, ") && srcset.ends_with(" 1000w"));
+
+    // The copy is a smaller JPEG.
+    let res = client
+        .get(file["sizes"][0]["url"].as_str().unwrap())
+        .send()
+        .await;
+    let res = res.assert_status(200);
+    let small = image::load_from_memory(res.bytes().as_ref()).unwrap();
+    assert_eq!((small.width(), small.height()), (320, 160));
+
+    // Made again on request, e.g. for older uploads.
+    let id = file["id"].as_str().unwrap();
+    let again: Value = client
+        .post(&format!("/api/files/{id}/sizes"))
+        .header("x-soat-tenant", "acme")
+        .bearer(&admin)
+        .send()
+        .await
+        .assert_status(200)
+        .json();
+    assert_eq!(again["sizes"].as_array().unwrap().len(), 2);
+
+    // A PNG that does not decode is kept, without sizes.
+    let odd = upload(&client, &admin, "acme", "odd.png", PNG, 201).await;
+    assert_eq!(odd["sizes"], json!([]));
+    assert_eq!(odd["srcset"], "");
+
+    // The storefront offers the sizes.
+    let p = product(&client, &admin, "acme").await;
+    set_media(&client, &admin, "acme", &p, json!([id]), 200).await;
+    let html = client
+        .get("/products/shoe")
+        .header("x-soat-tenant", "acme")
+        .send()
+        .await
+        .text();
+    assert!(html.contains("srcset=\""), "{html}");
+    assert!(html.contains("width=\"1000\""));
+}

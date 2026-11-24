@@ -76,7 +76,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-tenancy` | Shops, staff, roles, API keys, domains, the audit log, the `Tenant` extractor |
 | `crates/soat-webhooks` | Signed outbound webhooks with retries and a delivery log |
 | `crates/soat-fields` | Custom fields any resource can carry |
-| `crates/soat-files` | Uploads checked by content, stored on disk or S3 |
+| `crates/soat-files` | Uploads checked by content, stored on disk or S3, images resized for `srcset` |
 | `crates/soat-http` | The outbound HTTPS client adapters to outside services share |
 | `crates/soat-catalog` | Products, variants, collections (by hand or by rules), categories, tags, product media |
 | `crates/soat-inventory` | Locations, stock levels, reservations, adjustments and their ledger |
@@ -157,6 +157,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Content helpers: Claude suggests product copy and SEO fields, and translates products
 - [x] Admin command palette (Ctrl+K) and keyboard shortcuts
 - [x] Product variants and images in the admin
+- [x] Responsive product images: smaller copies made on upload, served with `srcset`
 - [x] Smart collections picked by rules, and collection screens in the admin
 - [ ] WASM plugin host, built into Zapline
 
