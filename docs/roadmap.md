@@ -109,7 +109,7 @@ layer.
 
 ## F. Apps and plugins
 
-- [ ] F1 WIT interfaces v0
+- [x] F1 WIT interfaces v0: the `soat:plugin@0.1.0` package (worlds `discounts`, `shipping-filter`, `checkout-validation`, `events`, and the `host` interface), its records mirroring `soat_core::hooks` with the bounds SOAT holds plugins to, and the `soat.plugin.json` manifest (crate `soat-plugin-api`, guide `docs/plugins.md`)
 - [ ] F2 Plugin host in Zapline
 - [ ] F3 Hook points in SOAT
 - [x] F4 App installs and consent: developers register apps (`/api/apps`, client id and secret, https redirect URIs, declared permissions); an owner approves on the consent screen (`/admin/{shop}/apps/authorize`), the app trades a single-use code for an API key holding exactly the granted permissions in that shop, and uninstalling revokes the key at once (crate `soat-apps`, feature `apps`)

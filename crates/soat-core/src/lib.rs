@@ -11,6 +11,7 @@ pub mod discount;
 mod domain;
 pub mod fields;
 pub mod handle;
+pub mod hooks;
 pub mod i18n;
 mod id;
 pub mod import;
