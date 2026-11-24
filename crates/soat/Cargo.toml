@@ -39,16 +39,19 @@ soat-admin.workspace = true
 soat-stripe = { workspace = true, optional = true }
 soat-mollie = { workspace = true, optional = true }
 soat-paypal = { workspace = true, optional = true }
+soat-sendcloud = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage", "mail"] }
 
 [features]
-default = ["stripe", "mollie", "paypal"]
+default = ["stripe", "mollie", "paypal", "sendcloud"]
 # Stripe payments (PaymentIntents, Connect, webhooks).
 stripe = ["dep:soat-stripe"]
 # Mollie payments: iDEAL, Bancontact, cards, Klarna and more.
 mollie = ["dep:soat-mollie"]
 # PayPal payments.
 paypal = ["dep:soat-paypal"]
+# Shipping labels through Sendcloud (DHL, DPD, GLS, PostNL, UPS and more).
+sendcloud = ["dep:soat-sendcloud"]
 
 [dev-dependencies]
 soat-testing.workspace = true

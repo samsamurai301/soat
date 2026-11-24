@@ -64,6 +64,9 @@ pub struct Settings {
     /// PayPal, when configured.
     #[cfg(feature = "paypal")]
     pub paypal: Option<soat_paypal::PayPalConfig>,
+    /// Sendcloud labels; shops bring their own accounts.
+    #[cfg(feature = "sendcloud")]
+    pub sendcloud: Option<soat_sendcloud::Sendcloud>,
 }
 
 impl Settings {
@@ -73,7 +76,8 @@ impl Settings {
     /// `SOAT_STRIPE_SECRET_KEY` and `SOAT_STRIPE_WEBHOOK_SECRET` for Stripe;
     /// `SOAT_MOLLIE_API_KEY` and `SOAT_PUBLIC_URL` (for its webhooks) for Mollie;
     /// `SOAT_PAYPAL_CLIENT_ID`, `SOAT_PAYPAL_CLIENT_SECRET` and
-    /// `SOAT_PAYPAL_WEBHOOK_ID` for PayPal;
+    /// `SOAT_PAYPAL_WEBHOOK_ID` for PayPal; `SOAT_SENDCLOUD_API_BASE` to
+    /// reach Sendcloud elsewhere;
     /// `SMTP_URL` and `MAIL_FROM` for email (without `SMTP_URL`, a debug
     /// build keeps mail in the dev inbox at `/_dev/mail`);
     /// `SOAT_SECRET_KEY` (32 characters or more, kept across restarts) to
@@ -110,6 +114,8 @@ impl Settings {
             mollie: soat_mollie::MollieConfig::from_env(),
             #[cfg(feature = "paypal")]
             paypal: soat_paypal::PayPalConfig::from_env(),
+            #[cfg(feature = "sendcloud")]
+            sendcloud: Some(soat_sendcloud::Sendcloud::from_env()),
         })
     }
 
@@ -129,6 +135,8 @@ impl Settings {
             mollie: None,
             #[cfg(feature = "paypal")]
             paypal: None,
+            #[cfg(feature = "sendcloud")]
+            sendcloud: None,
         }
     }
 }
@@ -172,6 +180,12 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
     if let Some(p) = &paypal {
         payments = payments.with(p.clone());
     }
+    #[allow(unused_mut)]
+    let mut shipping = Shipping::new().with_sealer(settings.sealer.clone());
+    #[cfg(feature = "sendcloud")]
+    if let Some(s) = &settings.sendcloud {
+        shipping = shipping.with(s.clone());
+    }
     let modules = Modules::new()
         .with(settings.auth)
         .with(events)
@@ -185,7 +199,7 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Customers)
         .with(Carts)
         .with(Taxes)
-        .with(Shipping)
+        .with(shipping)
         .with(payments)
         .with(Promotions)
         .with(GiftCards)

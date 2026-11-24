@@ -1,6 +1,6 @@
-//! An outbound HTTPS client for payment providers: hyper with rustls and
-//! the Mozilla roots, plain HTTP allowed for local test doubles, a timeout
-//! on every call.
+//! An outbound HTTPS client for adapters to outside services (payment
+//! providers, carriers): hyper with rustls and the Mozilla roots, plain
+//! HTTP allowed for local test doubles, a timeout on every call.
 //!
 //! Zapline follow-up: Zapline has the same client inside (S3, OAuth);
 //! once it is public there, this goes.

@@ -6,6 +6,7 @@ use soat_core::Currency;
 use zapline::db::Db;
 use zapline::prelude::*;
 
+use crate::settings::Fields;
 use crate::util::{encode, message, money};
 use crate::{Ctx, Shared};
 
@@ -188,7 +189,7 @@ async fn detail(mut cx: Ctx, id: &str, error: Option<String>, status: StatusCode
             })
         })
         .collect();
-    let shipments: Vec<Value> = o["fulfillments"]
+    let mut shipments: Vec<Value> = o["fulfillments"]
         .as_array()
         .into_iter()
         .flatten()
@@ -236,6 +237,41 @@ async fn detail(mut cx: Ctx, id: &str, error: Option<String>, status: StatusCode
     );
     cx.set("lines", Value::Array(lines));
     cx.set("payments", Value::Array(payments));
+    // Labels printed for each shipment, and the accounts that print them.
+    for s in &mut shipments {
+        let (got, labels) = cx
+            .call(
+                Method::GET,
+                &format!(
+                    "/api/fulfillments/{}/labels",
+                    encode(s["id"].as_str().unwrap_or_default())
+                ),
+                None,
+            )
+            .await;
+        if got == 200 {
+            s["labels"] = json!(labels
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|l| l["status"] == "active")
+                .map(|l| json!({ "id": l["id"], "url": l["file"]["url"], "carrier": l["carrier"] }))
+                .collect::<Vec<_>>());
+        }
+    }
+    let (got, accounts) = cx.call(Method::GET, "/api/carrier-accounts", None).await;
+    let accounts: Vec<Value> = if got == 200 {
+        accounts
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|a| a["active"] == true)
+            .map(|a| json!({ "id": a["id"], "name": a["name"] }))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    cx.set("carrier_accounts", Value::Array(accounts));
     cx.set("shipments", Value::Array(shipments));
     if let Some(e) = error {
         cx.set("error", json!(e));
@@ -262,6 +298,7 @@ pub(crate) async fn show(
             "paid" => "Payment marked paid.",
             "captured" => "Payment captured.",
             "refunded" => "Refunded.",
+            "labeled" => "Label printed; the shipment has its tracking.",
             "canceled" => "Order canceled.",
             _ => "Done.",
         };
@@ -381,7 +418,8 @@ pub(crate) async fn refund(
 }
 
 /// Act on one of the order's payments or shipments (a form post):
-/// `mark-paid` or `capture` a payment, `delivered` or `cancel` a shipment.
+/// `mark-paid` or `capture` a payment, `delivered` or `cancel` a shipment,
+/// `label` (with `carrier_account_id`) to print a shipment's label.
 #[post("/admin/{shop}/orders/{id}/{kind}/{item}/{action}", tag = "admin")]
 pub(crate) async fn item_action(
     s: State<Shared>,
@@ -389,6 +427,7 @@ pub(crate) async fn item_action(
     headers: HeaderMap,
     conn: ConnInfo,
     Path((shop, id, kind, item, action)): Path<(String, String, String, String, String)>,
+    body: Bytes,
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "orders").await);
     let (path, done) = match (kind.as_str(), action.as_str()) {
@@ -396,6 +435,7 @@ pub(crate) async fn item_action(
         ("payments", "capture") => ("payments", "captured"),
         ("shipments", "delivered") => ("fulfillments", "delivered"),
         ("shipments", "cancel") => ("fulfillments", "unshipped"),
+        ("shipments", "label") => ("fulfillments", "labeled"),
         _ => return Ok(cx.failed(404, &Value::Null)),
     };
     // Only this order's payments and shipments.
@@ -415,6 +455,12 @@ pub(crate) async fn item_action(
     };
     if !belongs {
         return Ok(cx.failed(404, &Value::Null));
+    }
+    if action == "label" {
+        let account = Fields::parse(&body).get("carrier_account_id");
+        let api = format!("/api/fulfillments/{}/labels", encode(&item));
+        let body = json!({ "carrier_account_id": account });
+        return Ok(act(cx, &id, Method::POST, &api, body, done).await);
     }
     let api = format!("/api/{path}/{}/{}", encode(&item), action);
     Ok(act(cx, &id, Method::POST, &api, json!({}), done).await)

@@ -26,6 +26,7 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-webhooks", 6),
     ("soat-fields", 7),
     ("soat-files", 8),
+    ("soat-http", 9),
     // Catalog.
     ("soat-catalog", 10),
     ("soat-inventory", 11),
@@ -44,6 +45,7 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-stripe", 22),
     ("soat-mollie", 22),
     ("soat-paypal", 22),
+    ("soat-sendcloud", 22),
     ("soat-checkout", 23),
     ("soat-invoices", 23),
     ("soat-notify", 24),

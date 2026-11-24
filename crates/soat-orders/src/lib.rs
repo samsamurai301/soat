@@ -16,6 +16,7 @@
 pub mod downloads;
 mod edits;
 pub mod fulfillments;
+pub mod labels;
 pub mod report;
 mod returns;
 mod routes;
@@ -68,6 +69,7 @@ impl Module for Orders {
             "customers",
             "inventory",
             "tax",
+            "shipping",
             "payments",
         ]
     }
@@ -89,6 +91,7 @@ impl Module for Orders {
             .plugin(fulfillments::mount)
             .plugin(edits::mount)
             .plugin(downloads::mount)
+            .plugin(labels::mount)
             .plugin(returns::mount)
             .plugin(report::mount)
     }

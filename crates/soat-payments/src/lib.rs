@@ -11,7 +11,8 @@
 //! staff mark the payment paid. Stripe comes in C8; its webhooks will feed
 //! [`apply`].
 
-pub mod http;
+/// The shared outbound HTTPS client, kept here for the providers.
+pub use soat_http as http;
 mod methods;
 mod payments;
 mod provider;

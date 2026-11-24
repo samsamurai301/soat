@@ -6,9 +6,15 @@
 //! from 50 EUR" is a rate at 0 with `min_subtotal_minor` 5000. [`options`]
 //! lists the rates a buyer can choose, cheapest first; checkout (C9)
 //! offers them and checks the choice with [`option`]. A country in no zone
-//! cannot be shipped to. Carrier adapters and labels come in C19.
+//! cannot be shipped to. [`carriers`] print labels.
 
+pub mod carriers;
 mod zones;
+
+use std::sync::Arc;
+
+use carriers::{CarrierProvider, Carriers};
+use soat_core::secret::Sealer;
 
 use soat_core::tax::is_tax_class;
 use soat_core::{id_kind, Currency, Permission};
@@ -30,8 +36,33 @@ pub const SHIPPING_READ: Permission =
 pub const SHIPPING_MANAGE: Permission =
     Permission::new("shipping:manage", "Change shipping zones and rates");
 
-/// The shipping module.
-pub struct Shipping;
+/// The shipping module, with the carrier adapters of this install.
+#[derive(Default)]
+pub struct Shipping {
+    carriers: Vec<Arc<dyn CarrierProvider>>,
+    sealer: Option<Sealer>,
+}
+
+impl Shipping {
+    /// With no carrier adapters.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a carrier adapter; one with the same name replaces it.
+    pub fn with(mut self, carrier: impl CarrierProvider + 'static) -> Self {
+        self.carriers.retain(|c| c.name() != carrier.name());
+        self.carriers.push(Arc::new(carrier));
+        self
+    }
+
+    /// Seals carrier credentials with `sealer`; without one, shops cannot
+    /// add carrier accounts.
+    pub fn with_sealer(mut self, sealer: Option<Sealer>) -> Self {
+        self.sealer = sealer;
+        self
+    }
+}
 
 impl Module for Shipping {
     fn name(&self) -> &'static str {
@@ -51,7 +82,9 @@ impl Module for Shipping {
     }
 
     fn mount(&self, app: App) -> App {
-        app.plugin(zones::mount)
+        app.state(Carriers::new(self.carriers.clone(), self.sealer.clone()))
+            .plugin(zones::mount)
+            .plugin(carriers::mount)
             .mount((create_rate, replace_rate, delete_rate, options_route))
     }
 }

@@ -388,7 +388,11 @@ async fn one(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Result<Fu
 }
 
 /// A fulfillment of the shop, locked, with its order id and status.
-async fn locked(tx: &mut TenantTx, tenant: &Tenant, id: &str) -> Result<(String, String, String)> {
+pub(crate) async fn locked(
+    tx: &mut TenantTx,
+    tenant: &Tenant,
+    id: &str,
+) -> Result<(String, String, String)> {
     let id = FulfillmentId::parse(id).map_err(|_| Error::not_found())?;
     let row: Option<(String, String)> = sqlx::query_as(
         "SELECT order_id, status FROM fulfillments WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
@@ -401,7 +405,7 @@ async fn locked(tx: &mut TenantTx, tenant: &Tenant, id: &str) -> Result<(String,
     Ok((id.to_string(), order, status))
 }
 
-async fn changed(
+pub(crate) async fn changed(
     tx: &mut TenantTx,
     tenant: &Tenant,
     id: &str,

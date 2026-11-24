@@ -36,7 +36,8 @@ impl Received {
 /// Every request the fake received, in order.
 pub type Log = Arc<Mutex<Vec<Received>>>;
 
-/// Serves `answer` (status and JSON body) for every request; returns the
+/// Serves `answer` (status and JSON body, or `{"raw": text,
+/// "content_type": type}` for other bytes) for every request; returns the
 /// base URL (`http://127.0.0.1:port`) and the request log.
 pub async fn fake_api<F>(answer: F) -> (String, Log)
 where
@@ -90,13 +91,20 @@ where
                 };
                 let (status, reply) = answer(&request);
                 seen.lock().unwrap_or_else(|e| e.into_inner()).push(request);
-                let reply = if reply.is_null() {
-                    String::new()
-                } else {
-                    reply.to_string()
+                // `{"raw": "...", "content_type": "..."}` answers bytes.
+                let (kind, reply) = match reply["raw"].as_str() {
+                    Some(raw) => (
+                        reply["content_type"]
+                            .as_str()
+                            .unwrap_or("application/octet-stream")
+                            .to_owned(),
+                        raw.to_owned(),
+                    ),
+                    None if reply.is_null() => ("application/json".to_owned(), String::new()),
+                    None => ("application/json".to_owned(), reply.to_string()),
                 };
                 let out = format!(
-                    "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
+                    "HTTP/1.1 {status} X\r\ncontent-type: {kind}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
                     reply.len()
                 );
                 let _ = socket.write_all(out.as_bytes()).await;

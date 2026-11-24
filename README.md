@@ -77,17 +77,19 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-webhooks` | Signed outbound webhooks with retries and a delivery log |
 | `crates/soat-fields` | Custom fields any resource can carry |
 | `crates/soat-files` | Uploads checked by content, stored on disk or S3 |
+| `crates/soat-http` | The outbound HTTPS client adapters to outside services share |
 | `crates/soat-catalog` | Products, variants, collections (by hand or by rules), categories, tags, product media |
 | `crates/soat-inventory` | Locations, stock levels, reservations, adjustments and their ledger |
 | `crates/soat-pricing` | Price lists per currency, customer groups and quantity tiers, compare-at prices, price resolution |
 | `crates/soat-customers` | Customers, addresses, marketing consent |
 | `crates/soat-cart` | Carts: storefront carts by token, live prices and stock |
 | `crates/soat-tax` | Tax zones and rates per tax class, EU VAT (OSS, reverse charge), tax quotes |
-| `crates/soat-shipping` | Shipping zones and rates by order value and weight |
+| `crates/soat-shipping` | Shipping zones and rates by order value and weight; carrier accounts and the label adapter trait |
 | `crates/soat-payments` | Payment provider trait, payment methods, payments and refunds, manual payment |
 | `crates/soat-stripe` | Stripe provider: PaymentIntents, Connect accounts, refunds, signed webhooks (feature `stripe`) |
 | `crates/soat-mollie` | Mollie provider: iDEAL, Bancontact, cards, Klarna and more, refunds, webhooks checked with Mollie (feature `mollie`) |
 | `crates/soat-paypal` | PayPal provider: Orders v2, capture or authorize, partner merchants, refunds, verified webhooks (feature `paypal`) |
+| `crates/soat-sendcloud` | Sendcloud labels for DHL, DPD, GLS, PostNL, UPS and more through a shop's own account (feature `sendcloud`) |
 | `crates/soat-promotions` | Discount codes and automatic discounts: percentage, fixed amount, free shipping, buy X get Y, per collection, with dates, minimums and limits |
 | `crates/soat-giftcards` | Gift cards and store credit: balances with a ledger, spent at checkout as payments |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
@@ -124,6 +126,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Shipping zones and rates
 - [x] Payments core and manual payment
 - [x] Stripe, Mollie and PayPal
+- [x] Shipping labels through carrier accounts (Sendcloud)
 - [x] Orders, draft orders and order edits
 - [x] Checkout
 - [x] Fulfillment, returns and refunds

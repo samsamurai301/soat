@@ -19,6 +19,7 @@ soat-events = { path = "crates/soat-events" }
 soat-webhooks = { path = "crates/soat-webhooks" }
 soat-fields = { path = "crates/soat-fields" }
 soat-files = { path = "crates/soat-files" }
+soat-http = { path = "crates/soat-http" }
 soat-catalog = { path = "crates/soat-catalog" }
 soat-inventory = { path = "crates/soat-inventory" }
 soat-pricing = { path = "crates/soat-pricing" }
@@ -30,6 +31,7 @@ soat-payments = { path = "crates/soat-payments" }
 soat-stripe = { path = "crates/soat-stripe" }
 soat-mollie = { path = "crates/soat-mollie" }
 soat-paypal = { path = "crates/soat-paypal" }
+soat-sendcloud = { path = "crates/soat-sendcloud" }
 soat-promotions = { path = "crates/soat-promotions" }
 soat-giftcards = { path = "crates/soat-giftcards" }
 soat-orders = { path = "crates/soat-orders" }

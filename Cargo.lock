@@ -1705,6 +1705,7 @@ dependencies = [
  "soat-paypal",
  "soat-pricing",
  "soat-promotions",
+ "soat-sendcloud",
  "soat-shipping",
  "soat-storefront",
  "soat-stripe",
@@ -1897,6 +1898,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "soat-http"
+version = "0.0.1"
+dependencies = [
+ "bytes",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "serde_json",
+ "tokio",
+ "zapline",
+]
+
+[[package]]
 name = "soat-i18n"
 version = "0.0.1"
 dependencies = [
@@ -2010,6 +2026,7 @@ dependencies = [
  "soat-inventory",
  "soat-module",
  "soat-payments",
+ "soat-shipping",
  "soat-tax",
  "soat-tenancy",
  "sqlx",
@@ -2020,19 +2037,13 @@ dependencies = [
 name = "soat-payments"
 version = "0.0.1"
 dependencies = [
- "bytes",
- "http",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-util",
  "serde",
  "serde_json",
  "soat-core",
+ "soat-http",
  "soat-module",
  "soat-tenancy",
  "sqlx",
- "tokio",
  "zapline",
 ]
 
@@ -2077,6 +2088,17 @@ dependencies = [
  "soat-module",
  "soat-tenancy",
  "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-sendcloud"
+version = "0.0.1"
+dependencies = [
+ "base64 0.22.1",
+ "serde_json",
+ "soat-http",
+ "soat-shipping",
  "zapline",
 ]
 

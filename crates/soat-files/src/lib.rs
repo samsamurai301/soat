@@ -139,9 +139,9 @@ async fn row(conn: &mut PgConnection, tenant: &Tenant, id: &str) -> Result<Row> 
 }
 
 /// Upload a file (`files:write`): a `multipart/form-data` field `file`, up
-/// to 20 MiB, and optionally `alt`. PNG, JPEG, GIF, WebP, AVIF, PDF, MP4 and
-/// WebM only, recognized by content: anything else is a 415
-/// `unsupported_file_type`. Publishes `file.created`.
+/// to 20 MiB, and optionally `alt`. PNG, JPEG, GIF, WebP, AVIF, PDF, MP4,
+/// WebM, MP3, ZIP and EPUB only, recognized by content: anything else is a
+/// 415 `unsupported_file_type`. Publishes `file.created`.
 #[post("/api/files", tag = "files", status = 201)]
 async fn upload(
     db: Db,
@@ -178,7 +178,7 @@ async fn upload(
     let kind = detect(&bytes).ok_or_else(|| {
         Error::new(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "only PNG, JPEG, GIF, WebP, AVIF, PDF, MP4 and WebM files",
+            "only PNG, JPEG, GIF, WebP, AVIF, PDF, MP4, WebM, MP3, ZIP and EPUB files",
         )
         .with_code("unsupported_file_type")
     })?;
@@ -312,6 +312,48 @@ async fn delete_file(
     // The row is gone; a failed delete of the bytes only leaves garbage.
     let _ = storage.delete(&current.key).await;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Stores `bytes` as a file of the shop, named after `name`, in the
+/// tenant transaction `tx`, and publishes `file.created`: for files a
+/// module makes itself (a shipping label, say). A type SOAT does not store
+/// is a 415 `unsupported_file_type`.
+pub async fn store(
+    tx: &mut soat_tenancy::TenantTx,
+    scope: &impl soat_tenancy::Scope,
+    storage: &Storage,
+    name: &str,
+    bytes: zapline::Bytes,
+) -> Result<FileView> {
+    let kind = detect(&bytes).ok_or_else(|| {
+        Error::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "not a file type SOAT stores",
+        )
+        .with_code("unsupported_file_type")
+    })?;
+    let id = FileId::new();
+    let file_name = safe_file_name(name, kind);
+    let key = format!("{}/{}/{}", scope.tenant_id(), id, file_name);
+    let size = bytes.len() as i64;
+    storage
+        .put_with(&key, bytes, PutOptions::new().content_type(kind.mime))
+        .await?;
+    let row = sqlx::query_as::<_, Row>(&format!(
+        "INSERT INTO files (id, tenant_id, key, file_name, content_type, size, alt) \
+         VALUES ($1, $2, $3, $4, $5, $6, '') RETURNING {COLUMNS}"
+    ))
+    .bind(id.as_str())
+    .bind(scope.tenant_id())
+    .bind(&key)
+    .bind(&file_name)
+    .bind(kind.mime)
+    .bind(size)
+    .fetch_one(&mut **tx)
+    .await?;
+    let view = row.view(storage);
+    scope.publish(tx, "file.created", &view).await?;
+    Ok(view)
 }
 
 /// The views of `ids`, in that order, skipping ids that are not the shop's

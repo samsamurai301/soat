@@ -55,7 +55,10 @@
   {{#if shipments }}
   <table class="table">
     <tbody>{{#each shipments }}<tr><td>{{ date }}</td><td><span class="badge">{{ status }}</span></td><td>{{ units }} units</td><td>{{ carrier }} {{#if tracking_url }}<a href="{{ tracking_url }}" rel="noopener noreferrer" target="_blank">{{ tracking_number }}</a>{{else}}{{ tracking_number }}{{/if}}</td><td class="num">
-      {{#if open }}<form method="post" action="{{ base }}/orders/{{ order.id }}/shipments/{{ id }}/delivered"><button class="link">Delivered</button></form>
+      {{#each labels }}<a href="{{ url }}" target="_blank" rel="noopener noreferrer">Label ({{ carrier }})</a> {{/each}}
+      {{#if open }}{{#if carrier_accounts }}<form method="post" action="{{ base }}/orders/{{ order.id }}/shipments/{{ id }}/label" class="row tight">
+        <select name="carrier_account_id" aria-label="Carrier account">{{#each carrier_accounts }}<option value="{{ id }}">{{ name }}</option>{{/each}}</select><button class="link">Print label</button></form>{{/if}}
+      <form method="post" action="{{ base }}/orders/{{ order.id }}/shipments/{{ id }}/delivered"><button class="link">Delivered</button></form>
       <form method="post" action="{{ base }}/orders/{{ order.id }}/shipments/{{ id }}/cancel" hx-confirm="Cancel this shipment and restock its units?"><button class="link">Cancel</button></form>{{/if}}
     </td></tr>{{/each}}</tbody>
   </table>
