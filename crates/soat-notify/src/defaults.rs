@@ -96,6 +96,44 @@ pub const BUILTINS: &[Builtin] = &[
             "<p><strong>Total: {{order.total}}</strong></p>"
         ),
     },
+    Builtin {
+        key: "password_reset",
+        description: "To a customer who asks to reset their password. Not kept once sent.",
+        subject: "Reset your password at {{shop.name}}",
+        text: concat!(
+            "Hello{{#if customer.first_name}} {{customer.first_name}}{{/if}},\n\n",
+            "Someone asked to reset the password of your account at {{shop.name}}. ",
+            "{{#if access.link}}Set a new one here:\n{{access.link}}\n\n{{/if}}",
+            "{{#if access.link}}Or enter{{else}}Enter{{/if}} this code on the shop's password page: {{access.code}}\n\n",
+            "It works once, for {{access.minutes}} minutes. If you did not ask, ignore this email.\n\n{{shop.name}}\n"
+        ),
+        html: concat!(
+            "<p>Hello{{#if customer.first_name}} {{customer.first_name}}{{/if}},</p>",
+            "<p>Someone asked to reset the password of your account at {{shop.name}}.</p>",
+            "{{#if access.link}}<p><a href=\"{{access.link}}\">Set a new password</a></p>{{/if}}",
+            "<p>{{#if access.link}}Or enter{{else}}Enter{{/if}} this code on the shop's password page: <code>{{access.code}}</code></p>",
+            "<p>It works once, for {{access.minutes}} minutes. If you did not ask, ignore this email.</p><p>{{shop.name}}</p>"
+        ),
+    },
+    Builtin {
+        key: "account_activation",
+        description: "To a customer who ordered as a guest and asks for an account. Not kept once sent.",
+        subject: "Activate your account at {{shop.name}}",
+        text: concat!(
+            "Hello{{#if customer.first_name}} {{customer.first_name}}{{/if}},\n\n",
+            "You have ordered at {{shop.name}} before. ",
+            "{{#if access.link}}Choose a password to activate your account:\n{{access.link}}\n\n{{/if}}",
+            "{{#if access.link}}Or enter{{else}}Enter{{/if}} this code on the shop's password page: {{access.code}}\n\n",
+            "It works once, for {{access.minutes}} minutes. If you did not ask, ignore this email.\n\n{{shop.name}}\n"
+        ),
+        html: concat!(
+            "<p>Hello{{#if customer.first_name}} {{customer.first_name}}{{/if}},</p>",
+            "<p>You have ordered at {{shop.name}} before.</p>",
+            "{{#if access.link}}<p><a href=\"{{access.link}}\">Choose a password to activate your account</a></p>{{/if}}",
+            "<p>{{#if access.link}}Or enter{{else}}Enter{{/if}} this code on the shop's password page: <code>{{access.code}}</code></p>",
+            "<p>It works once, for {{access.minutes}} minutes. If you did not ask, ignore this email.</p><p>{{shop.name}}</p>"
+        ),
+    },
 ];
 
 /// The built-in template `key`.

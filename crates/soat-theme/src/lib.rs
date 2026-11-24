@@ -67,6 +67,8 @@ pub const DEFAULT_FILES: &[(&str, Kind, &str)] = &[
         include_str!("../theme/register.html"),
     ),
     ("account", Kind::Page, include_str!("../theme/account.html")),
+    ("forgot", Kind::Page, include_str!("../theme/forgot.html")),
+    ("access", Kind::Page, include_str!("../theme/access.html")),
     (
         "not_found",
         Kind::Page,

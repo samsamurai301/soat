@@ -102,6 +102,12 @@ impl Module for Storefront {
             seo::sitemap,
             choose_country,
         ))
+        .mount((
+            account::forgot_page,
+            account::forgot,
+            account::access_page,
+            account::set_password,
+        ))
         .mount((blog::blog_page, blog::feed, blog::post_page))
         .plugin(headless::mount)
         .fallback(seo::fallback)
@@ -221,6 +227,8 @@ const NOINDEX: &[&str] = &[
     "login",
     "register",
     "account",
+    "forgot",
+    "access",
     "search",
     "not_found",
 ];

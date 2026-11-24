@@ -5,6 +5,7 @@
 //! [`addresses`] and custom fields (`PUT /api/fields/customer/{key}`).
 //! Customers sign in to the storefront with [`accounts`].
 
+pub mod access;
 pub mod accounts;
 pub mod addresses;
 
@@ -61,6 +62,7 @@ impl Module for Customers {
         ))
         .plugin(addresses::mount)
         .plugin(accounts::mount)
+        .plugin(access::mount)
     }
 }
 

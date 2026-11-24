@@ -382,7 +382,7 @@ async fn shops_reword_templates() {
     let all = s
         .staff("GET", "/api/notifications/templates", Value::Null, 200)
         .await;
-    assert_eq!(all.as_array().unwrap().len(), 6);
+    assert_eq!(all.as_array().unwrap().len(), 8);
     assert_eq!(all[0]["key"], "order_confirmation");
     assert_eq!(all[0]["customized"], false);
     assert_eq!(all[1]["enabled"], false);

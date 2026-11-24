@@ -61,7 +61,7 @@ layer.
 ## C. Selling
 
 - [x] C1 Customers: profiles, unique email per shop, marketing consent with time, tags, addresses with one default, custom fields **alpha**
-- [x] C2 Customer login: storefront register, sign in, sign out, own profile; `Shop` extractor for public requests; claiming a known email waits for C16 **alpha**
+- [x] C2 Customer login: storefront register, sign in, sign out, own profile; `Shop` extractor for public requests; claiming a known email by an emailed link (see C21) **alpha**
 - [x] C3 Cart: token-held storefront carts, live prices and stock per line, customers claim carts, staff list them **alpha**
 - [x] C4 Tax zones and rates, EU VAT: zones per country set, rates per tax class in basis points, products carry a class, EU preset, origin or destination (OSS) VAT, reverse charge, `POST /api/tax/quote` **alpha**
 - [x] C5 Tax provider trait: `TaxProvider` adapters registered on the tax module, the built-in `http` adapter (signed JSON to the shop's tax service); a shop picks one with sealed credentials (`/api/tax/provider`), answers are kept 10 minutes, and the zones stand in when it fails, saying why (guide: `docs/tax-providers.md`)
@@ -80,6 +80,7 @@ layer.
 - [x] C18 PayPal and Mollie: Mollie with one platform key or organization token and a profile per method, checkout redirect, capture, cancel, refunds, webhooks that re-read the payment from Mollie; PayPal Orders v2 with buyer approval, capture or authorize, partner merchant accounts, refunds and voids, webhooks verified with PayPal; both behind features, tested against local fakes **alpha**
 - [x] C19 Carrier adapters and labels: a carrier adapter trait; shops add carrier accounts whose credentials are sealed and never shown again; labels printed per shipment put their tracking on it and keep the PDF as a file, and can be voided; Sendcloud (DHL, DPD, GLS, PostNL, UPS and more) behind a feature, tested against a local fake; print from the admin order page
 - [x] C20 Order edits and draft orders: staff draft an order with catalog items at their prices or their own, shipping, a discount and a note, see totals with tax, and place it as paid or with a payment started; open orders change quantities, lose unshipped lines and gain items, with stock holds, totals and financial status following and the balance owed either way **alpha**
+- [x] C21 Password reset and account activation: a customer asks for a link (`POST /api/storefront/account/access`, the same answer for every email, three an hour) and sets a password with it (`.../access/complete`), which signs them in and ends their other sessions; a guest's email is activated the same way; the link goes to the shop's domain or comes as a code; the token is never in an event and the email's body is not kept once sent; storefront pages `/account/forgot` and `/account/access`; reworded like any email
 
 ## D. Storefront and content
 

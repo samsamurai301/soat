@@ -2,6 +2,7 @@
 //! past orders. The session lives in an HttpOnly cookie.
 
 use serde_json::{json, Value};
+use soat_customers::access;
 use soat_customers::accounts::{self, Login, MeChange, Register, SignedIn, SESSION_DAYS};
 use soat_tenancy::Shop;
 use zapline::db::{Db, ListParams};
@@ -163,7 +164,11 @@ pub(crate) async fn register(
     let msg = match e.code() {
         Some("email_taken") => "An account with this email exists. Sign in instead.".to_owned(),
         Some("activation_required") => {
-            "This email has ordered here before. Activating it by email is coming soon.".to_owned()
+            let mut v = View::open(&db, &shop, &headers).await?;
+            v.set("page_title", json!(v.t("forgot_password")));
+            v.set("email", json!(f.email));
+            v.set("intro", json!(v.t("activate_instead")));
+            return v.render("forgot", StatusCode::OK).await;
         }
         Some("validation_error") => e.message().to_owned(),
         _ => return Err(e),
@@ -175,6 +180,101 @@ pub(crate) async fn register(
     v.set("last_name", json!(f.last_name));
     v.set("error", json!(upper_first(&msg)));
     v.render("register", StatusCode::UNPROCESSABLE_ENTITY).await
+}
+
+/// The form to ask for a link to set a password.
+#[get("/account/forgot", tag = "storefront")]
+pub(crate) async fn forgot_page(db: Db, shop: Shop, headers: HeaderMap) -> Result<Response> {
+    let mut v = View::open(&db, &shop, &headers).await?;
+    v.set("page_title", json!(v.t("forgot_password")));
+    v.render("forgot", StatusCode::OK).await
+}
+
+/// The forgot-password form's field.
+#[model]
+pub struct ForgotForm {
+    pub email: String,
+}
+
+/// Ask for a link (a form post). The page says the same whether or not
+/// the email is a customer's.
+#[post("/account/forgot", tag = "storefront")]
+pub(crate) async fn forgot(
+    db: Db,
+    shop: Shop,
+    headers: HeaderMap,
+    Form(f): Form<ForgotForm>,
+) -> Result<Response> {
+    let email = f.email.trim();
+    if email.contains('@') && email.len() <= 254 {
+        let host = headers.get("host").and_then(|h| h.to_str().ok());
+        access::ask(&db, &shop, email, host).await?;
+    }
+    let mut v = View::open(&db, &shop, &headers).await?;
+    v.set("page_title", json!(v.t("forgot_password")));
+    v.set("sent", json!(true));
+    v.render("forgot", StatusCode::OK).await
+}
+
+/// The query of the set-password page: the token from the email's link.
+#[model]
+pub struct AccessQuery {
+    pub token: Option<String>,
+}
+
+/// The form to set a password, with the link's token or a code to enter.
+#[get("/account/access", tag = "storefront")]
+pub(crate) async fn access_page(
+    db: Db,
+    shop: Shop,
+    headers: HeaderMap,
+    Query(q): Query<AccessQuery>,
+) -> Result<Response> {
+    let mut v = View::open(&db, &shop, &headers).await?;
+    v.set("page_title", json!(v.t("set_password")));
+    v.set("token", json!(q.token.filter(|t| !t.is_empty())));
+    v.render("access", StatusCode::OK).await
+}
+
+/// The set-password form's fields.
+#[model]
+pub struct AccessForm {
+    pub token: String,
+    pub password: String,
+}
+
+/// Set the password (a form post) and sign in; a link that does not work
+/// shows the form again.
+#[post("/account/access", tag = "storefront")]
+pub(crate) async fn set_password(
+    db: Db,
+    shop: Shop,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Form(f): Form<AccessForm>,
+) -> Result<Response> {
+    let u = access::UseAccess {
+        token: f.token.trim().to_owned(),
+        password: f.password,
+    };
+    let outcome = match u.validate() {
+        Ok(()) => access::use_link(&db, &shop, u).await,
+        Err(e) => Err(Error::unprocessable(first_error(&e)).with_code("validation_error")),
+    };
+    let e = match outcome {
+        Ok(s) => return signed_in(&db, &shop, &headers, conn.secure, s).await,
+        Err(e) => e,
+    };
+    let mut v = View::open(&db, &shop, &headers).await?;
+    let msg = match e.code() {
+        Some("invalid_link") => v.t("invalid_link"),
+        Some("validation_error") => upper_first(e.message()),
+        _ => return Err(e),
+    };
+    v.set("page_title", json!(v.t("set_password")));
+    v.set("token", json!(f.token));
+    v.set("error", json!(msg));
+    v.render("access", StatusCode::UNPROCESSABLE_ENTITY).await
 }
 
 /// Sign out (a form post): ends the session and drops its cookie.

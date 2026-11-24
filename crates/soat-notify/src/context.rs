@@ -115,6 +115,12 @@ pub fn refund(o: &Order, r: &Value) -> Value {
 pub fn sample(shop: &str) -> Value {
     json!({
         "shop": { "name": shop },
+        "customer": { "first_name": "Ada", "email": "ada@example.com" },
+        "access": {
+            "link": "https://shop.example.com/account/access?token=sample",
+            "code": "sample",
+            "minutes": 60,
+        },
         "order": {
             "id": "ord_sample",
             "number": 1001,

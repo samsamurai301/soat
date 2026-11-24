@@ -125,7 +125,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Customer group and quantity tier prices
 - [x] Digital products: downloads once paid, nothing to ship
 - [x] Bundles sold from their items' stock
-- [x] Customers
+- [x] Customers, with password reset and account activation by email
 - [x] Cart
 - [x] Tax zones and EU VAT
 - [x] Shipping zones and rates

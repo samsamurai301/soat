@@ -7,8 +7,9 @@
 //! are separate from staff sessions and only valid in their own shop.
 //!
 //! An email that is already a customer without an account (a guest
-//! order, an import) cannot be claimed by registering: that needs a link
-//! sent to the address, which comes with transactional email (C16).
+//! order, an import) cannot be claimed by registering: it is activated
+//! with a link sent to the address ([`crate::access`]), as is a
+//! forgotten password.
 
 use soat_auth::normalize_email;
 use soat_tenancy::{Shop, TenantTx};
@@ -149,7 +150,11 @@ pub(crate) fn mount(app: App) -> App {
     app.mount((register, login, logout, get_me, update_me))
 }
 
-async fn start_session(tx: &mut TenantTx, shop: &Shop, customer: Me) -> Result<CustomerSession> {
+pub(crate) async fn start_session(
+    tx: &mut TenantTx,
+    shop: &Shop,
+    customer: Me,
+) -> Result<CustomerSession> {
     let token = format!("{TOKEN_PREFIX}{}", new_token()?);
     sqlx::query(
         "INSERT INTO customer_sessions (token_hash, tenant_id, customer_id, expires_at) \
@@ -204,7 +209,7 @@ pub async fn create_account(db: &Db, shop: &Shop, r: Register) -> Result<Custome
         }
         Some((false,)) => {
             return Err(Error::conflict(
-                "this email is already a customer; an activation link is needed",
+                "this email is already a customer; ask for a link to activate it",
             )
             .with_code("activation_required"))
         }

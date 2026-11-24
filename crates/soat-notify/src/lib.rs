@@ -3,7 +3,9 @@
 //! The module listens to order events and sends an email for each:
 //! confirmation when an order is placed (and a notice to the shop's staff
 //! address), shipping confirmation, cancellation, refunds, and payment
-//! received (off by default). Each shop can reword any template (subject,
+//! received (off by default); and to customers, the link to reset a
+//! password or activate an account (`customer.access_requested`), whose
+//! body is not kept once sent. Each shop can reword any template (subject,
 //! text and HTML, in the small language of [`soat_core::template`]), turn
 //! templates off, and set the sender name and reply-to address. Every
 //! email is logged, can be read back and resent.
@@ -75,7 +77,7 @@ impl Module for Notify {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy", "events", "payments", "orders"]
+        &["tenancy", "events", "customers", "payments", "orders"]
     }
 
     fn migrations(&self) -> Option<Dir> {
@@ -511,6 +513,12 @@ async fn resend_message(
 ) -> Result<Json<SentEmail>> {
     let mut tx = tenant.begin_for(&db, &NOTIFICATIONS_MANAGE).await?;
     let m = message(&mut tx, &tenant, &id).await?;
+    if ACCESS_TEMPLATES.contains(&m.template.as_str()) {
+        return Err(Error::unprocessable(
+            "an email with an access link cannot be resent; the customer asks for a new one",
+        )
+        .with_code("not_resendable"));
+    }
     let s = settings(&mut tx, &tenant).await?;
     let sender = sender(&s, &shop_name(&mut tx, &tenant).await?, &from.0 .0);
     let outcome = deliver(&mailer.0, &sender, s.reply_to.as_deref(), &m).await;
@@ -605,6 +613,12 @@ impl Scope for EventScope {
     }
 }
 
+/// A customer asked for a link to set a password.
+const ACCESS_REQUESTED: &str = "customer.access_requested";
+/// The emails that carry such a link: their bodies are not kept once sent,
+/// and they cannot be resent.
+const ACCESS_TEMPLATES: &[&str] = &["password_reset", "account_activation"];
+
 /// Which emails an event sends: `(template, what it is about)`.
 fn templates_for(kind: &str) -> &'static [&'static str] {
     match kind {
@@ -613,6 +627,7 @@ fn templates_for(kind: &str) -> &'static [&'static str] {
         "order.canceled" => &["order_canceled"],
         "fulfillment.created" => &["shipping_confirmation"],
         "payment.refunded" => &["refund_issued"],
+        ACCESS_REQUESTED => ACCESS_TEMPLATES,
         _ => &[],
     }
 }
@@ -670,72 +685,16 @@ impl Subscriber for Mailings {
 
             // Write the emails down, once per event.
             let mut tx = begin().await?;
-            let Some(order) = Self::order(&mut tx, &scope, event).await? else {
-                return Ok(());
-            };
             let s = settings(&mut tx, &scope).await?;
             let shop = shop_name(&mut tx, &scope).await?;
-            let mut data = json!({
-                "shop": { "name": shop },
-                "order": context::order(&order),
-            });
-            match event.kind.as_str() {
-                "fulfillment.created" => {
-                    data["fulfillment"] =
-                        context::fulfillment(&order, &event.payload["fulfillment"]);
-                }
-                "payment.refunded" => data["refund"] = context::refund(&order, &event.payload),
-                _ => {}
-            }
-            let mut ids = Vec::new();
-            for key in templates_for(&event.kind) {
-                if s.disabled.iter().any(|k| k == key) {
-                    continue;
-                }
-                let recipient = if *key == "staff_new_order" {
-                    match &s.staff_email {
-                        Some(e) => e.clone(),
-                        None => continue,
-                    }
-                } else {
-                    order.email.clone()
+            let ids = if event.kind == ACCESS_REQUESTED {
+                access_emails(&mut tx, &scope, event, &shop).await?
+            } else {
+                let Some(order) = Self::order(&mut tx, &scope, event).await? else {
+                    return Ok(());
                 };
-                let b = known(key)?;
-                let (_, subject, text, html) = wording(&mut tx, &scope, b).await?;
-                let r = render(&subject, &text, &html, &data)
-                    .or_else(|_| render(b.subject, b.text, b.html, &data))?;
-                let id = EmailMessageId::new();
-                sqlx::query(
-                    "INSERT INTO email_messages (id, tenant_id, template, event_id, order_id, \
-                     recipient, subject, text_body, html_body) \
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
-                     ON CONFLICT (tenant_id, event_id, template) DO NOTHING",
-                )
-                .bind(id.as_str())
-                .bind(&event.tenant_id)
-                .bind(key)
-                .bind(&event.id)
-                .bind(&order.id)
-                .bind(&recipient)
-                .bind(&r.subject)
-                .bind(&r.text)
-                .bind(&r.html)
-                .execute(&mut *tx)
-                .await?;
-                let (id,): (String,) = sqlx::query_as(
-                    "SELECT id FROM email_messages WHERE tenant_id = $1 AND event_id = $2 \
-                     AND template = $3 AND status <> 'sent'",
-                )
-                .bind(&event.tenant_id)
-                .bind(&event.id)
-                .bind(key)
-                .fetch_optional(&mut *tx)
-                .await?
-                .unwrap_or_default();
-                if !id.is_empty() {
-                    ids.push(id);
-                }
-            }
+                order_emails(&mut tx, &scope, event, &s, &shop, &order).await?
+            };
             tx.commit().await?;
 
             // Send them, noting each outcome; a failure retries the event.
@@ -746,6 +705,9 @@ impl Subscriber for Mailings {
                 let m = message(&mut tx, &scope, &id).await?;
                 let outcome = deliver(&mailer, &sender, s.reply_to.as_deref(), &m).await;
                 record(&mut tx, &scope, &id, &outcome).await?;
+                if outcome.is_ok() && ACCESS_TEMPLATES.contains(&m.template.as_str()) {
+                    redact(&mut tx, &scope, &id).await?;
+                }
                 tx.commit().await?;
                 if let Err(e) = outcome {
                     failed = Some(e);
@@ -759,4 +721,152 @@ impl Subscriber for Mailings {
             }
         })
     }
+}
+
+/// Writes down the emails an order event calls for; the ids still to send.
+async fn order_emails(
+    tx: &mut PgConnection,
+    scope: &EventScope,
+    event: &Event,
+    s: &NotificationSettings,
+    shop: &str,
+    order: &Order,
+) -> Result<Vec<String>> {
+    let mut data = json!({
+        "shop": { "name": shop },
+        "order": context::order(order),
+    });
+    match event.kind.as_str() {
+        "fulfillment.created" => {
+            data["fulfillment"] = context::fulfillment(order, &event.payload["fulfillment"]);
+        }
+        "payment.refunded" => data["refund"] = context::refund(order, &event.payload),
+        _ => {}
+    }
+    let mut ids = Vec::new();
+    for key in templates_for(&event.kind) {
+        if s.disabled.iter().any(|k| k == key) {
+            continue;
+        }
+        let recipient = if *key == "staff_new_order" {
+            match &s.staff_email {
+                Some(e) => e.clone(),
+                None => continue,
+            }
+        } else {
+            order.email.clone()
+        };
+        let r = rendered(tx, scope, key, &data).await?;
+        ids.extend(write_message(tx, event, key, Some(&order.id), &recipient, &r).await?);
+    }
+    Ok(ids)
+}
+
+/// Writes down the email with a customer's access link. The token is read
+/// once; a retried event finds the email already written.
+async fn access_emails(
+    tx: &mut PgConnection,
+    scope: &EventScope,
+    event: &Event,
+    shop: &str,
+) -> Result<Vec<String>> {
+    let Some(link) = event.payload["id"].as_str() else {
+        return Ok(Vec::new());
+    };
+    let Some(mail) = soat_customers::access::access_mail(tx, scope, link).await? else {
+        // Written before (a retry) or no longer usable.
+        let unsent: Vec<(String,)> = sqlx::query_as(
+            "SELECT id FROM email_messages WHERE tenant_id = $1 AND event_id = $2 \
+             AND status <> 'sent'",
+        )
+        .bind(&event.tenant_id)
+        .bind(&event.id)
+        .fetch_all(&mut *tx)
+        .await?;
+        return Ok(unsent.into_iter().map(|(id,)| id).collect());
+    };
+    let key = if mail.purpose == "reset" {
+        "password_reset"
+    } else {
+        "account_activation"
+    };
+    let data = json!({
+        "shop": { "name": shop },
+        "customer": { "first_name": mail.first_name, "email": mail.email },
+        "access": {
+            "link": mail.link,
+            "code": mail.token,
+            "minutes": soat_customers::access::LINK_MINUTES,
+        },
+    });
+    let r = rendered(tx, scope, key, &data).await?;
+    Ok(write_message(tx, event, key, None, &mail.email, &r)
+        .await?
+        .into_iter()
+        .collect())
+}
+
+/// Template `key` in the shop's wording (the built-in one if the shop's
+/// does not render).
+async fn rendered(
+    tx: &mut PgConnection,
+    scope: &EventScope,
+    key: &str,
+    data: &Value,
+) -> Result<Rendered> {
+    let b = known(key)?;
+    let (_, subject, text, html) = wording(tx, scope, b).await?;
+    render(&subject, &text, &html, data).or_else(|_| render(b.subject, b.text, b.html, data))
+}
+
+/// Logs an email for `event`, once per template; its id while unsent.
+async fn write_message(
+    tx: &mut PgConnection,
+    event: &Event,
+    key: &str,
+    order_id: Option<&str>,
+    recipient: &str,
+    r: &Rendered,
+) -> Result<Option<String>> {
+    sqlx::query(
+        "INSERT INTO email_messages (id, tenant_id, template, event_id, order_id, \
+         recipient, subject, text_body, html_body) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+         ON CONFLICT (tenant_id, event_id, template) DO NOTHING",
+    )
+    .bind(EmailMessageId::new().as_str())
+    .bind(&event.tenant_id)
+    .bind(key)
+    .bind(&event.id)
+    .bind(order_id)
+    .bind(recipient)
+    .bind(&r.subject)
+    .bind(&r.text)
+    .bind(&r.html)
+    .execute(&mut *tx)
+    .await?;
+    let id: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM email_messages WHERE tenant_id = $1 AND event_id = $2 \
+         AND template = $3 AND status <> 'sent'",
+    )
+    .bind(&event.tenant_id)
+    .bind(&event.id)
+    .bind(key)
+    .fetch_optional(&mut *tx)
+    .await?;
+    Ok(id.map(|(id,)| id))
+}
+
+/// Drops the body of a sent email that carried an access link.
+async fn redact(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Result<()> {
+    sqlx::query(
+        "UPDATE email_messages SET text_body = $3, html_body = '' \
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(scope.tenant_id())
+    .bind(id)
+    .bind("This email held a link to set a password; it is not kept.")
+    .execute(conn)
+    .await?;
+    Ok(())
 }
