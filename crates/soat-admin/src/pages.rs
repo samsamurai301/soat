@@ -90,6 +90,10 @@ const FILES: &[(&str, &str)] = &[
         "settings_assistant",
         include_str!("../admin/settings_assistant.html"),
     ),
+    (
+        "settings_plugins",
+        include_str!("../admin/settings_plugins.html"),
+    ),
 ];
 
 pub(crate) struct Pages(BTreeMap<&'static str, Template>);

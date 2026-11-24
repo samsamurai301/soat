@@ -3,7 +3,8 @@
 //! A plugin is a component built against one world of `soat:plugin`
 //! (`soat-plugin-api`) with its `soat.plugin.json`. [`PluginHost`] loads
 //! it and gives back a [`Plugin`], which is a `soat_core::hooks::Hook`:
-//! add it to the install's `Hooks` and checkout runs it like native code.
+//! add it to the install's `Hooks` and checkout runs it, for the shops
+//! that turn it on, with each shop's settings.
 //!
 //! Every call gets a fresh instance with a fuel budget and a memory cap,
 //! and nothing but the `host` interface (its log and its settings): no
@@ -121,10 +122,16 @@ enum Kind {
     Events(events::EventsPre<Data>),
 }
 
-/// A loaded plugin: a hook.
+/// A loaded plugin: a hook a shop turns on. Cheap to clone; clones
+/// share the component and the log.
+#[derive(Clone)]
 pub struct Plugin {
-    manifest: PluginManifest,
+    inner: Arc<Loaded>,
     settings: Arc<HashMap<String, String>>,
+}
+
+struct Loaded {
+    manifest: PluginManifest,
     engine: Engine,
     fuel: u64,
     kind: Kind,
@@ -177,12 +184,14 @@ impl PluginHost {
             other => return Err(format!("{}: no world {other}", manifest.name)),
         };
         Ok(Plugin {
-            manifest,
+            inner: Arc::new(Loaded {
+                manifest,
+                engine: self.engine.clone(),
+                fuel: self.fuel,
+                kind,
+                log: Arc::new(Mutex::new(VecDeque::new())),
+            }),
             settings: Arc::new(settings),
-            engine: self.engine.clone(),
-            fuel: self.fuel,
-            kind,
-            log: Arc::new(Mutex::new(VecDeque::new())),
         })
     }
 
@@ -256,12 +265,13 @@ fn from_wit_option(o: wit::HookShippingOption) -> core::HookShippingOption {
 
 impl Plugin {
     pub fn manifest(&self) -> &PluginManifest {
-        &self.manifest
+        &self.inner.manifest
     }
 
     /// The plugin's log, oldest first: what it wrote, and why calls failed.
     pub fn log(&self) -> Vec<String> {
-        self.log
+        self.inner
+            .log
             .lock()
             .map(|l| l.iter().cloned().collect())
             .unwrap_or_default()
@@ -269,10 +279,10 @@ impl Plugin {
 
     fn store(&self) -> Store<Data> {
         let mut store = Store::new(
-            &self.engine,
+            &self.inner.engine,
             Data {
                 settings: self.settings.clone(),
-                log: self.log.clone(),
+                log: self.inner.log.clone(),
                 limits: StoreLimitsBuilder::new()
                     .memory_size(MEMORY_BYTES)
                     .instances(16)
@@ -283,7 +293,7 @@ impl Plugin {
         );
         store.limiter(|d| &mut d.limits);
         // A fresh store always takes fuel.
-        let _ = store.set_fuel(self.fuel);
+        let _ = store.set_fuel(self.inner.fuel);
         store
     }
 
@@ -293,7 +303,7 @@ impl Plugin {
         match call(&mut store) {
             Ok(v) => Some(v),
             Err(e) => {
-                push_log(&self.log, format!("error: the call failed: {e:#}"));
+                push_log(&self.inner.log, format!("error: the call failed: {e:#}"));
                 None
             }
         }
@@ -301,7 +311,7 @@ impl Plugin {
 
     /// Delivers an event to an `events` plugin; its error, if any.
     pub fn on_event(&self, event: &core::HookEvent) -> Result<(), String> {
-        let Kind::Events(pre) = &self.kind else {
+        let Kind::Events(pre) = &self.inner.kind else {
             return Ok(());
         };
         let event = wit::HookEvent {
@@ -315,11 +325,38 @@ impl Plugin {
 
 impl core::Hook for Plugin {
     fn name(&self) -> &str {
-        &self.manifest.name
+        &self.inner.manifest.name
+    }
+
+    fn per_shop(&self) -> bool {
+        true
+    }
+
+    fn settings(&self) -> Vec<core::HookSetting> {
+        self.inner
+            .manifest
+            .settings
+            .iter()
+            .map(|s| core::HookSetting {
+                key: s.key.clone(),
+                label: s.label.clone(),
+                secret: s.secret,
+            })
+            .collect()
+    }
+
+    /// The shop's settings over those the install gave it.
+    fn with_settings(&self, settings: &HashMap<String, String>) -> Option<Arc<dyn core::Hook>> {
+        let mut merged = (*self.settings).clone();
+        merged.extend(settings.iter().map(|(k, v)| (k.clone(), v.clone())));
+        Some(Arc::new(Plugin {
+            inner: self.inner.clone(),
+            settings: Arc::new(merged),
+        }))
     }
 
     fn discount(&self, _shop: &str, cart: &core::HookCart) -> Vec<core::Adjustment> {
-        let Kind::Discounts(pre) = &self.kind else {
+        let Kind::Discounts(pre) = &self.inner.kind else {
             return Vec::new();
         };
         let cart = to_wit_cart(cart);
@@ -340,7 +377,7 @@ impl core::Hook for Plugin {
         cart: &core::HookCart,
         options: &[core::HookShippingOption],
     ) -> Vec<core::HookShippingOption> {
-        let Kind::Shipping(pre) = &self.kind else {
+        let Kind::Shipping(pre) = &self.inner.kind else {
             return options.to_vec();
         };
         let cart = to_wit_cart(cart);
@@ -356,7 +393,7 @@ impl core::Hook for Plugin {
 
     /// A plugin that fails lets the order through: its log says why.
     fn validate(&self, _shop: &str, cart: &core::HookCart) -> core::Verdict {
-        let Kind::Validation(pre) = &self.kind else {
+        let Kind::Validation(pre) = &self.inner.kind else {
             return core::Verdict::Allow;
         };
         let cart = to_wit_cart(cart);

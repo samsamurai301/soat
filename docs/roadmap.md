@@ -117,6 +117,7 @@ layer.
 - [x] F6 Admin UI extensions: an app declares up to 10 admin links (`admin_links` on `PATCH /api/apps/{id}`) on the Apps page or next to a product, order or customer; once installed and connected they show there (`GET /api/app-links`, `apps:read`) and open the app with the shop and the record's id
 - [x] F7 Storefront blocks from apps: an app offers up to 10 blocks (`storefront_blocks`: a script it hosts, on every page or on product pages); the owner turns each on per install (`PUT /api/app-installations/{id}/blocks`, or the Apps page), and the default theme loads the script and leaves a `.soat-app-block` element for it (guide: `docs/apps.md`)
 - [x] F8 App directory: a developer lists an app (`PATCH /api/apps/{id}` with tagline, description, category, `app_url` and `listed`); shops search listed apps at `GET /api/app-directory` and `/admin/{shop}/apps/directory`, and installing starts at the app's `app_url?shop=…`, which sends the owner to the consent screen
+- [x] F9 Plugins per shop: plugins run only for shops that turn them on (`GET /api/plugins`, `PUT /api/plugins/{name}`, `plugins:read` and `plugins:manage`), with each shop's settings over the install's, secret ones sealed; admin Settings, Plugins
 
 ## G. Onboarding and import
 

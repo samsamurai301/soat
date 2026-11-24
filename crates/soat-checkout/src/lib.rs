@@ -42,6 +42,9 @@ use zapline::prelude::*;
 use zapline::Resources;
 
 pub mod drafts;
+pub mod plugins;
+
+pub use plugins::{PluginSecrets, PLUGINS_MANAGE, PLUGINS_READ};
 
 /// How long stock is held for an order whose payment is still running.
 pub const HOLD_SECONDS: i64 = 3600;
@@ -50,6 +53,7 @@ pub const HOLD_SECONDS: i64 = 3600;
 #[derive(Default)]
 pub struct Checkout {
     hooks: Hooks,
+    secrets: PluginSecrets,
 }
 
 impl Checkout {
@@ -62,6 +66,12 @@ impl Checkout {
         self.hooks = hooks;
         self
     }
+
+    /// Seals the secret settings shops give plugins.
+    pub fn with_sealer(mut self, sealer: Option<soat_core::secret::Sealer>) -> Self {
+        self.secrets = PluginSecrets(sealer);
+        self
+    }
 }
 
 /// What working out a checkout needs besides the database: the tax
@@ -69,7 +79,9 @@ impl Checkout {
 #[derive(Clone)]
 pub struct CheckoutServices {
     pub taxes: TaxProviders,
+    /// The install's; each shop runs those it turned on ([`plugins`]).
     pub hooks: Hooks,
+    pub plugin_secrets: PluginSecrets,
 }
 
 impl CheckoutServices {
@@ -78,6 +90,7 @@ impl CheckoutServices {
         Self {
             taxes: TaxProviders::none(),
             hooks: Hooks::new(),
+            plugin_secrets: PluginSecrets::default(),
         }
     }
 }
@@ -89,7 +102,15 @@ impl FromRequestParts for CheckoutServices {
             .await
             .map(|s| s.0)
             .unwrap_or_default();
-        Ok(Self { taxes, hooks })
+        let plugin_secrets = State::<PluginSecrets>::from_request_parts(req)
+            .await
+            .map(|s| s.0)
+            .unwrap_or_default();
+        Ok(Self {
+            taxes,
+            hooks,
+            plugin_secrets,
+        })
     }
 }
 
@@ -121,7 +142,7 @@ impl Module for Checkout {
     }
 
     fn permissions(&self) -> &'static [Permission] {
-        &[]
+        &[PLUGINS_READ, PLUGINS_MANAGE]
     }
 
     fn subscribers(&self) -> Vec<Arc<dyn Subscriber>> {
@@ -129,11 +150,8 @@ impl Module for Checkout {
     }
 
     fn mount(&self, app: App) -> App {
-        drafts::mount(app.state(self.hooks.clone())).mount((
-            get_checkout,
-            update_checkout,
-            complete_checkout,
-        ))
+        let app = app.state(self.hooks.clone()).state(self.secrets.clone());
+        plugins::mount(drafts::mount(app)).mount((get_checkout, update_checkout, complete_checkout))
     }
 }
 
@@ -307,6 +325,8 @@ struct Built {
     currency: Currency,
     /// The error a code entered gives, while it does not apply.
     discount_error: Option<Error>,
+    /// The hooks this shop runs.
+    shop_hooks: Hooks,
     /// The cart as hooks see it, when there are hooks.
     hook_cart: Option<HookCart>,
 }
@@ -433,7 +453,8 @@ async fn build(
         });
     }
 
-    let hooks = &services.hooks;
+    let hooks =
+        &plugins::shop_hooks(conn, scope, &services.hooks, &services.plugin_secrets).await?;
     let tags = if hooks.is_empty() {
         None
     } else {
@@ -730,6 +751,7 @@ async fn build(
         currency,
         discount_error,
         hook_cart: seen_by_hooks,
+        shop_hooks: hooks.clone(),
     })
 }
 
@@ -898,7 +920,7 @@ pub async fn complete(
         return Err(Error::unprocessable(why).with_code("invalid_gift_card"));
     }
     if let Some(cart) = &built.hook_cart {
-        if let Verdict::Block(why) = services.hooks.validate(shop.tenant_id(), cart) {
+        if let Verdict::Block(why) = built.shop_hooks.validate(shop.tenant_id(), cart) {
             return Err(Error::unprocessable(why).with_code("order_blocked"));
         }
     }

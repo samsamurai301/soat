@@ -314,16 +314,18 @@ async fn hooks_shape_the_checkout() {
     assert_eq!(done["order"]["shipping_minor"], 0);
 }
 
-/// F2: a WebAssembly plugin runs at checkout like a native hook.
+/// F2 and F9: a WebAssembly plugin runs at checkout for the shops that
+/// turn it on, with their settings; secret ones are never shown.
 #[cfg(feature = "plugins")]
 #[tokio::test]
-async fn a_wasm_plugin_discounts_at_checkout() {
+async fn a_shop_turns_on_a_wasm_plugin() {
     let wasm = include_bytes!("../../soat-plugin-host/fixtures/loyalty.wasm");
-    let manifest = r#"{"name":"loyalty","version":"1.0.0","world":"discounts","api":"0.1.0"}"#;
-    let settings = [("amount".to_string(), "250".to_string())].into();
+    let manifest = r#"{"name":"loyalty","version":"1.0.0","world":"discounts","api":"0.1.0",
+        "settings":[{"key":"amount","label":"Amount off"},
+                    {"key":"token","label":"Token","secret":true}]}"#;
     let plugin = soat_plugin_host::PluginHost::new()
         .unwrap()
-        .load(manifest, wasm, settings)
+        .load(manifest, wasm, Default::default())
         .unwrap();
 
     let url = common::fresh_database_url().await;
@@ -331,7 +333,7 @@ async fn a_wasm_plugin_discounts_at_checkout() {
     settings.hooks = Hooks::new().with(plugin);
     let client = soat::app(Database::postgres(url), settings).test();
     let t = common::setup_admin(&client).await;
-    common::create_tenants(&client, &t, &["acme"]).await;
+    common::create_tenants(&client, &t, &["acme", "other"]).await;
     let c = &client;
 
     let loc = staff(
@@ -378,22 +380,131 @@ async fn a_wasm_plugin_discounts_at_checkout() {
     )
     .await;
     assert_eq!(s, 200);
-    let (s, view) = shopper(
+    let checkout = || async {
+        let (s, view) = shopper(
+            c,
+            &token,
+            "PATCH",
+            &format!("/api/storefront/carts/{id}/checkout"),
+            json!({ "email": "ada@example.com" }),
+        )
+        .await;
+        assert_eq!(s, 200, "{view}");
+        view
+    };
+
+    // Offered, but off until the shop turns it on.
+    let listed = staff(c, &t, "GET", "/api/plugins", Value::Null).await;
+    assert_eq!(listed[0]["name"], "loyalty");
+    assert_eq!(listed[0]["enabled"], false);
+    assert_eq!(listed[0]["settings"][1]["secret"], true);
+    assert_eq!(checkout().await["adjustments"], json!([]));
+
+    let unknown = c
+        .put("/api/plugins/loyalty")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({ "enabled": true, "settings": { "nope": "1" } }))
+        .send()
+        .await;
+    assert_eq!(unknown.status().as_u16(), 422);
+    let missing = c
+        .put("/api/plugins/nothing")
+        .header("x-soat-tenant", "acme")
+        .bearer(&t)
+        .json(&json!({ "enabled": true }))
+        .send()
+        .await;
+    assert_eq!(missing.status().as_u16(), 404);
+
+    let saved = staff(
         c,
-        &token,
-        "PATCH",
-        &format!("/api/storefront/carts/{id}/checkout"),
-        json!({ "email": "ada@example.com" }),
+        &t,
+        "PUT",
+        "/api/plugins/loyalty",
+        json!({ "enabled": true, "settings": { "amount": "300", "token": "s3cret-value" } }),
     )
     .await;
-    assert_eq!(s, 200, "{view}");
+    assert_eq!(saved["enabled"], true);
+    assert_eq!(saved["settings"][0]["value"], "300");
+    assert_eq!(saved["settings"][1]["value"], Value::Null);
+    assert_eq!(saved["settings"][1]["set"], true);
+    assert!(!saved.to_string().contains("s3cret"));
 
-    // 2.50 off the tagged line from its setting; its oversized ask is cut
-    // to what the cart still holds.
+    // 3.00 off the tagged line from the shop's setting; the oversized ask
+    // is cut to what the cart still holds.
+    let view = checkout().await;
     let adjustments = view["adjustments"].as_array().unwrap();
     assert_eq!(adjustments.len(), 2, "{view}");
     assert_eq!(adjustments[0]["label"], "Loyalty");
-    assert_eq!(adjustments[0]["amount_minor"], 250);
-    assert_eq!(adjustments[1]["amount_minor"], 750);
+    assert_eq!(adjustments[0]["amount_minor"], 300);
+    assert_eq!(adjustments[1]["amount_minor"], 700);
     assert_eq!(view["discount_minor"], 1000);
+
+    // Changing a plain setting keeps the secret.
+    let saved = staff(
+        c,
+        &t,
+        "PUT",
+        "/api/plugins/loyalty",
+        json!({ "enabled": true, "settings": { "amount": "200" } }),
+    )
+    .await;
+    assert_eq!(saved["settings"][1]["set"], true);
+    assert_eq!(checkout().await["adjustments"][0]["amount_minor"], 200);
+
+    // The admin's Plugins settings set it up the same way; an empty
+    // secret keeps the one stored.
+    let res = c
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let cookie = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let html = c
+        .get("/admin/acme/settings/plugins")
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .text();
+    assert!(
+        html.contains("loyalty") && html.contains("Amount off"),
+        "{html}"
+    );
+    assert!(html.contains("value=\"200\"") && !html.contains("s3cret"));
+    let res = c
+        .post("/admin/acme/settings/plugins/save/loyalty")
+        .header("cookie", &cookie)
+        .form(&json!({ "enabled": "1", "setting_amount": "150", "setting_token": "" }))
+        .send()
+        .await;
+    assert_eq!(
+        res.header("location"),
+        Some("/admin/acme/settings/plugins?done=1")
+    );
+    let listed = staff(c, &t, "GET", "/api/plugins", Value::Null).await;
+    assert_eq!(listed[0]["settings"][0]["value"], "150");
+    assert_eq!(listed[0]["settings"][1]["set"], true);
+
+    // Another shop has it off.
+    let res = c
+        .get("/api/plugins")
+        .header("x-soat-tenant", "other")
+        .bearer(&t)
+        .send()
+        .await;
+    let other: Value = res.json();
+    assert_eq!(other[0]["enabled"], false);
+    assert_eq!(other[0]["settings"][0]["set"], false);
+
+    // Off again: nothing taken.
+    staff(
+        c,
+        &t,
+        "PUT",
+        "/api/plugins/loyalty",
+        json!({ "enabled": false }),
+    )
+    .await;
+    assert_eq!(checkout().await["adjustments"], json!([]));
 }

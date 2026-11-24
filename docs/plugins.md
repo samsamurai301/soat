@@ -78,6 +78,23 @@ plugins/
 ```
 
 They load at start, in folder name order, which is the order they run in.
+`settings.json` holds the install's defaults; a shop's own settings go
+over them.
+
+## Turning one on for a shop
+
+A plugin runs only for the shops that turn it on. A shop sees the plugins
+the install offers in the admin under Settings, Plugins, or through the API:
+
+- `GET /api/plugins` (`plugins:read`, staff have it): each plugin, whether
+  it is on, and its settings. Secret ones only say whether they are `set`.
+- `PUT /api/plugins/{name}` (`plugins:manage`, owners): `{"enabled": true,
+  "settings": {"amount": "250", "api_key": "…"}}`. A setting the manifest
+  does not declare is a 422 `unknown_setting`. Secret settings are sealed
+  with `SOAT_SECRET_KEY` and never shown again; a secret left out or empty
+  keeps the one stored. Publishes `plugin.configured`, without secrets.
+
+Native hooks run for every shop.
 A plugin that does not load (bad manifest, not a component, the wrong
 world, or importing more than `host`) stops the server with the reason.
 
@@ -114,5 +131,5 @@ Any language with a component toolchain works, for example Rust with
 (no_std, 8 KB): it takes the `amount` setting off every line tagged
 `plugin`; `fixtures/build.sh` builds it.
 
-Next: plugins installed per shop from the admin, with their permissions
-and secret settings, and the host moving into Zapline.
+Next: uploading plugins from the admin instead of the install's folder,
+and the host moving into Zapline.

@@ -1,0 +1,23 @@
+{{> settings_tabs }}
+{{#if plugins }}
+{{#each plugins }}
+<section class="panel">
+  <h2>{{ name }}{{#if enabled }} <span class="badge">On</span>{{/if}}</h2>
+  <form method="post" action="{{ base }}/settings/plugins/save/{{ name }}" class="form">
+    <label class="check"><input type="checkbox" name="enabled" value="1"{{#if enabled }} checked{{/if}}> Run it at this shop's checkout</label>
+    {{#each settings }}
+    {{#if secret }}
+    <label>{{ label }} <input type="password" name="setting_{{ key }}" autocomplete="off"{{#if set }} placeholder="Set; leave empty to keep it"{{/if}}></label>
+    {{else}}
+    <label>{{ label }} <input name="setting_{{ key }}" value="{{ value }}"></label>
+    {{/if}}
+    {{/each}}
+    <button class="button">Save</button>
+  </form>
+</section>
+{{/each}}
+{{else}}
+<section class="panel">
+  <p class="muted">This install offers no plugins yet. Plugins are WebAssembly components the install adds to <code>SOAT_PLUGINS_DIR</code>; each shop then turns on the ones it wants here.</p>
+</section>
+{{/if}}

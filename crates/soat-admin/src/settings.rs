@@ -22,6 +22,7 @@ const AREAS: &[&str] = &[
     "invoices",
     "staff",
     "developers",
+    "plugins",
     "assistant",
 ];
 
@@ -241,6 +242,10 @@ async fn page(mut cx: Ctx, area: &str, error: Option<String>, status: StatusCode
             cx.set("webhooks", hooks);
             cx.set("permissions", perms);
         }
+        "plugins" => {
+            let plugins = page_or!(cx.get("/api/plugins").await);
+            cx.set("plugins", plugins);
+        }
         _ => {
             // Staff who may not manage the assistant do not see its key.
             let (status, key) = cx.call(Method::GET, "/api/assistant/key", None).await;
@@ -283,6 +288,7 @@ async fn page(mut cx: Ctx, area: &str, error: Option<String>, status: StatusCode
                 "invoices" => "Invoices",
                 "staff" => "Staff",
                 "developers" => "Developers",
+                "plugins" => "Plugins",
                 _ => "Claude",
             };
             json!({ "area": a, "label": label, "current": *a == area })
@@ -569,6 +575,32 @@ async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Field
         }
         ("developers", "remove-webhook", Some(w)) => {
             Call::Plain(Method::DELETE, format!("/api/webhooks/{w}"), None)
+        }
+        ("plugins", "save", Some(name)) => {
+            let plugins = match cx.get("/api/plugins").await {
+                Ok(p) => p,
+                Err(r) => return *r,
+            };
+            let Some(plugin) = plugins
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|p| p["name"].as_str().map(encode).as_deref() == Some(name.as_str()))
+            else {
+                return cx.failed(404, &Value::Null);
+            };
+            let settings: serde_json::Map<String, Value> = plugin["settings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|s| s["key"].as_str())
+                .map(|k| (k.to_owned(), json!(f.get(&format!("setting_{k}")))))
+                .collect();
+            Call::Plain(
+                Method::PUT,
+                format!("/api/plugins/{name}"),
+                Some(json!({ "enabled": !f.get("enabled").is_empty(), "settings": settings })),
+            )
         }
         ("assistant", "approval", None) => Call::Plain(
             Method::PUT,

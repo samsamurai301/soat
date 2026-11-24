@@ -222,7 +222,11 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Promotions)
         .with(GiftCards)
         .with(Orders)
-        .with(Checkout::new().with_hooks(settings.hooks.clone()))
+        .with(
+            Checkout::new()
+                .with_hooks(settings.hooks.clone())
+                .with_sealer(settings.sealer.clone()),
+        )
         .with(Invoices)
         .with(Notify::new(settings.mailer, settings.mail_from))
         .with(Cms)

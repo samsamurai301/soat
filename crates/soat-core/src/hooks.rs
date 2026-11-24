@@ -13,6 +13,7 @@
 //! | `checkout-validation` | before an order is placed | block it, saying why |
 //! | `events` | after any change, at least once | react (no change to the cart) |
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -140,12 +141,40 @@ pub fn filtered(
         .collect()
 }
 
+/// A setting a hook asks each shop for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HookSetting {
+    pub key: String,
+    pub label: String,
+    /// Kept sealed, never shown again (API keys).
+    #[serde(default)]
+    pub secret: bool,
+}
+
 /// Code run at the hook points: native Rust an install adds, or (with
 /// the plugin host) a plugin. Every method has a default that changes
 /// nothing; `shop` is the shop's id.
 pub trait Hook: Send + Sync {
-    /// Names it in logs and errors.
+    /// Names it in logs and errors, and to shops.
     fn name(&self) -> &str;
+
+    /// Whether it runs only for shops that turn it on (plugins do);
+    /// otherwise it runs for every shop.
+    fn per_shop(&self) -> bool {
+        false
+    }
+
+    /// What it asks a shop to fill in.
+    fn settings(&self) -> Vec<HookSetting> {
+        Vec::new()
+    }
+
+    /// This hook with a shop's settings over the install's, or none when
+    /// it takes no settings.
+    fn with_settings(&self, settings: &HashMap<String, String>) -> Option<Arc<dyn Hook>> {
+        let _ = settings;
+        None
+    }
 
     /// Amounts to take off the cart.
     fn discount(&self, shop: &str, cart: &HookCart) -> Vec<Adjustment> {
@@ -189,6 +218,33 @@ impl Hooks {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// The hooks, in order.
+    pub fn iter(&self) -> impl Iterator<Item = &Arc<dyn Hook>> {
+        self.0.iter()
+    }
+
+    /// Whether any hook runs only for shops that turn it on.
+    pub fn has_per_shop(&self) -> bool {
+        self.0.iter().any(|h| h.per_shop())
+    }
+
+    /// The hooks one shop runs: every hook that is not [`Hook::per_shop`],
+    /// and those it turned on (named in `on`), with its settings.
+    pub fn for_shop(&self, on: &HashMap<String, HashMap<String, String>>) -> Hooks {
+        let list = self
+            .0
+            .iter()
+            .filter_map(|h| {
+                if !h.per_shop() {
+                    return Some(h.clone());
+                }
+                let settings = on.get(h.name())?;
+                Some(h.with_settings(settings).unwrap_or_else(|| h.clone()))
+            })
+            .collect();
+        Hooks(Arc::new(list))
     }
 
     /// Every hook's adjustments, each kept [`bounded`] by what the ones
@@ -381,5 +437,46 @@ mod tests {
     fn verdicts_read_as_tagged() {
         let v = serde_json::to_value(Verdict::Block("No".into())).unwrap();
         assert_eq!(v, serde_json::json!({ "kind": "block", "reason": "No" }));
+    }
+
+    /// Takes its `amount` setting off the first line.
+    struct Fixed(&'static str, bool, i64);
+    impl Hook for Fixed {
+        fn name(&self) -> &str {
+            self.0
+        }
+        fn per_shop(&self) -> bool {
+            self.1
+        }
+        fn with_settings(&self, s: &HashMap<String, String>) -> Option<Arc<dyn Hook>> {
+            let amount = s.get("amount")?.parse().ok()?;
+            Some(Arc::new(Fixed(self.0, self.1, amount)))
+        }
+        fn discount(&self, _: &str, _: &HookCart) -> Vec<Adjustment> {
+            vec![adj(Some(0), self.2)]
+        }
+    }
+
+    #[test]
+    fn a_shop_runs_its_own_hooks_with_its_settings() {
+        let hooks = Hooks::new()
+            .with(Fixed("native", false, 1))
+            .with(Fixed("plugin", true, 2))
+            .with(Fixed("other", true, 3));
+        assert!(hooks.has_per_shop());
+        let amounts = |h: Hooks| -> Vec<i64> {
+            h.discounts("s", &cart())
+                .iter()
+                .map(|a| a.amount_minor)
+                .collect()
+        };
+        assert_eq!(amounts(hooks.for_shop(&HashMap::new())), vec![1]);
+        let on = HashMap::from([(
+            "plugin".to_string(),
+            HashMap::from([("amount".to_string(), "20".to_string())]),
+        )]);
+        assert_eq!(amounts(hooks.for_shop(&on)), vec![1, 20]);
+        let on = HashMap::from([("other".to_string(), HashMap::new())]);
+        assert_eq!(amounts(hooks.for_shop(&on)), vec![1, 3]);
     }
 }
