@@ -147,6 +147,7 @@ impl Module for Admin {
         ))
         .mount((
             apps::list,
+            apps::directory,
             apps::uninstall,
             apps::authorize_page,
             apps::authorize,

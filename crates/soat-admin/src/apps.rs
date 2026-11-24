@@ -25,6 +25,38 @@ pub(crate) async fn list(
     Ok(cx.render("apps", StatusCode::OK))
 }
 
+/// The app directory: listed apps to find and install.
+#[get("/admin/{shop}/apps/directory", tag = "admin")]
+pub(crate) async fn directory(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path(shop): Path<String>,
+    params: ListParams,
+) -> Result<Response> {
+    let mut cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "settings").await);
+    let q = params.get("q").unwrap_or_default().to_owned();
+    let category = params.get("category").unwrap_or_default().to_owned();
+    let path = format!(
+        "/api/app-directory?q={}&category={}",
+        encode(&q),
+        encode(&category)
+    );
+    let found = page!(cx.get(&path).await);
+    let categories: Vec<_> = found["categories"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|c| json!({ "name": c, "selected": c.as_str() == Some(category.as_str()) }))
+        .collect();
+    cx.set("apps", found["apps"].clone());
+    cx.set("categories", json!(categories));
+    cx.set("q", json!(q));
+    cx.set("page_title", json!("App directory"));
+    Ok(cx.render("app_directory", StatusCode::OK))
+}
+
 /// Uninstall an app (a form post): its key stops working at once.
 #[post("/admin/{shop}/apps/{id}/uninstall", tag = "admin")]
 pub(crate) async fn uninstall(

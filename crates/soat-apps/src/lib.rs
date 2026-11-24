@@ -13,6 +13,11 @@
 //! ```
 //!
 //! Uninstalling revokes the key at once and publishes `app.uninstalled`.
+//!
+//! A developer can list an app in the directory (`PATCH /api/apps/{id}`
+//! with `listed`), where shops find it (`GET /api/app-directory`). A shop
+//! starts installing at the app's `app_url?shop=…`, and the app sends its
+//! owner on to the consent screen with its own `state`.
 
 use soat_auth::Staff;
 use soat_core::{id_kind, Permission, TenantId};
@@ -64,6 +69,8 @@ impl Module for Apps {
             list_installations,
             uninstall,
             token,
+            update_app,
+            directory,
         ))
     }
 }
@@ -79,7 +86,79 @@ pub struct AppView {
     pub redirect_uris: Vec<String>,
     /// The permissions it asks for.
     pub permissions: Vec<String>,
+    /// One line for the directory.
+    pub tagline: String,
+    /// What it does, in a few paragraphs of plain text.
+    pub description: String,
+    /// One of the directory's categories, or empty.
+    pub category: String,
+    /// Where a shop starts installing it: SOAT adds `?shop=…`.
+    pub app_url: Option<String>,
+    /// Whether shops find it in the directory.
+    pub listed: bool,
     pub created_at: String,
+}
+
+/// The directory's categories.
+pub const CATEGORIES: &[&str] = &[
+    "accounting",
+    "analytics",
+    "marketing",
+    "reviews",
+    "sales",
+    "shipping",
+    "support",
+    "other",
+];
+
+/// Body of `PATCH /api/apps/{id}`: only the fields sent change.
+#[model]
+pub struct UpdateApp {
+    #[validate(length(min = 1, max = 100))]
+    pub name: Option<String>,
+    #[validate(length(max = 140))]
+    pub tagline: Option<String>,
+    #[validate(length(max = 5000))]
+    pub description: Option<String>,
+    /// One of `accounting`, `analytics`, `marketing`, `reviews`, `sales`,
+    /// `shipping`, `support`, `other`; empty for none.
+    pub category: Option<String>,
+    /// `https://…` (or `http://localhost…`); empty to remove.
+    pub app_url: Option<String>,
+    /// List the app in the directory; it needs a tagline and an `app_url`.
+    pub listed: Option<bool>,
+}
+
+/// An app in the directory, as a shop sees it.
+#[model]
+#[derive(sqlx::FromRow)]
+pub struct ListedApp {
+    pub id: String,
+    pub name: String,
+    pub tagline: String,
+    pub description: String,
+    pub category: String,
+    /// The permissions it asks for.
+    pub permissions: Vec<String>,
+    /// Where to start installing it in this shop.
+    pub install_url: String,
+    /// Whether this shop has it installed.
+    pub installed: bool,
+}
+
+/// The directory.
+#[model]
+pub struct Directory {
+    pub apps: Vec<ListedApp>,
+    pub categories: Vec<String>,
+}
+
+/// Query of `GET /api/app-directory`.
+#[model]
+pub struct DirectoryQuery {
+    /// Words in the name, tagline or description.
+    pub q: Option<String>,
+    pub category: Option<String>,
 }
 
 /// A new app, with its secret. Store it now: it is shown once.
@@ -176,7 +255,8 @@ pub struct AppToken {
     pub permissions: Vec<String>,
 }
 
-const APP_COLUMNS: &str = "id, name, redirect_uris, permissions, \
+const APP_COLUMNS: &str = "id, name, redirect_uris, permissions, tagline, description, \
+     category, app_url, listed_at IS NOT NULL AS listed, \
      to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at";
 
 const INSTALL_COLUMNS: &str = "i.id, i.app_id, a.name AS app_name, i.permissions, \
@@ -217,42 +297,153 @@ fn check_permissions(known: &Permissions, asked: &[String]) -> Result<Vec<String
     Ok(out)
 }
 
-/// An app's columns, its secret's hash and its owner.
-type AppRow = (
-    String,
-    String,
-    Vec<String>,
-    Vec<String>,
-    String,
-    String,
-    String,
-);
+/// An app with its secret's hash and its owner.
+#[derive(sqlx::FromRow)]
+struct AppRecord {
+    #[sqlx(flatten)]
+    app: AppView,
+    secret_hash: String,
+    owner_id: String,
+}
 
 async fn app_by_id(db: &Db, id: &str) -> Result<Option<(AppView, String, String)>> {
     if AppId::parse(id).is_err() {
         return Ok(None);
     }
-    let row: Option<AppRow> = sqlx::query_as(&format!(
+    let row: Option<AppRecord> = sqlx::query_as(&format!(
         "SELECT {APP_COLUMNS}, secret_hash, owner_id FROM apps WHERE id = $1"
     ))
     .bind(id)
     .fetch_optional(&**db)
     .await?;
-    Ok(row.map(
-        |(id, name, redirect_uris, permissions, created_at, secret_hash, owner)| {
-            (
-                AppView {
-                    id,
-                    name,
-                    redirect_uris,
-                    permissions,
-                    created_at,
-                },
-                secret_hash,
-                owner,
-            )
-        },
+    Ok(row.map(|r| (r.app, r.secret_hash, r.owner_id)))
+}
+
+/// Where a shop starts installing: the app's address with `shop`.
+fn install_url(app_url: &str, shop: &str) -> String {
+    let sep = if app_url.contains('?') { '&' } else { '?' };
+    let query = serde_urlencoded::to_string([("shop", shop)]).unwrap_or_default();
+    format!("{app_url}{sep}{query}")
+}
+
+/// Change one of your apps, or list it in the directory (its owner).
+#[patch("/api/apps/{id}", tag = "apps")]
+async fn update_app(
+    db: Db,
+    staff: Staff,
+    Path(id): Path<String>,
+    Valid(Json(b)): Valid<Json<UpdateApp>>,
+) -> Result<Json<AppView>> {
+    let Some((app, _, owner)) = app_by_id(&db, &id).await? else {
+        return Err(Error::not_found());
+    };
+    if owner != staff.user_id.as_str() {
+        return Err(Error::not_found());
+    }
+    let name = match b.name.as_deref().map(str::trim) {
+        Some("") => return Err(invalid("name cannot be blank")),
+        Some(n) => n.to_owned(),
+        None => app.name,
+    };
+    let category = b
+        .category
+        .map(|c| c.trim().to_owned())
+        .unwrap_or(app.category);
+    if !category.is_empty() && !CATEGORIES.contains(&category.as_str()) {
+        return Err(invalid(format!(
+            "category is one of {}",
+            CATEGORIES.join(", ")
+        )));
+    }
+    let app_url = match b.app_url.as_deref().map(str::trim) {
+        Some("") => None,
+        Some(u) if is_redirect(u) => Some(u.to_owned()),
+        Some(u) => {
+            return Err(invalid(format!(
+                "{u} is not an app address: https://…, or http://localhost while developing"
+            )))
+        }
+        None => app.app_url,
+    };
+    let tagline = b
+        .tagline
+        .map(|t| t.trim().to_owned())
+        .unwrap_or(app.tagline);
+    let description = b
+        .description
+        .map(|d| d.trim().to_owned())
+        .unwrap_or(app.description);
+    let listed = b.listed.unwrap_or(app.listed);
+    if listed && (tagline.is_empty() || app_url.is_none()) {
+        return Err(
+            Error::unprocessable("a listed app needs a tagline and an app_url")
+                .with_code("incomplete_listing"),
+        );
+    }
+    let app = sqlx::query_as::<_, AppView>(&format!(
+        "UPDATE apps SET name = $2, tagline = $3, description = $4, category = $5, \
+         app_url = $6, listed_at = CASE WHEN $7 THEN coalesce(listed_at, now()) END \
+         WHERE id = $1 RETURNING {APP_COLUMNS}"
     ))
+    .bind(&app.id)
+    .bind(&name)
+    .bind(&tagline)
+    .bind(&description)
+    .bind(&category)
+    .bind(&app_url)
+    .bind(listed)
+    .fetch_one(&*db)
+    .await?;
+    Ok(Json(app))
+}
+
+/// The app directory: listed apps, by name, with whether this shop has
+/// each installed (`apps:manage`). `?q=` searches, `?category=` narrows.
+#[get("/api/app-directory", tag = "apps")]
+async fn directory(
+    db: Db,
+    tenant: Tenant,
+    Query(q): Query<DirectoryQuery>,
+) -> Result<Json<Directory>> {
+    let mut tx = tenant.begin_for(&db, &APPS_MANAGE).await?;
+    let words =
+        q.q.as_deref()
+            .map(str::trim)
+            .filter(|w| !w.is_empty())
+            .map(|w| {
+                let escaped = w
+                    .replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_");
+                format!("%{escaped}%")
+            });
+    let category = q.category.filter(|c| !c.is_empty());
+    let rows: Vec<ListedApp> = sqlx::query_as(
+        "SELECT a.id, a.name, a.tagline, a.description, a.category, a.permissions, \
+         a.app_url AS install_url, i.id IS NOT NULL AS installed \
+         FROM apps a LEFT JOIN app_installations i ON i.app_id = a.id AND i.tenant_id = $1 \
+         WHERE a.listed_at IS NOT NULL AND a.app_url IS NOT NULL \
+         AND ($2::text IS NULL OR a.name ILIKE $2 OR a.tagline ILIKE $2 OR a.description ILIKE $2) \
+         AND ($3::text IS NULL OR a.category = $3) \
+         ORDER BY lower(a.name), a.id LIMIT 200",
+    )
+    .bind(tenant.id())
+    .bind(&words)
+    .bind(&category)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let apps = rows
+        .into_iter()
+        .map(|a| ListedApp {
+            install_url: install_url(&a.install_url, tenant.id()),
+            ..a
+        })
+        .collect();
+    Ok(Json(Directory {
+        apps,
+        categories: CATEGORIES.iter().map(|c| (*c).to_owned()).collect(),
+    }))
 }
 
 /// Register an app (any signed-in person). Its `client_secret` is shown

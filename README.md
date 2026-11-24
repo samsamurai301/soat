@@ -90,7 +90,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-mollie` | Mollie provider: iDEAL, Bancontact, cards, Klarna and more, refunds, webhooks checked with Mollie (feature `mollie`) |
 | `crates/soat-paypal` | PayPal provider: Orders v2, capture or authorize, partner merchants, refunds, verified webhooks (feature `paypal`) |
 | `crates/soat-sendcloud` | Sendcloud labels for DHL, DPD, GLS, PostNL, UPS and more through a shop's own account (feature `sendcloud`) |
-| `crates/soat-apps` | Apps a shop installs with consent: OAuth-style code for a scoped API key (feature `apps`) |
+| `crates/soat-apps` | Apps a shop finds in the directory and installs with consent: OAuth-style code for a scoped API key (feature `apps`) |
 | `crates/soat-import` | Moving from Shopify without a gap: its store synced by the Admin API until cutover (feature `shopify-sync`) |
 | `crates/soat-promotions` | Discount codes and automatic discounts: percentage, fixed amount, free shipping, buy X get Y, per collection, with dates, minimums and limits |
 | `crates/soat-giftcards` | Gift cards and store credit: balances with a ledger, spent at checkout as payments |

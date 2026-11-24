@@ -18,6 +18,7 @@ async fn call(
 ) -> Value {
     let mut req = match method {
         "POST" => client.post(path),
+        "PATCH" => client.patch(path),
         "DELETE" => client.delete(path),
         _ => client.get(path),
     };
@@ -327,4 +328,197 @@ async fn the_consent_screen_sends_the_owner_back_to_the_app() {
         apps.contains("Reviews") && apps.contains("not connected yet"),
         "{apps}"
     );
+}
+
+#[tokio::test]
+async fn shops_find_listed_apps_in_the_directory() {
+    let (client, t) = common::with_tenants(&["acme"]).await;
+    let mut ids = Vec::new();
+    for name in ["Reviews", "Hidden"] {
+        let reg = call(
+            &client,
+            Some(&t),
+            None,
+            "POST",
+            "/api/apps",
+            json!({ "name": name, "redirect_uris": ["https://reviews.example.com/cb"],
+                    "permissions": ["products:read"] }),
+            201,
+        )
+        .await;
+        ids.push(reg["app"]["id"].as_str().unwrap().to_owned());
+    }
+    let path = format!("/api/apps/{}", ids[0]);
+
+    // Listing needs a tagline and an address to start installing at.
+    let e = call(
+        &client,
+        Some(&t),
+        None,
+        "PATCH",
+        &path,
+        json!({ "listed": true }),
+        422,
+    )
+    .await;
+    assert_eq!(e["code"], "incomplete_listing");
+    for bad in [
+        json!({ "app_url": "http://reviews.example.com/install" }),
+        json!({ "category": "rockets" }),
+    ] {
+        call(&client, Some(&t), None, "PATCH", &path, bad, 422).await;
+    }
+    let app = call(
+        &client,
+        Some(&t),
+        None,
+        "PATCH",
+        &path,
+        json!({ "tagline": "Product reviews with photos", "category": "reviews",
+                "app_url": "https://reviews.example.com/install", "listed": true }),
+        200,
+    )
+    .await;
+    assert_eq!(app["listed"], true);
+    assert_eq!(app["name"], "Reviews");
+
+    // Only the owner changes it.
+    call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "POST",
+        "/api/staff",
+        json!({ "email": "dev@example.com", "password": "dev password 12345" }),
+        201,
+    )
+    .await;
+    let session = call(
+        &client,
+        None,
+        None,
+        "POST",
+        "/api/auth/login",
+        json!({ "email": "dev@example.com", "password": "dev password 12345" }),
+        200,
+    )
+    .await;
+    let other = session["token"].as_str().unwrap().to_owned();
+    call(
+        &client,
+        Some(&other),
+        None,
+        "PATCH",
+        &path,
+        json!({ "listed": false }),
+        404,
+    )
+    .await;
+
+    // Shops find listed apps only.
+    let dir = call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "GET",
+        "/api/app-directory",
+        Value::Null,
+        200,
+    )
+    .await;
+    let apps = dir["apps"].as_array().unwrap();
+    assert_eq!(apps.len(), 1, "{dir}");
+    assert_eq!(apps[0]["name"], "Reviews");
+    assert_eq!(
+        apps[0]["install_url"],
+        "https://reviews.example.com/install?shop=acme"
+    );
+    assert_eq!(apps[0]["installed"], false);
+    assert!(dir["categories"].as_array().unwrap().len() > 3);
+    for (q, n) in [("photos", 1), ("nothing+like+it", 0), ("100%25", 0)] {
+        let found = call(
+            &client,
+            Some(&t),
+            Some("acme"),
+            "GET",
+            &format!("/api/app-directory?q={q}"),
+            Value::Null,
+            200,
+        )
+        .await;
+        assert_eq!(found["apps"].as_array().unwrap().len(), n, "{q}");
+    }
+    let found = call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "GET",
+        "/api/app-directory?category=shipping",
+        Value::Null,
+        200,
+    )
+    .await;
+    assert_eq!(found["apps"], json!([]));
+
+    // Installed shows as installed, on the API and the admin page.
+    call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "POST",
+        "/api/app-installations",
+        json!({ "client_id": ids[0], "redirect_uri": "https://reviews.example.com/cb" }),
+        201,
+    )
+    .await;
+    let dir = call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "GET",
+        "/api/app-directory",
+        Value::Null,
+        200,
+    )
+    .await;
+    assert_eq!(dir["apps"][0]["installed"], true);
+    let res = client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let me = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let html = client
+        .get("/admin/acme/apps/directory?q=reviews")
+        .header("cookie", &me)
+        .send()
+        .await
+        .text();
+    assert!(
+        html.contains("Product reviews with photos") && !html.contains("Hidden"),
+        "{html}"
+    );
+
+    // Unlisting takes it out of the directory.
+    call(
+        &client,
+        Some(&t),
+        None,
+        "PATCH",
+        &path,
+        json!({ "listed": false }),
+        200,
+    )
+    .await;
+    let dir = call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "GET",
+        "/api/app-directory",
+        Value::Null,
+        200,
+    )
+    .await;
+    assert_eq!(dir["apps"], json!([]));
 }

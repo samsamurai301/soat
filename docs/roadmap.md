@@ -116,7 +116,7 @@ layer.
 - [ ] F5 `soat app new` and dev loop
 - [ ] F6 Admin UI extensions
 - [ ] F7 Storefront blocks from apps
-- [ ] F8 App directory
+- [x] F8 App directory: a developer lists an app (`PATCH /api/apps/{id}` with tagline, description, category, `app_url` and `listed`); shops search listed apps at `GET /api/app-directory` and `/admin/{shop}/apps/directory`, and installing starts at the app's `app_url?shop=…`, which sends the owner to the consent screen
 
 ## G. Onboarding and import
 
