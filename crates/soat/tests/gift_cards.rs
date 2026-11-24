@@ -159,6 +159,20 @@ impl Shop {
             .as_i64()
             .unwrap()
     }
+
+    /// The balance once events have been handled: the app's own scheduled
+    /// dispatcher may hold a delivery while ours skips it, so wait for it.
+    async fn settled_balance(&self, id: &str, expected: i64) -> i64 {
+        for _ in 0..50 {
+            self.dispatch().await;
+            let now = self.balance(id).await;
+            if now == expected {
+                return now;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        self.balance(id).await
+    }
 }
 
 /// A German shop, prices including VAT: a 11.90 tee, 4.95 shipping, and
@@ -502,9 +516,10 @@ async fn gift_cards_pay_at_checkout() {
         201,
     )
     .await;
-    s.dispatch().await;
-    s.dispatch().await;
-    assert_eq!(s.balance(big_id).await, 5000 - 2875 + 875);
+    assert_eq!(
+        s.settled_balance(big_id, 5000 - 2875 + 875).await,
+        5000 - 2875 + 875
+    );
     let card = s
         .staff(
             "GET",
