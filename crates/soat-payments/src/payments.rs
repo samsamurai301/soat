@@ -273,6 +273,43 @@ pub async fn start(
     Ok(payment)
 }
 
+/// Records money already taken by a module of SOAT itself (a gift card,
+/// store credit) as a paid payment, in the shop's transaction. No provider
+/// is asked; refunding it publishes `payment.refunded` for that module to
+/// give the money back. `provider_ref` is unique per `provider`.
+/// Publishes `payment.created` and `payment.updated`.
+pub async fn record(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    reference: &str,
+    provider: &str,
+    provider_ref: &str,
+    amount_minor: i64,
+    currency: &str,
+) -> Result<Payment> {
+    if amount_minor <= 0 {
+        return Err(Error::unprocessable("the amount must be positive").with_code("invalid_amount"));
+    }
+    let payment: Payment = sqlx::query_as::<_, PaymentRow>(&format!(
+        "INSERT INTO payments (id, tenant_id, reference, provider, provider_ref, amount_minor, \
+         currency, status, recorded) VALUES ($1, $2, $3, $4, $5, $6, $7, 'paid', TRUE) \
+         RETURNING {COLUMNS}"
+    ))
+    .bind(PaymentId::new().as_str())
+    .bind(scope.tenant_id())
+    .bind(reference)
+    .bind(provider)
+    .bind(provider_ref)
+    .bind(amount_minor)
+    .bind(currency)
+    .fetch_one(&mut **tx)
+    .await?
+    .into();
+    scope.publish(tx, "payment.created", &payment).await?;
+    scope.publish(tx, "payment.updated", &payment).await?;
+    Ok(payment)
+}
+
 /// One payment of the shop. Run it in the shop's transaction.
 pub async fn get(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Result<Option<Payment>> {
     let Ok(id) = PaymentId::parse(id) else {
@@ -581,11 +618,22 @@ pub async fn refund(
             Error::unprocessable(format!("refund 1 to {left}")).with_code("invalid_refund_amount")
         );
     }
-    let provider = provider_of(providers, &p)?;
-    let settings = settings_of(tx, scope, &p).await?;
-    let provider_ref = provider
-        .refund(&provider_view(&p, scope.tenant_id(), &settings), amount)
-        .await?;
+    let recorded: (bool,) =
+        sqlx::query_as("SELECT recorded FROM payments WHERE tenant_id = $1 AND id = $2")
+            .bind(scope.tenant_id())
+            .bind(&p.id)
+            .fetch_one(&mut **tx)
+            .await?;
+    // A recorded payment's module returns the money on `payment.refunded`.
+    let provider_ref = if recorded.0 {
+        None
+    } else {
+        let provider = provider_of(providers, &p)?;
+        let settings = settings_of(tx, scope, &p).await?;
+        provider
+            .refund(&provider_view(&p, scope.tenant_id(), &settings), amount)
+            .await?
+    };
     let refund = sqlx::query_as::<_, Refund>(&format!(
         "INSERT INTO payment_refunds (id, tenant_id, payment_id, amount_minor, reason, \
          provider_ref) VALUES ($1, $2, $3, $4, $5, $6) RETURNING {REFUND_COLUMNS}"

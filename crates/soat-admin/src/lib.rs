@@ -31,12 +31,14 @@ macro_rules! page_or {
 
 mod api;
 mod assistant;
+mod blog;
 mod builder;
 mod collections;
 mod content;
 mod customers;
 mod dashboard;
 mod discounts;
+mod giftcards;
 mod launch;
 mod onboarding;
 mod orders;
@@ -167,6 +169,13 @@ impl Module for Admin {
             discounts::delete,
         ))
         .mount((
+            giftcards::list,
+            giftcards::new_page,
+            giftcards::create,
+            giftcards::edit_page,
+            giftcards::act,
+        ))
+        .mount((
             variants::set_options,
             variants::add_variant,
             variants::add_all,
@@ -204,6 +213,13 @@ impl Module for Admin {
             content::update_menu,
             content::redirects,
             content::add_redirect,
+        ))
+        .mount((
+            blog::list,
+            blog::new_page,
+            blog::edit_page,
+            blog::create,
+            blog::update,
         ))
         .mount((
             theme::show,

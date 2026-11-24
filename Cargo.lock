@@ -1692,6 +1692,7 @@ dependencies = [
  "soat-events",
  "soat-fields",
  "soat-files",
+ "soat-giftcards",
  "soat-i18n",
  "soat-inventory",
  "soat-invoices",
@@ -1783,6 +1784,7 @@ dependencies = [
  "soat-cart",
  "soat-catalog",
  "soat-core",
+ "soat-giftcards",
  "soat-inventory",
  "soat-module",
  "soat-orders",
@@ -1872,6 +1874,21 @@ dependencies = [
  "serde_json",
  "soat-core",
  "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-giftcards"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-customers",
+ "soat-module",
+ "soat-payments",
  "soat-tenancy",
  "sqlx",
  "zapline",

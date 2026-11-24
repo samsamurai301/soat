@@ -31,6 +31,7 @@ soat-stripe = { path = "crates/soat-stripe" }
 soat-mollie = { path = "crates/soat-mollie" }
 soat-paypal = { path = "crates/soat-paypal" }
 soat-promotions = { path = "crates/soat-promotions" }
+soat-giftcards = { path = "crates/soat-giftcards" }
 soat-orders = { path = "crates/soat-orders" }
 soat-checkout = { path = "crates/soat-checkout" }
 soat-invoices = { path = "crates/soat-invoices" }

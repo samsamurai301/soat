@@ -1,0 +1,13 @@
+<section class="blog">
+  <h1>{{ page_title }}</h1>
+  {{#if tag }}<p><a href="{{ root }}/blog">{{ t.all_posts }}</a></p>{{/if}}
+  {{#if posts }}{{#each posts }}<article class="post-card">
+    {{#if image_url }}<a href="{{ url }}"><img src="{{ image_url }}" alt="" loading="lazy"></a>{{/if}}
+    <h2><a href="{{ url }}">{{ title }}</a></h2>
+    <p class="muted"><time datetime="{{ published_at }}">{{ date }}</time>{{#if author }} · {{ author }}{{/if}}</p>
+    {{#if excerpt }}<p>{{ excerpt }}</p>{{/if}}
+    <p><a href="{{ url }}">{{ t.read_more }}</a></p>
+  </article>{{/each}}{{else}}<p class="muted">{{ t.no_posts }}</p>{{/if}}
+  <nav class="pager">{{#if prev_url }}<a href="{{ prev_url }}">{{ t.previous }}</a>{{/if}}{{#if next_url }}<a href="{{ next_url }}">{{ t.next }}</a>{{/if}}</nav>
+  <p><a href="{{ feed_url }}">{{ t.feed }}</a></p>
+</section>

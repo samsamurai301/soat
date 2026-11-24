@@ -55,6 +55,7 @@ impl Module for Checkout {
             "shipping",
             "payments",
             "promotions",
+            "giftcards",
             "orders",
         ]
     }
@@ -93,6 +94,24 @@ pub struct CheckoutChange {
     /// apply is a 422 `invalid_discount` saying why.
     #[validate(length(max = 64))]
     pub discount_code: Option<String>,
+    /// A gift card's code; an empty string removes it. A card that cannot
+    /// pay is a 422 `invalid_gift_card` saying why.
+    #[validate(length(max = 64))]
+    pub gift_card_code: Option<String>,
+    /// Spend the signed-in customer's store credit.
+    pub use_store_credit: Option<bool>,
+}
+
+/// A gift card or store credit paying part of the order.
+#[model]
+pub struct AppliedBalance {
+    pub gift_card_id: String,
+    /// The code's last characters; empty for store credit.
+    pub last_chars: String,
+    /// What is on it now.
+    pub balance_minor: i64,
+    /// What it pays of this order.
+    pub applied_minor: i64,
 }
 
 /// A checkout with today's prices, shipping and tax.
@@ -122,6 +141,17 @@ pub struct CheckoutView {
     pub discount_minor: i64,
     pub tax_minor: i64,
     pub total_minor: i64,
+    /// The gift card entered, while it can pay.
+    pub gift_card: Option<AppliedBalance>,
+    /// Why the gift card entered can no longer pay.
+    pub gift_card_issue: Option<String>,
+    /// The signed-in customer's store credit in the cart's currency, and
+    /// what of it pays when `use_store_credit` is set.
+    pub store_credit: Option<AppliedBalance>,
+    pub use_store_credit: bool,
+    /// What is left to pay with a payment method, after gift card and
+    /// store credit.
+    pub amount_due_minor: i64,
     pub prices_include_tax: bool,
     /// What is still needed: `lines` (the cart is empty or has issues),
     /// `email`, `shipping_address`, `shipping`.
@@ -143,8 +173,9 @@ pub struct Completed {
 /// Body of completing a checkout.
 #[model]
 pub struct Complete {
-    /// One of `GET /api/storefront/payment-methods`.
-    pub payment_method_id: String,
+    /// One of `GET /api/storefront/payment-methods`; needed unless a gift
+    /// card or store credit pays it all.
+    pub payment_method_id: Option<String>,
     /// Where a payment provider sends the buyer back.
     #[validate(url)]
     pub return_url: Option<String>,
@@ -158,6 +189,8 @@ struct Details {
     vat_number: Option<String>,
     shipping_rate_id: Option<String>,
     discount_code: Option<String>,
+    gift_card_id: Option<String>,
+    use_store_credit: bool,
 }
 
 fn address(v: &Option<SqlJson<Value>>) -> Option<PostalAddress> {
@@ -204,7 +237,8 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
     let cart = view(conn, scope, cart_id).await?;
     let d = sqlx::query_as::<_, Details>(
         "SELECT email, shipping_address, billing_address, vat_number, shipping_rate_id, \
-         discount_code FROM checkouts WHERE tenant_id = $1 AND cart_id = $2",
+         discount_code, gift_card_id, use_store_credit FROM checkouts \
+         WHERE tenant_id = $1 AND cart_id = $2",
     )
     .bind(scope.tenant_id())
     .bind(cart_id)
@@ -390,6 +424,45 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
     };
     let totals = soat_orders::totals(&draft)?;
     let ready = missing.is_empty();
+
+    // Gift card, then store credit, pay what they can of the total.
+    let mut due = totals.total;
+    let (mut gift_card, mut gift_card_issue) = (None, None);
+    if let Some(card) = &d.gift_card_id {
+        match soat_giftcards::usable(conn, scope, card, &cart.currency).await? {
+            Some((card, None)) => {
+                let applied = card.balance_minor.min(due);
+                due -= applied;
+                gift_card = Some(AppliedBalance {
+                    gift_card_id: card.id,
+                    last_chars: card.last_chars,
+                    balance_minor: card.balance_minor,
+                    applied_minor: applied,
+                });
+            }
+            Some((_, Some(why))) => gift_card_issue = Some(why),
+            None => gift_card_issue = Some("no such gift card".into()),
+        }
+    }
+    let mut store_credit = None;
+    if let Some(customer) = &cart.customer_id {
+        if let Some(card) =
+            soat_giftcards::store_credit(conn, scope, customer, &cart.currency).await?
+        {
+            let applied = if d.use_store_credit {
+                card.balance_minor.min(due)
+            } else {
+                0
+            };
+            due -= applied;
+            store_credit = Some(AppliedBalance {
+                gift_card_id: card.id,
+                last_chars: card.last_chars,
+                balance_minor: card.balance_minor,
+                applied_minor: applied,
+            });
+        }
+    }
     Ok(Built {
         view: CheckoutView {
             cart,
@@ -408,6 +481,11 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
             discount_minor: totals.discount,
             tax_minor: totals.tax,
             total_minor: totals.total,
+            gift_card,
+            gift_card_issue,
+            store_credit,
+            use_store_credit: d.use_store_credit,
+            amount_due_minor: due,
             prices_include_tax,
             missing,
             ready,
@@ -458,13 +536,27 @@ pub async fn update(
                 .with_code("invalid_vat_number"));
         }
     }
+    // A gift card code becomes the card's id; "" removes it.
+    let gift_card = match c.gift_card_code.as_deref().map(str::trim) {
+        None => None,
+        Some("") => Some(String::new()),
+        Some(code) => {
+            let cart = soat_cart::view(tx, shop, id).await?;
+            Some(
+                soat_giftcards::find(tx, shop, code, &cart.currency)
+                    .await?
+                    .id,
+            )
+        }
+    };
     let json = |a: &Option<PostalAddress>| {
         a.as_ref()
             .map(|a| SqlJson(serde_json::to_value(a).unwrap_or(Value::Null)))
     };
     sqlx::query(
         "INSERT INTO checkouts (cart_id, tenant_id, email, shipping_address, billing_address, \
-         vat_number, shipping_rate_id, discount_code) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         vat_number, shipping_rate_id, discount_code, gift_card_id, use_store_credit) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), COALESCE($10, FALSE)) \
          ON CONFLICT (cart_id) DO UPDATE SET \
          email = COALESCE(EXCLUDED.email, checkouts.email), \
          shipping_address = COALESCE(EXCLUDED.shipping_address, checkouts.shipping_address), \
@@ -472,6 +564,9 @@ pub async fn update(
          vat_number = COALESCE(EXCLUDED.vat_number, checkouts.vat_number), \
          shipping_rate_id = COALESCE(EXCLUDED.shipping_rate_id, checkouts.shipping_rate_id), \
          discount_code = COALESCE(EXCLUDED.discount_code, checkouts.discount_code), \
+         gift_card_id = CASE WHEN $9::text IS NULL THEN checkouts.gift_card_id \
+                        ELSE NULLIF($9, '') END, \
+         use_store_credit = COALESCE($10, checkouts.use_store_credit), \
          updated_at = now()",
     )
     .bind(id)
@@ -482,6 +577,8 @@ pub async fn update(
     .bind(c.vat_number.as_deref().map(str::trim))
     .bind(&c.shipping_rate_id)
     .bind(c.discount_code.as_deref().map(str::trim))
+    .bind(gift_card)
+    .bind(c.use_store_credit)
     .execute(&mut **tx)
     .await?;
     let mut built = build(tx, shop, id).await?;
@@ -556,15 +653,32 @@ pub async fn complete(
         .with_code("checkout_incomplete")
         .with_details(&built.view.missing));
     }
-    let method = soat_payments::active_method(&mut tx, shop, &c.payment_method_id)
-        .await?
-        .ok_or_else(|| {
-            Error::unprocessable("choose one of the shop's payment methods")
-                .with_code("unknown_payment_method")
-        })?;
-    let confirmed_by_staff = providers
-        .get(&method.provider)
-        .is_some_and(|p| p.confirmed_by_staff());
+    if let Some(why) = built.view.gift_card_issue.take() {
+        return Err(Error::unprocessable(why).with_code("invalid_gift_card"));
+    }
+    let due = built.view.amount_due_minor;
+    let method = match c.payment_method_id.as_deref().filter(|_| due > 0) {
+        Some(m) => Some(
+            soat_payments::active_method(&mut tx, shop, m)
+                .await?
+                .ok_or_else(|| {
+                    Error::unprocessable("choose one of the shop's payment methods")
+                        .with_code("unknown_payment_method")
+                })?,
+        ),
+        None if due > 0 => {
+            return Err(
+                Error::unprocessable("choose one of the shop's payment methods")
+                    .with_code("unknown_payment_method"),
+            )
+        }
+        None => None,
+    };
+    let confirmed_by_staff = method.as_ref().is_some_and(|m| {
+        providers
+            .get(&m.provider)
+            .is_some_and(|p| p.confirmed_by_staff())
+    });
     let view = &built.view;
     let tax = view.tax.as_ref();
     let order = NewOrder {
@@ -583,7 +697,7 @@ pub async fn complete(
         note: String::new(),
         discount_code: view.discount.as_ref().and_then(|a| a.code.clone()),
     };
-    let (placed, token) = soat_orders::place(&mut tx, shop, &order).await?;
+    let (mut placed, token) = soat_orders::place(&mut tx, shop, &order).await?;
     for applied in view.automatic_discount.iter().chain(&view.discount) {
         soat_promotions::redeem(
             &mut tx,
@@ -596,14 +710,34 @@ pub async fn complete(
         .await?;
     }
     hold(&mut tx, shop, &built.lines, &placed.id, confirmed_by_staff).await?;
+    let balances = view.gift_card.iter().chain(&view.store_credit);
+    let mut paid_by_balance = false;
+    for b in balances.filter(|b| b.applied_minor > 0) {
+        soat_giftcards::redeem(
+            &mut tx,
+            shop,
+            &b.gift_card_id,
+            b.applied_minor,
+            &placed.id,
+            built.currency.as_str(),
+        )
+        .await?;
+        paid_by_balance = true;
+    }
+    if paid_by_balance {
+        soat_orders::sync_payments(&mut tx, shop, &placed.id).await?;
+        placed = soat_orders::load(&mut tx, shop, &placed.id)
+            .await?
+            .ok_or_else(|| Error::internal("order vanished"))?;
+    }
     soat_cart::complete(&mut tx, shop, &id, &placed.id).await?;
     tx.commit().await?;
 
-    let payment = if placed.total_minor > 0 {
+    let payment = if let Some(method) = method.filter(|_| due > 0) {
         let req = StartPayment {
             method_id: method.id,
             reference: placed.id.clone(),
-            amount_minor: placed.total_minor,
+            amount_minor: due,
             currency: built.currency,
             return_url: c.return_url,
         };

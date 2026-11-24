@@ -89,11 +89,12 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-mollie` | Mollie provider: iDEAL, Bancontact, cards, Klarna and more, refunds, webhooks checked with Mollie (feature `mollie`) |
 | `crates/soat-paypal` | PayPal provider: Orders v2, capture or authorize, partner merchants, refunds, verified webhooks (feature `paypal`) |
 | `crates/soat-promotions` | Discount codes and automatic discounts: percentage, fixed amount, free shipping, buy X get Y, per collection, with dates, minimums and limits |
+| `crates/soat-giftcards` | Gift cards and store credit: balances with a ledger, spent at checkout as payments |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |
 | `crates/soat-notify` | Transactional email: order, shipping, cancel and refund emails, staff notices, editable templates, sent log |
-| `crates/soat-cms` | Content: pages built from blocks (drafts and published), menus and URL redirects, read by the storefront |
+| `crates/soat-cms` | Content: pages built from blocks (drafts and published), a blog with tags, scheduling and a feed, menus and URL redirects, read by the storefront |
 | `crates/soat-theme` | Themes: a default theme, per-shop template and style edits, settings; safe templates with Markdown |
 | `crates/soat-storefront` | The storefront: server-rendered pages from the theme, cart in a cookie, checkout, order and account pages, htmx |
 | `crates/soat-mcp` | MCP server at `/mcp`: Claude runs a shop through a tool per API operation, scoped by API key, changes held for approval; the admin's chat with Claude on the shop's own key |
@@ -124,9 +125,11 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Checkout
 - [x] Fulfillment, returns and refunds
 - [x] Discount codes, automatic discounts and buy X get Y
+- [x] Gift cards and store credit
 - [x] Transactional email with editable templates
 - [x] Invoices and credit notes
 - [x] Content pages from blocks, and menus
+- [x] Blog with tags, scheduled posts and an Atom feed
 - [x] Storefront catalog API: active products and collections by handle
 - [x] Claude runs your shop over MCP, with every change approved by a person
 - [x] Storefront in Rust from an editable theme (server-rendered with htmx)

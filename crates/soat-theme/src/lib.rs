@@ -51,6 +51,8 @@ pub const DEFAULT_FILES: &[(&str, Kind, &str)] = &[
     ),
     ("search", Kind::Page, include_str!("../theme/search.html")),
     ("page", Kind::Page, include_str!("../theme/page.html")),
+    ("blog", Kind::Page, include_str!("../theme/blog.html")),
+    ("post", Kind::Page, include_str!("../theme/post.html")),
     ("cart", Kind::Page, include_str!("../theme/cart.html")),
     (
         "checkout",

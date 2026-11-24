@@ -23,7 +23,7 @@ layer.
 | Surfaces | `soat-storefront`, `soat-admin`, REST API, `soat-mcp` |
 | Extensions (Cargo features) | `soat-apps`, `soat-plugin-api`, `soat-plugin-host`, `soat-cli`, `soat-onboarding`, `soat-import`, `soat-ai`, `soat-analytics`, `soat-marketing`, `soat-subscriptions`, `soat-b2b`, `soat-channels`, `soat-compliance` |
 | Content | `soat-cms`, `soat-i18n`, `soat-seo`, `soat-search`, `soat-theme` |
-| Selling | `soat-customers`, `soat-cart`, `soat-tax`, `soat-shipping`, `soat-payments`, `soat-checkout`, `soat-orders`, `soat-promotions`, `soat-notify` |
+| Selling | `soat-customers`, `soat-cart`, `soat-tax`, `soat-shipping`, `soat-payments`, `soat-checkout`, `soat-orders`, `soat-promotions`, `soat-giftcards`, `soat-notify` |
 | Catalog | `soat-catalog`, `soat-inventory`, `soat-pricing` |
 | Foundation | `soat-core`, `soat-module`, `soat-tenancy`, `soat-db`, `soat-events`, `soat-auth`, `soat-webhooks`, `soat-fields`, `soat-files` |
 | Zapline + Postgres | gains tenancy, outbox, webhooks, plugin host and MCP as SOAT needs them |
@@ -74,7 +74,7 @@ layer.
 - [x] C12 Refunds and returns: customers or staff request returns of shipped units, staff receive (restock where they shipped from, or not), reject, or refund them through the order's payments with optional shipping; goodwill refunds of any amount across payments **alpha**
 - [x] C13 Discount codes: percentage, fixed amount or free shipping, with currency, minimum subtotal, start and end dates, a usage limit and once per customer; entered at checkout, shared over the lines before tax, recorded on the order and redeemed with it **alpha**
 - [x] C14 Automatic discounts and buy X get Y: discounts without a code that apply by themselves (the one worth most, before any code), buy X get Y with a share off the cheapest units of every lot, any discount limited to a collection's products; a discounts screen in the admin **alpha**
-- [ ] C15 Gift cards and store credit
+- [x] C15 Gift cards and store credit: staff issue gift cards (the code shown once, only a hash kept) and customers' store credit, adjust and disable them, with a ledger; buyers check a balance, spend a gift card at checkout and signed-in customers their store credit, recorded as paid payments of the order so refunds put the money back; admin screens **alpha**
 - [x] C16 Transactional email: order confirmation, staff new-order notice, payment received (off by default), shipping confirmation with tracking, cancellation and refund emails from order events, sent once per event; shops reword any template (a small safe template language), preview it, turn templates off, set sender name and reply-to; a sent log with resend; SMTP through Zapline's mailer **alpha**
 - [x] C17 Invoices and credit notes: shop legal details, an invoice per order when paid, placed or by hand, gapless numbers per series and year, lines with net, VAT and gross, totals per rate, reverse-charge note, immutable once issued; refunds issue credit notes split over the invoice's rates, staff issue more; printable HTML for staff and the buyer **alpha**
 - [x] C18 PayPal and Mollie: Mollie with one platform key or organization token and a profile per method, checkout redirect, capture, cancel, refunds, webhooks that re-read the payment from Mollie; PayPal Orders v2 with buyer approval, capture or authorize, partner merchant accounts, refunds and voids, webhooks verified with PayPal; both behind features, tested against local fakes **alpha**
@@ -89,7 +89,7 @@ layer.
 - [x] D4 Customer account pages **alpha**
 - [x] D5 CMS pages and blocks **alpha**
 - [x] D6 Menus **alpha**
-- [ ] D7 Blog
+- [x] D7 Blog: posts in Markdown with excerpt, image, author and tags, drafts, scheduled and published; `/blog` with tags and pages, `/blog/{handle}`, an Atom feed and sitemap entries; storefront API; admin screens **alpha**
 - [x] D8 SEO basics: SEO title and description for products and collections, canonical and Open Graph tags, product structured data, robots.txt, sitemap.xml, noindex on private pages, URL redirects (automatic when a handle changes) **alpha**
 - [x] D9 Search with facets: full-text search (prefix words over titles, SKUs, tags and descriptions, ranked), filters by tag, option value, price and collection with counts that keep each facet whole, sorting; an API and a storefront page **alpha**
 - [x] D10 Translations and markets **alpha**: languages per shop, translated products, collections, pages, menus and theme texts (`/api/translations`), storefront under `/de/...` with hreflang and a switcher, German built in; markets of countries with a currency, exchange rate and rounding (`/api/markets`), price lists first, then conversion; buyers pick a country and the cart follows

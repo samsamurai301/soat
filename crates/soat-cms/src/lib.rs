@@ -1,4 +1,4 @@
-//! Content: pages built from blocks, and menus.
+//! Content: pages built from blocks, menus, and the [`blog`].
 //!
 //! A page has a handle (its address on the shop, `/pages/<handle>`), a
 //! title, SEO fields and a list of blocks (headings, text, images,
@@ -20,6 +20,7 @@ use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::embed::Dir;
 use zapline::prelude::*;
 
+pub mod blog;
 pub mod redirects;
 
 pub use redirects::redirect_for;
@@ -27,16 +28,17 @@ pub use redirects::redirect_for;
 id_kind!(PageId, PageKind, "page");
 id_kind!(MenuId, MenuKind, "menu");
 
-/// See pages, menus and redirects, drafts included.
+/// See pages, blog posts, menus and redirects, drafts included.
 pub const CONTENT_READ: Permission = Permission::new(
     "content:read",
-    "See pages, menus and redirects, drafts included",
+    "See pages, blog posts, menus and redirects, drafts included",
 )
 .for_staff();
-/// Create, change, publish and delete pages, menus and redirects.
+/// Create, change, publish and delete pages, blog posts, menus and
+/// redirects.
 pub const CONTENT_WRITE: Permission = Permission::new(
     "content:write",
-    "Create, change, publish and delete pages, menus and redirects",
+    "Create, change, publish and delete pages, blog posts, menus and redirects",
 )
 .for_staff();
 
@@ -65,7 +67,7 @@ impl Module for Cms {
     }
 
     fn mount(&self, app: App) -> App {
-        let app = redirects::mount(app);
+        let app = blog::mount(redirects::mount(app));
         app.mount((
             list_pages,
             create_page,

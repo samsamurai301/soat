@@ -11,7 +11,7 @@ use super::{origin, View};
 /// Paths buyers reach only through the shop, kept out of search results.
 const PRIVATE: &[&str] = &["/cart", "/checkout", "/order", "/account", "/search"];
 
-fn xml_escape(s: &str) -> String {
+pub(crate) fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -19,7 +19,7 @@ fn xml_escape(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-fn text(body: String, content_type: &'static str) -> Response {
+pub(crate) fn text(body: String, content_type: &'static str) -> Response {
     let mut res = body.into_response();
     res.headers_mut()
         .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
@@ -52,6 +52,7 @@ pub(crate) async fn sitemap(db: Db, shop: Shop, headers: HeaderMap) -> Result<Re
     let mut tx = shop.begin(&db).await?;
     let base = origin(&mut tx, &shop, &headers).await?;
     let pages = soat_cms::published_handles(&mut tx, &shop).await?;
+    let posts = soat_cms::blog::published_post_handles(&mut tx, &shop).await?;
     let (products, collections) = catalog::sitemap_handles(&mut tx, &shop).await?;
     tx.commit().await?;
     let mut out = String::from(
@@ -67,6 +68,12 @@ pub(crate) async fn sitemap(db: Db, shop: Shop, headers: HeaderMap) -> Result<Re
     url("/".to_owned());
     for h in pages.iter().filter(|h| *h != "home") {
         url(format!("/pages/{h}"));
+    }
+    if !posts.is_empty() {
+        url("/blog".to_owned());
+    }
+    for h in &posts {
+        url(format!("/blog/{h}"));
     }
     for h in &collections {
         url(format!("/collections/{h}"));

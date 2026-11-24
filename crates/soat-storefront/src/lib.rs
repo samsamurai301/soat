@@ -33,6 +33,7 @@ use zapline::prelude::*;
 use zapline::storage::Storage;
 
 mod account;
+mod blog;
 mod i18n;
 mod seo;
 
@@ -98,6 +99,7 @@ impl Module for Storefront {
             seo::sitemap,
             choose_country,
         ))
+        .mount((blog::blog_page, blog::feed, blog::post_page))
         .fallback(seo::fallback)
         .wrap(i18n::language_prefix)
     }
@@ -977,6 +979,14 @@ pub struct CheckoutForm {
     pub shipping_rate_id: Option<String>,
     /// Empty removes the code.
     pub discount_code: Option<String>,
+    /// A gift card's code; empty leaves the card as it is.
+    pub gift_card_code: Option<String>,
+    /// `on` removes the gift card.
+    pub remove_gift_card: Option<String>,
+    /// Set when the store credit box was shown; then `use_store_credit`
+    /// is `on` or absent.
+    pub store_credit_shown: Option<String>,
+    pub use_store_credit: Option<String>,
 }
 
 fn field(v: &Option<String>) -> String {
@@ -1110,8 +1120,16 @@ async fn checkout_values(
             "discount": some(c.discount_minor),
             "tax": some(c.tax_minor),
             "total": money(c.total_minor, cur),
+            "gift_card": c.gift_card.as_ref().and_then(|g| some(g.applied_minor)),
+            "store_credit": c.store_credit.as_ref().and_then(|g| some(g.applied_minor)),
+            "due": money(c.amount_due_minor, cur),
+            "paid_by_balance": c.amount_due_minor < c.total_minor,
         }),
     );
+    v.set("due", json!(c.amount_due_minor > 0));
+    if let Some(sc) = &c.store_credit {
+        v.set("store_credit_balance", json!(money(sc.balance_minor, cur)));
+    }
     Ok(())
 }
 
@@ -1161,6 +1179,8 @@ fn blank_change() -> CheckoutChange {
         vat_number: None,
         shipping_rate_id: None,
         discount_code: None,
+        gift_card_code: None,
+        use_store_credit: None,
     }
 }
 
@@ -1241,6 +1261,30 @@ async fn checkout_update(
             }
         }
     }
+    let gift = if f.remove_gift_card.as_deref() == Some("on") {
+        Some(String::new())
+    } else {
+        Some(field(&f.gift_card_code)).filter(|g| !g.is_empty())
+    };
+    let store_credit = f
+        .store_credit_shown
+        .as_ref()
+        .map(|_| f.use_store_credit.as_deref() == Some("on"));
+    if gift.is_some() || store_credit.is_some() {
+        let change = CheckoutChange {
+            gift_card_code: gift,
+            use_store_credit: store_credit,
+            ..blank_change()
+        };
+        if let Err(e) = soat_checkout::update(&mut tx, &shop, &id, &change).await {
+            problem.get_or_insert(upper_first(e.message()));
+            let change = CheckoutChange {
+                use_store_credit: store_credit,
+                ..blank_change()
+            };
+            soat_checkout::update(&mut tx, &shop, &id, &change).await?;
+        }
+    }
     tx.commit().await?;
     match problem {
         Some(p) => render_checkout(&db, &shop, &headers, Some(p), Some(&f)).await,
@@ -1251,7 +1295,8 @@ async fn checkout_update(
 /// The payment step of the checkout form.
 #[model]
 pub struct PlaceOrder {
-    pub payment_method_id: String,
+    /// Not needed when a gift card or store credit pays it all.
+    pub payment_method_id: Option<String>,
 }
 
 /// The address buyers come back to from a payment provider.

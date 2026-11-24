@@ -1,0 +1,19 @@
+[package]
+name = "soat-giftcards"
+description = "Gift cards and store credit: balances buyers spend at checkout, with a ledger of every change."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+soat-module.workspace = true
+soat-tenancy.workspace = true
+soat-customers.workspace = true
+soat-payments.workspace = true
+zapline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true

@@ -22,6 +22,7 @@ fn module_list_is_valid_and_ordered() {
             "shipping",
             "payments",
             "promotions",
+            "giftcards",
             "orders",
             "checkout",
             "invoices",

@@ -1,4 +1,5 @@
-//! Content: pages built from blocks, menus, and URL redirects.
+//! Content: pages built from blocks, menus, and URL redirects; the blog
+//! is in [`crate::blog`].
 
 use serde_json::{json, Map, Value};
 use zapline::db::Db;
@@ -243,16 +244,12 @@ pub(crate) async fn delete(
     Path((shop, kind, id)): Path<(String, String, String)>,
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "content").await);
-    if !matches!(kind.as_str(), "pages" | "menus" | "redirects") {
-        return Ok(cx.failed(404, &Value::Null));
-    }
-    let (status, out) = cx
-        .call(
-            Method::DELETE,
-            &format!("/api/{kind}/{}", encode(&id)),
-            None,
-        )
-        .await;
+    let api = match kind.as_str() {
+        "pages" | "menus" | "redirects" => format!("/api/{kind}/{}", encode(&id)),
+        "blog" => format!("/api/blog/posts/{}", encode(&id)),
+        _ => return Ok(cx.failed(404, &Value::Null)),
+    };
+    let (status, out) = cx.call(Method::DELETE, &api, None).await;
     Ok(match status {
         204 => Redirect::to(&format!("/admin/{shop}/{kind}")).into_response(),
         401 => Redirect::to("/admin/login").into_response(),

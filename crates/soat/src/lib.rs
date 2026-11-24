@@ -15,6 +15,7 @@ use soat_customers::Customers;
 use soat_events::Events;
 use soat_fields::Fields;
 use soat_files::Files;
+use soat_giftcards::GiftCards;
 use soat_i18n::I18n;
 use soat_inventory::Inventory;
 use soat_invoices::Invoices;
@@ -187,6 +188,7 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Shipping)
         .with(payments)
         .with(Promotions)
+        .with(GiftCards)
         .with(Orders)
         .with(Checkout)
         .with(Invoices)

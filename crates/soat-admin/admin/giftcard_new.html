@@ -1,0 +1,15 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/gift-cards">All gift cards</a>
+</div>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/gift-cards" class="form">
+  <label class="check"><input type="radio" name="kind" value="gift_card"{{#if form.is_store_credit }}{{else}} checked{{/if}}> A gift card: anyone with its code can spend it</label>
+  <label class="check"><input type="radio" name="kind" value="store_credit"{{#if form.is_store_credit }} checked{{/if}}> Store credit: a customer spends it when signed in</label>
+  <label>Amount in {{ currency }} <input name="amount" value="{{ form.amount }}" inputmode="decimal" required></label>
+  <label>Customer’s email <span class="muted">(needed for store credit)</span> <input type="email" name="email" value="{{ form.email }}"></label>
+  <label>Code <span class="muted">(gift cards; one is made up if left empty)</span> <input name="code" value="{{ form.code }}" maxlength="40" autocomplete="off"></label>
+  <label>Expires <input type="date" name="expires" value="{{ form.expires }}"></label>
+  <label>Note <span class="muted">(for staff)</span> <input name="note" value="{{ form.note }}" maxlength="500"></label>
+  <button class="button">Issue</button>
+</form>
