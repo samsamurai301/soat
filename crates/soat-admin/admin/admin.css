@@ -93,3 +93,8 @@ kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
 .palette-list { list-style: none; padding: 0; margin: .5rem 0; max-height: 50vh; overflow: auto; }
 .palette-list a { display: block; padding: .4rem .5rem; border-radius: 6px; color: var(--fg); text-decoration: none; }
 .palette-list a:hover, .palette-list a:focus { background: var(--bg); outline: none; }
+.form.plain { border: 0; padding: 0; }
+.media { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .75rem; }
+.media li { border: 1px solid var(--line); border-radius: 8px; padding: .5rem; display: flex; flex-direction: column; gap: .35rem; }
+.media img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; background: var(--bg); }
+.media input { width: 100%; }

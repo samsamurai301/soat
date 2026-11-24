@@ -69,4 +69,35 @@ impl Api {
         let body = serde_json::from_str(&text).unwrap_or(Value::String(text));
         (res.status().as_u16(), body)
     }
+
+    /// Like [`Api::send`], with a body as it came, such as a
+    /// `multipart/form-data` upload passed through.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_raw(
+        &self,
+        db: &Db,
+        method: Method,
+        path: &str,
+        body: Bytes,
+        content_type: &str,
+        token: &str,
+        shop: &str,
+        conn: ConnInfo,
+    ) -> (u16, Value) {
+        let _ = self.pool.get_or_init(|| db.0.clone());
+        let mut req = self
+            .client
+            .request(method, path)
+            .bearer(token)
+            .header("x-soat-tenant", shop)
+            .header("content-type", content_type)
+            .body(body);
+        if let Some(addr) = conn.remote_addr {
+            req = req.remote_addr(addr);
+        }
+        let res = req.send().await;
+        let text = res.text();
+        let body = serde_json::from_str(&text).unwrap_or(Value::String(text));
+        (res.status().as_u16(), body)
+    }
 }

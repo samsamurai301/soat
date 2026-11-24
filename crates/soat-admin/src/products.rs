@@ -285,8 +285,20 @@ pub(crate) async fn edit_page(
     if let Some(l) = q.get("translated").and_then(Value::as_str) {
         cx.set("translated", json!(l));
     }
+    Ok(page(cx, &p, None, StatusCode::OK).await)
+}
+
+/// A product's page: its form, options, variants, media and the writing
+/// helpers.
+pub(crate) async fn page(
+    mut cx: Ctx,
+    p: &Value,
+    error: Option<String>,
+    status: StatusCode,
+) -> Response {
     languages(&mut cx).await;
-    Ok(show_form(cx, ProductForm::of(&p), None, StatusCode::OK))
+    crate::variants::load(&mut cx, p).await;
+    show_form(cx, ProductForm::of(p), error, status)
 }
 
 /// The shop's other languages, to translate into; none when the staff

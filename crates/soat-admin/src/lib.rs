@@ -46,6 +46,7 @@ mod settings;
 mod theme;
 mod transfer;
 mod util;
+mod variants;
 
 use std::sync::Arc;
 
@@ -146,6 +147,14 @@ impl Module for Admin {
             products::delete,
             products::write,
             products::translate,
+        ))
+        .mount((
+            variants::set_options,
+            variants::add_variant,
+            variants::add_all,
+            variants::change_variant,
+            variants::upload,
+            variants::change_media,
         ))
         .mount((
             orders::list,
