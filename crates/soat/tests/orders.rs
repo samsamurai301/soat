@@ -39,6 +39,7 @@ fn order(customer: Option<&str>) -> NewOrder {
                 tax_rate_bps: 1900,
                 tax_minor: 380,
                 discount_minor: 0,
+                requires_shipping: true,
             },
             NewOrderLine {
                 item_id: "prod_b".into(),
@@ -51,6 +52,7 @@ fn order(customer: Option<&str>) -> NewOrder {
                 tax_rate_bps: 700,
                 tax_minor: 105,
                 discount_minor: 0,
+                requires_shipping: true,
             },
         ],
         shipping: Some(NewShipping {

@@ -115,6 +115,8 @@ pub struct ProductForm {
     pub tags: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    /// Checked for a digital product: nothing ships.
+    pub digital: Option<String>,
 }
 
 fn text(v: &Option<String>) -> String {
@@ -146,6 +148,7 @@ impl ProductForm {
         b.insert("tags".into(), json!(tags));
         b.insert("seo_title".into(), json!(text(&self.seo_title)));
         b.insert("seo_description".into(), json!(text(&self.seo_description)));
+        b.insert("requires_shipping".into(), json!(self.digital.is_none()));
         let handle = text(&self.handle);
         if !handle.is_empty() {
             b.insert("handle".into(), json!(handle));
@@ -173,6 +176,7 @@ impl ProductForm {
             "price": price, "currency": currency, "description": p["description"],
             "tags": tags.join(", "), "seo_title": p["seo_title"],
             "seo_description": p["seo_description"], "status": p["status"],
+            "digital": p["requires_shipping"] == false,
         })
     }
 
@@ -183,6 +187,7 @@ impl ProductForm {
             "description": text(&self.description), "tags": text(&self.tags),
             "seo_title": text(&self.seo_title), "seo_description": text(&self.seo_description),
             "status": self.status.as_deref().unwrap_or("draft"),
+            "digital": self.digital.is_some(),
         })
     }
 }

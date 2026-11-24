@@ -157,8 +157,12 @@ pub struct CheckoutView {
     /// store credit.
     pub amount_due_minor: i64,
     pub prices_include_tax: bool,
+    /// Whether anything ships; when only digital lines are left, no
+    /// shipping is needed and tax follows the billing address.
+    pub requires_shipping: bool,
     /// What is still needed: `lines` (the cart is empty or has issues),
-    /// `email`, `shipping_address`, `shipping`.
+    /// `email`, `shipping_address` and `shipping`, or `billing_address`
+    /// when nothing ships.
     pub missing: Vec<String>,
     pub ready: bool,
 }
@@ -280,6 +284,7 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
             tax_rate_bps: 0,
             tax_minor: 0,
             discount_minor: 0,
+            requires_shipping: item.requires_shipping,
         });
     }
 
@@ -291,7 +296,19 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
         missing.push("email".to_owned());
     }
     let (mut options, mut chosen, mut tax) = (Vec::new(), None, None);
+    // Only digital lines: nothing ships, and the billing address is taxed.
+    let requires_shipping = lines.is_empty() || lines.iter().any(|l| l.requires_shipping);
+    let tax_address = if requires_shipping {
+        shipping_address.clone()
+    } else {
+        billing_address.clone()
+    };
     match &shipping_address {
+        _ if !requires_shipping => {
+            if tax_address.is_none() {
+                missing.push("billing_address".to_owned());
+            }
+        }
         None => missing.push("shipping_address".to_owned()),
         Some(addr) => {
             let q = ShippingQuery {
@@ -363,7 +380,7 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
     }
     let shipping_discount = auto_shipping + discount.as_ref().map_or(0, |a| a.shipping_minor);
 
-    if let Some(addr) = &shipping_address {
+    if let Some(addr) = &tax_address {
         let mut amounts: Vec<(String, i64)> = lines
             .iter()
             .map(|l| {
@@ -491,6 +508,7 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
             use_store_credit: d.use_store_credit,
             amount_due_minor: due,
             prices_include_tax,
+            requires_shipping,
             missing,
             ready,
         },

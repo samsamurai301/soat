@@ -20,6 +20,7 @@
   </div>
   <label>Description <span class="muted">(Markdown)</span> <textarea name="description" rows="8">{{ product.description }}</textarea></label>
   <label>Tags <span class="muted">(comma-separated)</span> <input name="tags" value="{{ product.tags }}"></label>
+  <label class="choice"><input type="checkbox" name="digital"{{#if product.digital }} checked{{/if}}> Digital product <span class="muted">(nothing ships; buyers download its files once paid)</span></label>
   <fieldset><legend>Search engines</legend>
     <label>Handle <input name="handle" value="{{ product.handle }}" placeholder="from the title"></label>
     <label>SEO title <input name="seo_title" value="{{ product.seo_title }}"></label>
@@ -58,6 +59,18 @@
   </form>
   {{/if}}
 </section>
+{{#if product.digital }}
+<section class="panel" id="downloads">
+  <h2>Downloads</h2>
+  {{#if downloads }}<ul>{{#each downloads }}<li>{{ file_name }} <span class="muted">{{ content_type }}</span>
+    <form method="post" action="{{ base }}/products/{{ product.id }}/downloads/{{ id }}/remove" class="inline"><button class="link">Remove</button></form></li>{{/each}}</ul>
+  {{else}}<p class="muted">No files yet. Buyers get links to these once their order is paid.</p>{{/if}}
+  <form method="post" action="{{ base }}/products/{{ product.id }}/downloads" enctype="multipart/form-data" class="inline" hx-boost="false">
+    <label>File <input type="file" name="file" accept=".pdf,.epub,.zip,.mp3,.mp4,image/*" required></label>
+    <button class="button">Upload</button>
+  </form>
+</section>
+{{/if}}
 <section class="panel" id="media">
   <h2>Images and video</h2>
   {{#if media }}<ul class="media">{{#each media }}<li>

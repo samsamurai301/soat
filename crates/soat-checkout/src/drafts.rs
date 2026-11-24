@@ -224,6 +224,7 @@ async fn work_out(
             tax_rate_bps: 0,
             tax_minor: 0,
             discount_minor: 0,
+            requires_shipping: item.requires_shipping,
         });
     }
     let worth: Vec<i64> = lines

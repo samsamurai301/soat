@@ -270,53 +270,108 @@ async fn create_fulfillment(
     if wanted.is_empty() {
         return Err(Error::unprocessable("nothing left to ship").with_code("nothing_to_ship"));
     }
+    record(
+        &mut tx,
+        &tenant,
+        order_id.as_str(),
+        &wanted,
+        location.as_deref(),
+        [
+            f.carrier.as_deref().unwrap_or("").trim(),
+            f.tracking_number.as_deref().unwrap_or("").trim(),
+            f.tracking_url.as_deref().unwrap_or(""),
+        ],
+        false,
+    )
+    .await?;
+    let order = sync(&mut tx, &tenant, order_id.as_str()).await?;
+    tx.commit().await?;
+    Ok((StatusCode::CREATED, Json(order)))
+}
+
+/// Records a fulfillment of `wanted` (line, item, units), taking them out
+/// of stock, and publishes `fulfillment.created`. `tracking` is carrier,
+/// number and link; `delivered` records it as delivered at once.
+#[allow(clippy::too_many_arguments)]
+async fn record(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    order_id: &str,
+    wanted: &[(String, String, i64)],
+    location: Option<&str>,
+    tracking: [&str; 3],
+    delivered: bool,
+) -> Result<Fulfillment> {
     let id = FulfillmentId::new();
     sqlx::query(
         "INSERT INTO fulfillments (id, tenant_id, order_id, carrier, tracking_number, \
-         tracking_url) VALUES ($1, $2, $3, $4, $5, $6)",
+         tracking_url, status, delivered_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7 THEN 'delivered' ELSE 'shipped' END, \
+                 CASE WHEN $7 THEN now() END)",
     )
     .bind(id.as_str())
-    .bind(tenant.id())
-    .bind(order_id.as_str())
-    .bind(f.carrier.as_deref().unwrap_or("").trim())
-    .bind(f.tracking_number.as_deref().unwrap_or("").trim())
-    .bind(f.tracking_url.as_deref().unwrap_or(""))
-    .execute(&mut *tx)
+    .bind(scope.tenant_id())
+    .bind(order_id)
+    .bind(tracking[0])
+    .bind(tracking[1])
+    .bind(tracking[2])
+    .bind(delivered)
+    .execute(&mut **tx)
     .await?;
-    for (line, item, quantity) in &wanted {
-        let from = soat_inventory::stock::ship(
-            &mut tx,
-            &tenant,
-            item,
-            *quantity,
-            location.as_deref(),
-            order_id.as_str(),
-        )
-        .await?;
+    for (line, item, quantity) in wanted {
+        let from =
+            soat_inventory::stock::ship(tx, scope, item, *quantity, location, order_id).await?;
         sqlx::query(
             "INSERT INTO fulfillment_lines (tenant_id, fulfillment_id, order_line_id, item_id, \
              quantity, location_id) VALUES ($1, $2, $3, $4, $5, $6)",
         )
-        .bind(tenant.id())
+        .bind(scope.tenant_id())
         .bind(id.as_str())
         .bind(line)
         .bind(item)
         .bind(*quantity as i32)
         .bind(from)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
-    let made = one(&mut tx, &tenant, id.as_str()).await?;
-    tenant
+    let made = one(tx, scope, id.as_str()).await?;
+    scope
         .publish(
-            &mut tx,
+            tx,
             "fulfillment.created",
-            &serde_json::json!({ "order_id": order_id.as_str(), "fulfillment": made }),
+            &serde_json::json!({ "order_id": order_id, "fulfillment": made }),
         )
         .await?;
-    let order = sync(&mut tx, &tenant, order_id.as_str()).await?;
-    tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(order)))
+    Ok(made)
+}
+
+/// Delivers what is left of an open order's digital lines (a fulfillment
+/// with carrier `digital`, delivered at once), once it is paid. Does
+/// nothing when there is none. Run it in the order's transaction.
+pub(crate) async fn deliver_digital(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    order_id: &str,
+) -> Result<()> {
+    let left: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT l.id, l.item_id, (l.quantity - COALESCE((SELECT SUM(fl.quantity) \
+           FROM fulfillment_lines fl JOIN fulfillments f ON f.id = fl.fulfillment_id \
+           WHERE fl.order_line_id = l.id AND f.status <> 'canceled'), 0))::BIGINT AS rest \
+         FROM order_lines l JOIN orders o ON o.id = l.order_id \
+         WHERE l.tenant_id = $1 AND l.order_id = $2 AND NOT l.requires_shipping \
+           AND o.status = 'open' ORDER BY l.position",
+    )
+    .bind(scope.tenant_id())
+    .bind(order_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    let left: Vec<_> = left.into_iter().filter(|(_, _, q)| *q > 0).collect();
+    if left.is_empty() {
+        return Ok(());
+    }
+    record(tx, scope, order_id, &left, None, ["digital", "", ""], true).await?;
+    sync(tx, scope, order_id).await?;
+    Ok(())
 }
 
 async fn one(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Result<Fulfillment> {

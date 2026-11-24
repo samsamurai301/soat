@@ -301,6 +301,7 @@ async fn placed_in(url: &str, shop: &'static str, item: &str) -> String {
             tax_rate_bps: 1900,
             tax_minor: 380,
             discount_minor: 0,
+            requires_shipping: true,
         }],
         shipping: Some(NewShipping {
             rate_id: "shr_x".into(),

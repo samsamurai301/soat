@@ -22,6 +22,15 @@ use zapline::embed::Dir;
 use zapline::prelude::App;
 use zapline::Resources;
 
+/// SQL: whether item `$2` of shop `$1` is tracked when staff never said.
+/// Products that ship are; digital products are not, so they sell
+/// without stock unless staff track them (limited licenses, say).
+pub(crate) const TRACKED: &str = "COALESCE( \
+     (SELECT tracked FROM inventory_items WHERE tenant_id = $1 AND item_id = $2), \
+     (SELECT p.requires_shipping FROM products p WHERE p.tenant_id = $1 AND p.id = COALESCE( \
+         (SELECT v.product_id FROM product_variants v WHERE v.tenant_id = $1 AND v.id = $2), $2)), \
+     TRUE)";
+
 /// See stock and locations.
 pub const INVENTORY_READ: Permission = Permission::new(
     "inventory:read",

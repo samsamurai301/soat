@@ -6,6 +6,7 @@ use soat_customers::accounts::{self, Login, MeChange, Register, SignedIn, SESSIO
 use soat_tenancy::Shop;
 use zapline::db::{Db, ListParams};
 use zapline::prelude::*;
+use zapline::storage::Storage;
 
 use super::i18n::root_of;
 use super::{
@@ -290,6 +291,7 @@ pub(crate) async fn update_account(
 pub(crate) async fn account_order(
     db: Db,
     shop: Shop,
+    storage: Storage,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response> {
@@ -302,7 +304,10 @@ pub(crate) async fn account_order(
         return v.not_found().await;
     };
     let payments = soat_payments::for_reference(&mut v.tx, &shop, &order.id).await?;
+    let downloads =
+        soat_orders::downloads::ready_downloads(&mut v.tx, &shop, &storage, &order).await?;
     order_values(&mut v, &order, &payments);
+    crate::download_values(&mut v, &downloads);
     v.set("account", json!(true));
     v.render("order", StatusCode::OK).await
 }

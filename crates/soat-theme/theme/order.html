@@ -24,6 +24,13 @@
     <dt class="total">{{ t.total }}</dt><dd class="total">{{ totals.total }}</dd>
   </dl>
   <p class="muted">{{ t.payment }}: {{ payment_status }}</p>
+  {{#if downloads }}
+  <h2>{{ t.downloads }}</h2>
+  <ul class="downloads">
+    {{#each downloads }}<li><a href="{{ url }}" download>{{ title }}</a> <span class="muted">{{ file_name }}</span></li>{{/each}}
+  </ul>
+  <p class="muted">{{ t.downloads_note }}</p>
+  {{/if}}
 </section>
 {{#if order.shipping_address }}
 <aside class="summary">

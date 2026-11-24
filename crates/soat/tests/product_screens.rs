@@ -178,3 +178,88 @@ async fn staff_manage_variants_and_media() {
     let media: Value = api(format!("/api/products/{id}/media")).await.json();
     assert_eq!(media.as_array().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn staff_sell_digital_products() {
+    let (client, admin) = common::with_tenants(&["acme"]).await;
+    let cookie = sign_in(&client).await;
+    let res = client
+        .post("/admin/acme/products")
+        .header("cookie", &cookie)
+        .form(
+            &json!({ "title": "Field guide", "sku": "BOOK", "price": "9", "currency": "EUR",
+                       "status": "active", "digital": "on" }),
+        )
+        .send()
+        .await;
+    res.assert_status(303);
+    let page = res.header("location").unwrap().to_owned();
+    let id = page
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .split(['?', '#'])
+        .next()
+        .unwrap()
+        .to_owned();
+    let product: Value = client
+        .get(&format!("/api/products/{id}"))
+        .header("x-soat-tenant", "acme")
+        .bearer(&admin)
+        .send()
+        .await
+        .json();
+    assert_eq!(product["requires_shipping"], false);
+    let page = format!("/admin/acme/products/{id}");
+    let html = client
+        .get(&page)
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .text();
+    assert!(html.contains("Downloads"));
+    assert!(html.contains("name=\"digital\" checked"));
+
+    let res = client
+        .post(&format!("{page}/downloads"))
+        .header("cookie", &cookie)
+        .multipart(MultipartForm::new().file(
+            "file",
+            "Guide.pdf",
+            "application/pdf",
+            &b"%PDF-1.7 the guide"[..],
+        ))
+        .send()
+        .await;
+    res.assert_status(303);
+    let html = client
+        .get(&page)
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .text();
+    assert!(html.contains("guide.pdf"));
+    let files: Value = client
+        .get(&format!("/api/products/{id}/downloads"))
+        .header("x-soat-tenant", "acme")
+        .bearer(&admin)
+        .send()
+        .await
+        .json();
+    let file = files[0]["id"].as_str().unwrap();
+    client
+        .post(&format!("{page}/downloads/{file}/remove"))
+        .header("cookie", &cookie)
+        .form(&json!({}))
+        .send()
+        .await
+        .assert_status(303);
+    let files: Value = client
+        .get(&format!("/api/products/{id}/downloads"))
+        .header("x-soat-tenant", "acme")
+        .bearer(&admin)
+        .send()
+        .await
+        .json();
+    assert_eq!(files, json!([]));
+}

@@ -46,6 +46,18 @@ const WEBM: MediaType = MediaType {
     mime: "video/webm",
     extension: "webm",
 };
+const ZIP: MediaType = MediaType {
+    mime: "application/zip",
+    extension: "zip",
+};
+const EPUB: MediaType = MediaType {
+    mime: "application/epub+zip",
+    extension: "epub",
+};
+const MP3: MediaType = MediaType {
+    mime: "audio/mpeg",
+    extension: "mp3",
+};
 
 /// The type of a file from its first bytes, or `None` when it is not one
 /// SOAT stores (HTML and SVG are refused on purpose: they can carry
@@ -64,6 +76,15 @@ pub fn detect(bytes: &[u8]) -> Option<MediaType> {
         Some(PDF)
     } else if starts(b"\x1a\x45\xdf\xa3") {
         Some(WEBM)
+    } else if starts(b"PK\x03\x04") {
+        // An EPUB is a ZIP whose first entry names its type.
+        if bytes.get(30..58) == Some(b"mimetypeapplication/epub+zip") {
+            Some(EPUB)
+        } else {
+            Some(ZIP)
+        }
+    } else if starts(b"ID3") || starts(b"\xff\xfb") || starts(b"\xff\xf3") {
+        Some(MP3)
     } else if bytes.get(4..8) == Some(b"ftyp") {
         match bytes.get(8..12) {
             Some(b"avif" | b"avis") => Some(AVIF),
@@ -109,6 +130,12 @@ mod tests {
         assert_eq!(detect(b"\0\0\0\x1cftypavif"), Some(AVIF));
         assert_eq!(detect(b"\0\0\0\x18ftypisom"), Some(MP4));
         assert_eq!(detect(b"%PDF-1.7"), Some(PDF));
+        assert_eq!(detect(b"PK\x03\x04\x14\0"), Some(ZIP));
+        let mut epub = b"PK\x03\x04".to_vec();
+        epub.resize(30, 0);
+        epub.extend_from_slice(b"mimetypeapplication/epub+zip");
+        assert_eq!(detect(&epub), Some(EPUB));
+        assert_eq!(detect(b"ID3\x04\0"), Some(MP3));
         assert!(detect(b"\x89PNG").is_none());
     }
 

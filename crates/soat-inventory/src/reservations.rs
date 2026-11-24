@@ -92,21 +92,23 @@ pub async fn availability(
     scope: &impl Scope,
     item_id: &str,
 ) -> Result<Availability> {
-    let (on_hand, reserved, tracked, allow_backorder): (i64, i64, bool, bool) = sqlx::query_as(
-        "SELECT \
+    let (on_hand, reserved, tracked, allow_backorder): (i64, i64, bool, bool) =
+        sqlx::query_as(&format!(
+            "SELECT \
          COALESCE((SELECT SUM(on_hand) FROM inventory_levels \
                    WHERE tenant_id = $1 AND item_id = $2), 0)::BIGINT, \
          COALESCE((SELECT SUM(quantity) FROM inventory_reservations \
                    WHERE tenant_id = $1 AND item_id = $2 \
                    AND (expires_at IS NULL OR expires_at > now())), 0)::BIGINT, \
-         COALESCE((SELECT tracked FROM inventory_items WHERE tenant_id = $1 AND item_id = $2), TRUE), \
+         {}, \
          COALESCE((SELECT allow_backorder FROM inventory_items \
                    WHERE tenant_id = $1 AND item_id = $2), FALSE)",
-    )
-    .bind(scope.tenant_id())
-    .bind(item_id)
-    .fetch_one(&mut *conn)
-    .await?;
+            crate::TRACKED
+        ))
+        .bind(scope.tenant_id())
+        .bind(item_id)
+        .fetch_one(&mut *conn)
+        .await?;
     Ok(Availability {
         on_hand,
         reserved,
@@ -127,9 +129,11 @@ pub async fn reserve(
     ttl_seconds: Option<i64>,
 ) -> Result<Reservation> {
     // Serialize reservations of this item on its settings row.
-    sqlx::query(
-        "INSERT INTO inventory_items (tenant_id, item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-    )
+    sqlx::query(&format!(
+        "INSERT INTO inventory_items (tenant_id, item_id, tracked) VALUES ($1, $2, {}) \
+         ON CONFLICT DO NOTHING",
+        crate::TRACKED
+    ))
     .bind(scope.tenant_id())
     .bind(item_id)
     .execute(&mut **tx)

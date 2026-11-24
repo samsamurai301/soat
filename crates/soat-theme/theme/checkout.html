@@ -8,7 +8,7 @@
     <label>{{ t.email }} <input type="email" name="email" value="{{ checkout.email }}" autocomplete="email" required></label>
   </fieldset>
   <fieldset>
-    <legend>{{ t.shipping_address }}</legend>
+    <legend>{{#if checkout.requires_shipping }}{{ t.shipping_address }}{{else}}{{ t.billing_address }}{{/if}}</legend>
     <div class="pair">
       <label>{{ t.first_name }} <input name="first_name" value="{{ address.first_name }}" autocomplete="given-name"></label>
       <label>{{ t.last_name }} <input name="last_name" value="{{ address.last_name }}" autocomplete="family-name"></label>
@@ -33,7 +33,7 @@
     <label class="choice"><input type="radio" name="shipping_rate_id" value="{{ rate_id }}"{{#if selected }} checked{{/if}}> {{ name }} · {{ price }}{{#if days }} <span class="muted">({{ days }})</span>{{/if}}</label>
     {{/each}}
   </fieldset>
-  {{else}}{{#if address.line1 }}<p class="notice">{{ t.no_shipping }}</p>{{/if}}{{/if}}
+  {{else}}{{#if checkout.requires_shipping }}{{#if address.line1 }}<p class="notice">{{ t.no_shipping }}</p>{{/if}}{{/if}}{{/if}}
   <fieldset>
     <legend>{{ t.discount_code }}</legend>
     <label>{{ t.code }} <input name="discount_code" value="{{ discount_code }}"></label>

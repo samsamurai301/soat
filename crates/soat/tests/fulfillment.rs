@@ -32,6 +32,7 @@ fn line(item: &str, quantity: i64) -> NewOrderLine {
         tax_rate_bps: 0,
         tax_minor: 0,
         discount_minor: 0,
+        requires_shipping: true,
     }
 }
 

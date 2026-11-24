@@ -2006,6 +2006,7 @@ dependencies = [
  "soat-catalog",
  "soat-core",
  "soat-customers",
+ "soat-files",
  "soat-inventory",
  "soat-module",
  "soat-payments",

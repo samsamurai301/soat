@@ -366,7 +366,7 @@ async fn list_collection_products(
     let collection = load(&mut tx, &tenant, &id).await?;
     let page = TenantListing::new(
         "(SELECT p.id, p.sku, p.title, p.handle, p.description, p.status, p.price_minor, \
-          p.currency, p.tags, p.tax_class, p.weight_grams, p.seo_title, p.seo_description, \
+          p.currency, p.tags, p.tax_class, p.weight_grams, p.requires_shipping, p.seo_title, p.seo_description, \
           cp.collection_id, cp.position \
           FROM products p JOIN collection_products cp ON cp.product_id = p.id) AS items",
         crate::COLUMNS,

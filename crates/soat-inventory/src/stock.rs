@@ -33,7 +33,8 @@ pub struct InventoryView {
     /// `var_...`, or `prod_...` for a product without variants.
     pub item_id: String,
     pub sku: String,
-    /// Untracked items are always available.
+    /// Untracked items are always available. Digital products are
+    /// untracked until staff track them.
     pub tracked: bool,
     /// Whether it may be sold when nothing is on hand.
     pub allow_backorder: bool,
@@ -138,7 +139,7 @@ async fn view(tx: &mut TenantTx, tenant: &Tenant, item: StockItem) -> Result<Inv
     .bind(&item.id)
     .fetch_optional(&mut **tx)
     .await?;
-    let (tracked, allow_backorder) = settings.unwrap_or((true, false));
+    let (tracked, allow_backorder) = settings.unwrap_or((item.requires_shipping, false));
     let levels: Vec<Level> = sqlx::query_as(
         "SELECT item_id, location_id, on_hand FROM inventory_levels \
          WHERE tenant_id = $1 AND item_id = $2 ORDER BY location_id",
@@ -252,13 +253,12 @@ pub async fn ship(
     location: Option<&str>,
     reference: &str,
 ) -> Result<Option<String>> {
-    let tracked: Option<(bool,)> =
-        sqlx::query_as("SELECT tracked FROM inventory_items WHERE tenant_id = $1 AND item_id = $2")
-            .bind(scope.tenant_id())
-            .bind(item)
-            .fetch_optional(&mut **tx)
-            .await?;
-    let used = if tracked.is_none_or(|(t,)| t) {
+    let (tracked,): (bool,) = sqlx::query_as(&format!("SELECT {}", crate::TRACKED))
+        .bind(scope.tenant_id())
+        .bind(item)
+        .fetch_one(&mut **tx)
+        .await?;
+    let used = if tracked {
         let from = match location {
             Some(l) => l.to_owned(),
             None => {
@@ -347,7 +347,7 @@ async fn update_settings(
     let item = item(&mut tx, &tenant, &item_id).await?;
     sqlx::query(
         "INSERT INTO inventory_items (tenant_id, item_id, tracked, allow_backorder) \
-         VALUES ($1, $2, COALESCE($3, TRUE), COALESCE($4, FALSE)) \
+         VALUES ($1, $2, COALESCE($3, $5), COALESCE($4, FALSE)) \
          ON CONFLICT (tenant_id, item_id) DO UPDATE SET \
          tracked = COALESCE($3, inventory_items.tracked), \
          allow_backorder = COALESCE($4, inventory_items.allow_backorder)",
@@ -356,6 +356,7 @@ async fn update_settings(
     .bind(&item.id)
     .bind(s.tracked)
     .bind(s.allow_backorder)
+    .bind(item.requires_shipping)
     .execute(&mut *tx)
     .await?;
     let view = view(&mut tx, &tenant, item).await?;

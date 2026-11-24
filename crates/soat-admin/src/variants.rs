@@ -124,6 +124,17 @@ pub(crate) async fn load(cx: &mut Ctx, product: &Value) {
     let (_, media) = cx
         .call(Method::GET, &format!("/api/products/{id}/media"), None)
         .await;
+    let (_, downloads) = cx
+        .call(Method::GET, &format!("/api/products/{id}/downloads"), None)
+        .await;
+    cx.set(
+        "downloads",
+        if downloads.is_array() {
+            downloads
+        } else {
+            json!([])
+        },
+    );
     let options = if options.is_array() {
         options
     } else {
@@ -366,9 +377,49 @@ pub(crate) async fn upload(
     headers: HeaderMap,
     conn: ConnInfo,
     Path((shop, id)): Path<(String, String)>,
-    mut form: Multipart,
+    form: Multipart,
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
+    Ok(upload_into(cx, &shop, &id, form, "media").await)
+}
+
+/// Upload a file for buyers of a digital product to download (a
+/// `multipart/form-data` form post with `file`); it goes last.
+#[post("/admin/{shop}/products/{id}/downloads", tag = "admin")]
+pub(crate) async fn upload_download(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, id)): Path<(String, String)>,
+    form: Multipart,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
+    Ok(upload_into(cx, &shop, &id, form, "downloads").await)
+}
+
+/// Take a file off a digital product's downloads (a form post).
+#[post("/admin/{shop}/products/{id}/downloads/{file}/remove", tag = "admin")]
+pub(crate) async fn remove_download(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, id, file)): Path<(String, String, String)>,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
+    let mut ids = file_ids(&cx, &id, "downloads").await;
+    let Some(at) = ids.iter().position(|f| *f == file) else {
+        return Ok(cx.failed(404, &Value::Null));
+    };
+    ids.remove(at);
+    let (status, out) = put_files(&cx, &id, "downloads", &ids).await;
+    Ok(answer(cx, &shop, &id, "downloads", status, &out).await)
+}
+
+/// Uploads the form's file and adds it last to the product's `list`
+/// (`media` or `downloads`).
+async fn upload_into(cx: Ctx, shop: &str, id: &str, mut form: Multipart, list: &str) -> Response {
     let mut file: Option<(String, Bytes)> = None;
     let mut alt = String::new();
     while let Ok(Some(field)) = form.next_field().await {
@@ -384,7 +435,7 @@ pub(crate) async fn upload(
         }
     }
     let Some((name, bytes)) = file.filter(|(_, b)| !b.is_empty()) else {
-        return Ok(again(cx, &shop, &id, "Choose an image to upload.".into()).await);
+        return again(cx, shop, id, "Choose a file to upload.".into()).await;
     };
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -420,27 +471,30 @@ pub(crate) async fn upload(
             )
             .await;
     if status != 201 {
-        let e = match status {
-            415 => "Upload a PNG, JPEG, GIF, WebP or AVIF image, or an MP4 or WebM video.".into(),
+        let e = match (status, list) {
+            (415, "media") => {
+                "Upload a PNG, JPEG, GIF, WebP or AVIF image, or an MP4 or WebM video.".into()
+            }
+            (415, _) => "Upload a PDF, EPUB, ZIP, MP3, MP4 or an image.".into(),
             _ => message(&out),
         };
-        return Ok(match status {
+        return match status {
             401 => crate::to_login(),
             403 => cx.failed(403, &out),
-            _ => again(cx, &shop, &id, e).await,
-        });
+            _ => again(cx, shop, id, e).await,
+        };
     }
-    let mut ids = media_ids(&cx, &id).await;
+    let mut ids = file_ids(&cx, id, list).await;
     ids.push(out["id"].as_str().unwrap_or_default().to_owned());
-    let (status, out) = put_media(&cx, &id, &ids).await;
-    Ok(answer(cx, &shop, &id, "media", status, &out).await)
+    let (status, out) = put_files(&cx, id, list, &ids).await;
+    answer(cx, shop, id, list, status, &out).await
 }
 
-async fn media_ids(cx: &Ctx, id: &str) -> Vec<String> {
+async fn file_ids(cx: &Ctx, id: &str, list: &str) -> Vec<String> {
     let (_, media) = cx
         .call(
             Method::GET,
-            &format!("/api/products/{}/media", encode(id)),
+            &format!("/api/products/{}/{list}", encode(id)),
             None,
         )
         .await;
@@ -452,10 +506,10 @@ async fn media_ids(cx: &Ctx, id: &str) -> Vec<String> {
         .collect()
 }
 
-async fn put_media(cx: &Ctx, id: &str, ids: &[String]) -> (u16, Value) {
+async fn put_files(cx: &Ctx, id: &str, list: &str, ids: &[String]) -> (u16, Value) {
     cx.call(
         Method::PUT,
-        &format!("/api/products/{}/media", encode(id)),
+        &format!("/api/products/{}/{list}", encode(id)),
         Some(&json!({ "file_ids": ids })),
     )
     .await
@@ -484,7 +538,7 @@ pub(crate) async fn change_media(
             .await;
         return Ok(answer(cx, &shop, &id, "media", status, &out).await);
     }
-    let mut ids = media_ids(&cx, &id).await;
+    let mut ids = file_ids(&cx, &id, "media").await;
     let Some(at) = ids.iter().position(|f| *f == file) else {
         return Ok(cx.failed(404, &Value::Null));
     };
@@ -497,7 +551,7 @@ pub(crate) async fn change_media(
         "up" | "down" => return Ok(back(&shop, &id, "media")),
         _ => return Ok(cx.failed(404, &Value::Null)),
     }
-    let (status, out) = put_media(&cx, &id, &ids).await;
+    let (status, out) = put_files(&cx, &id, "media", &ids).await;
     Ok(answer(cx, &shop, &id, "media", status, &out).await)
 }
 

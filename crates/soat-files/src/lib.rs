@@ -2,9 +2,10 @@
 //!
 //! `POST /api/files` takes one `multipart/form-data` field `file` (and an
 //! optional `alt`). The type comes from the file's first bytes
-//! ([`soat_core::media::detect`]): images, PDF and video only, never HTML
-//! or SVG. Bytes go to Zapline [`Storage`] (a local directory, or S3 with
-//! `S3_BUCKET`); every view carries a signed `url` valid for an hour.
+//! ([`soat_core::media::detect`]): images, PDF, video, and MP3, ZIP and
+//! EPUB for downloads; never HTML or SVG. Bytes go to Zapline [`Storage`]
+//! (a local directory, or S3 with `S3_BUCKET`); every view carries a
+//! signed `url` valid for an hour.
 //!
 //! Modules that attach files (product media, CMS images) keep the file ids
 //! and call [`views`] to show them.

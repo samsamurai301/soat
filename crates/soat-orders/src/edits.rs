@@ -175,7 +175,11 @@ async fn edit_order(
         }
         let price = a.unit_price_minor.unwrap_or(item.price_minor);
         let gross = price * a.quantity;
-        let rate = match (&order.tax_country, &order.shipping_address) {
+        let taxed_at = order
+            .shipping_address
+            .as_ref()
+            .or(order.billing_address.as_ref());
+        let rate = match (&order.tax_country, taxed_at) {
             (Some(_), Some(addr)) => {
                 let q = soat_tax::quote(
                     &mut tx,
@@ -198,8 +202,8 @@ async fn edit_order(
         sqlx::query(
             "INSERT INTO order_lines (id, tenant_id, order_id, position, item_id, product_id, \
              sku, title, quantity, unit_price_minor, total_minor, tax_class, tax_rate_bps, \
-             tax_minor, discount_minor) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0)",
+             tax_minor, discount_minor, requires_shipping) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15)",
         )
         .bind(OrderLineId::new().as_str())
         .bind(tenant.id())
@@ -215,6 +219,7 @@ async fn edit_order(
         .bind(&item.tax_class)
         .bind(rate)
         .bind(tax_on(gross, rate, inclusive))
+        .bind(item.requires_shipping)
         .execute(&mut *tx)
         .await?;
         changes.push(json!({ "item_id": item.id, "sku": item.sku, "added": a.quantity }));

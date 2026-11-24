@@ -1375,25 +1375,41 @@ fn payment_status(status: &str) -> &'static str {
 
 /// The buyer's last order, from its cookie: what was bought and how to pay.
 #[get("/order", tag = "storefront")]
-async fn order_page(db: Db, shop: Shop, headers: HeaderMap) -> Result<Response> {
+async fn order_page(db: Db, shop: Shop, storage: Storage, headers: HeaderMap) -> Result<Response> {
     let found = match id_cookie(&headers, ORDER_COOKIE) {
         Some((id, token)) => match OrderToken::new(shop.clone(), &token).open(&db, &id).await {
             Ok((mut tx, id)) => {
                 let order = soat_orders::load(&mut tx, &shop, &id).await?;
                 let payments = soat_payments::for_reference(&mut tx, &shop, &id).await?;
+                let downloads = match &order {
+                    Some(o) => {
+                        soat_orders::downloads::ready_downloads(&mut tx, &shop, &storage, o).await?
+                    }
+                    None => Vec::new(),
+                };
                 tx.commit().await?;
-                order.map(|o| (o, payments))
+                order.map(|o| (o, payments, downloads))
             }
             Err(_) => None,
         },
         None => None,
     };
     let mut v = View::open(&db, &shop, &headers).await?;
-    let Some((order, payments)) = found else {
+    let Some((order, payments, downloads)) = found else {
         return v.not_found().await;
     };
     order_values(&mut v, &order, &payments);
+    download_values(&mut v, &downloads);
     v.render("order", StatusCode::OK).await
+}
+
+/// The order page's download links, once the order is paid.
+pub(crate) fn download_values(v: &mut View, downloads: &[soat_orders::downloads::Download]) {
+    let list: Vec<Value> = downloads
+        .iter()
+        .map(|d| json!({ "title": d.title, "file_name": d.file.file_name, "url": d.file.url }))
+        .collect();
+    v.set("downloads", json!(list));
 }
 
 /// Sets the order page's values.

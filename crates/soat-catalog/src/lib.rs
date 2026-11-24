@@ -10,6 +10,7 @@
 
 pub mod categories;
 pub mod collections;
+pub mod downloads;
 pub mod media;
 pub mod search;
 mod smart;
@@ -73,6 +74,7 @@ impl Module for Catalog {
         .plugin(collections::mount)
         .plugin(categories::mount)
         .plugin(media::mount)
+        .plugin(downloads::mount)
         .plugin(storefront::mount)
         .plugin(search::mount)
     }
@@ -103,6 +105,9 @@ pub struct Product {
     pub tax_class: String,
     /// Shipping weight in grams; its variants share it.
     pub weight_grams: Option<i64>,
+    /// False for digital products and services: nothing ships, and its
+    /// downloads are the buyer's once the order is paid.
+    pub requires_shipping: bool,
     /// The title search engines show; empty uses the title.
     pub seo_title: String,
     /// The description search engines show; empty uses the start of the
@@ -134,6 +139,8 @@ pub struct NewProduct {
     pub tax_class: Option<String>,
     #[validate(range(min = 0, max = 10_000_000))]
     pub weight_grams: Option<i64>,
+    /// Defaults to true; false for digital products.
+    pub requires_shipping: Option<bool>,
     #[validate(length(max = 200))]
     pub seo_title: Option<String>,
     #[validate(length(max = 500))]
@@ -159,6 +166,7 @@ pub struct ProductChange {
     pub tax_class: Option<String>,
     #[validate(range(min = 0, max = 10_000_000))]
     pub weight_grams: Option<i64>,
+    pub requires_shipping: Option<bool>,
     /// An empty string goes back to the title.
     #[validate(length(max = 200))]
     pub seo_title: Option<String>,
@@ -182,7 +190,7 @@ fn tags(raw: Option<&[String]>) -> Result<Option<Vec<String>>> {
 }
 
 const COLUMNS: &str = "id, sku, title, handle, description, status, price_minor, currency, tags, \
-     tax_class, weight_grams, seo_title, seo_description";
+     tax_class, weight_grams, requires_shipping, seo_title, seo_description";
 
 /// Product statuses.
 pub const STATUSES: &[&str] = &["active", "draft", "archived"];
@@ -286,8 +294,9 @@ async fn create_product(
     let product = sqlx::query_as::<_, Product>(&format!(
         "INSERT INTO products \
          (id, tenant_id, sku, title, price_minor, currency, tags, tax_class, weight_grams, \
-          handle, description, status, seo_title, seo_description) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING {COLUMNS}"
+          handle, description, status, seo_title, seo_description, requires_shipping) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
+         RETURNING {COLUMNS}"
     ))
     .bind(id.as_str())
     .bind(tenant.id())
@@ -303,6 +312,7 @@ async fn create_product(
     .bind(p.status.as_deref().unwrap_or("active"))
     .bind(p.seo_title.as_deref().unwrap_or_default().trim())
     .bind(p.seo_description.as_deref().unwrap_or_default().trim())
+    .bind(p.requires_shipping.unwrap_or(true))
     .fetch_one(&mut *tx)
     .await?;
     smart::place(&mut tx, tenant.id(), &product.id).await?;
@@ -328,7 +338,8 @@ async fn get_product(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<J
 }
 
 /// Change a product's SKU, title, handle, description, status, price, tags,
-/// tax class or SEO title and description (`products:write`). A handle
+/// tax class, weight, whether it ships, or SEO title and description
+/// (`products:write`). A handle
 /// another product has is a 409. Publishes `product.updated`, and
 /// `product.handle_changed` (`id`, `from`, `to`) when the handle changes, so
 /// old links can redirect.
@@ -360,7 +371,8 @@ async fn update_product(
          tax_class = COALESCE($7, tax_class), \
          weight_grams = COALESCE($8, weight_grams), \
          seo_title = COALESCE($12, seo_title), \
-         seo_description = COALESCE($13, seo_description) \
+         seo_description = COALESCE($13, seo_description), \
+         requires_shipping = COALESCE($14, requires_shipping) \
          WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
     ))
     .bind(tenant.id())
@@ -376,6 +388,7 @@ async fn update_product(
     .bind(&change.status)
     .bind(change.seo_title.as_deref().map(str::trim))
     .bind(change.seo_description.as_deref().map(str::trim))
+    .bind(change.requires_shipping)
     .fetch_one(&mut *tx)
     .await?;
     smart::place(&mut tx, tenant.id(), &product.id).await?;
@@ -495,6 +508,8 @@ pub struct StockItem {
     pub tax_class: String,
     /// Its product's weight in grams; 0 when not set.
     pub weight_grams: i64,
+    /// Whether its product ships (false for digital products).
+    pub requires_shipping: bool,
 }
 
 /// Looks up a stock item of the shop. A product that has variants is not
@@ -515,10 +530,11 @@ pub async fn stock_item(
             Vec<String>,
             String,
             i64,
+            bool,
         );
         let row: Option<VariantRow> = sqlx::query_as(
             "SELECT v.product_id, v.sku, v.price_minor, p.currency, p.title, v.option_values, \
-             p.tax_class, COALESCE(p.weight_grams, 0) \
+             p.tax_class, COALESCE(p.weight_grams, 0), p.requires_shipping \
              FROM product_variants v \
              JOIN products p ON p.id = v.product_id WHERE v.tenant_id = $1 AND v.id = $2",
         )
@@ -527,7 +543,17 @@ pub async fn stock_item(
         .fetch_optional(&mut *conn)
         .await?;
         return Ok(row.map(
-            |(product_id, sku, price_minor, currency, title, values, tax_class, weight_grams)| {
+            |(
+                product_id,
+                sku,
+                price_minor,
+                currency,
+                title,
+                values,
+                tax_class,
+                weight_grams,
+                requires_shipping,
+            )| {
                 StockItem {
                     id: vid.to_string(),
                     product_id,
@@ -537,6 +563,7 @@ pub async fn stock_item(
                     currency,
                     tax_class,
                     weight_grams,
+                    requires_shipping,
                 }
             },
         ));
@@ -544,9 +571,10 @@ pub async fn stock_item(
     let Ok(pid) = ProductId::parse(id) else {
         return Ok(None);
     };
-    let row: Option<(String, String, i64, String, String, i64, bool)> = sqlx::query_as(
+    type ProductRow = (String, String, i64, String, String, i64, bool, bool);
+    let row: Option<ProductRow> = sqlx::query_as(
         "SELECT sku, title, price_minor, currency, tax_class, COALESCE(weight_grams, 0), \
-         EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id) \
+         requires_shipping, EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id) \
          FROM products p WHERE tenant_id = $1 AND id = $2",
     )
     .bind(scope.tenant_id())
@@ -559,18 +587,26 @@ pub async fn stock_item(
             "this product has variants: stock each variant instead",
         )
         .with_code("has_variants")),
-        Some((sku, title, price_minor, currency, tax_class, weight_grams, false)) => {
-            Ok(Some(StockItem {
-                id: pid.to_string(),
-                product_id: pid.to_string(),
-                sku,
-                title,
-                price_minor,
-                currency,
-                tax_class,
-                weight_grams,
-            }))
-        }
+        Some((
+            sku,
+            title,
+            price_minor,
+            currency,
+            tax_class,
+            weight_grams,
+            requires_shipping,
+            false,
+        )) => Ok(Some(StockItem {
+            id: pid.to_string(),
+            product_id: pid.to_string(),
+            sku,
+            title,
+            price_minor,
+            currency,
+            tax_class,
+            weight_grams,
+            requires_shipping,
+        })),
     }
 }
 

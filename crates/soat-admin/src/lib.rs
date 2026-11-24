@@ -182,6 +182,8 @@ impl Module for Admin {
             variants::change_variant,
             variants::upload,
             variants::change_media,
+            variants::upload_download,
+            variants::remove_download,
         ))
         .mount((
             orders::list,

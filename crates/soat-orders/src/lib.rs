@@ -10,8 +10,10 @@
 //! the order id): a subscriber recomputes it on every `payment.updated`.
 //! Canceling releases the stock held for it. [`fulfillments`] ship its
 //! lines and take them out of stock; [`returns`] bring units back and
-//! refund them. Edits change an open order's lines.
+//! refund them. Edits change an open order's lines. Digital lines are
+//! delivered when the order is paid, and their [`downloads`] open then.
 
+pub mod downloads;
 mod edits;
 pub mod fulfillments;
 pub mod report;
@@ -61,6 +63,7 @@ impl Module for Orders {
         &[
             "tenancy",
             "events",
+            "files",
             "catalog",
             "customers",
             "inventory",
@@ -85,6 +88,7 @@ impl Module for Orders {
         app.plugin(routes::mount)
             .plugin(fulfillments::mount)
             .plugin(edits::mount)
+            .plugin(downloads::mount)
             .plugin(returns::mount)
             .plugin(report::mount)
     }
@@ -195,6 +199,8 @@ pub struct OrderLine {
     pub discount_minor: i64,
     /// Units shipped (not counting canceled shipments).
     pub fulfilled_quantity: i64,
+    /// False for digital items, delivered once the order is paid.
+    pub requires_shipping: bool,
 }
 
 /// A line to place.
@@ -212,6 +218,8 @@ pub struct NewOrderLine {
     pub tax_minor: i64,
     /// The line's share of the discount, taken off its total.
     pub discount_minor: i64,
+    /// False for digital items.
+    pub requires_shipping: bool,
 }
 
 /// The chosen shipping.
@@ -375,8 +383,8 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
         sqlx::query(
             "INSERT INTO order_lines (id, tenant_id, order_id, position, item_id, product_id, \
              sku, title, quantity, unit_price_minor, total_minor, tax_class, tax_rate_bps, \
-             tax_minor, discount_minor) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+             tax_minor, discount_minor, requires_shipping) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
         )
         .bind(OrderLineId::new().as_str())
         .bind(scope.tenant_id())
@@ -393,6 +401,7 @@ pub async fn place(tx: &mut TenantTx, scope: &impl Scope, o: &NewOrder) -> Resul
         .bind(l.tax_rate_bps)
         .bind(l.tax_minor)
         .bind(l.discount_minor)
+        .bind(l.requires_shipping)
         .execute(&mut **tx)
         .await?;
     }
@@ -470,7 +479,7 @@ pub async fn load(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Resu
          COALESCE((SELECT SUM(fl.quantity) FROM fulfillment_lines fl \
                    JOIN fulfillments f ON f.id = fl.fulfillment_id \
                    WHERE fl.order_line_id = l.id AND f.status <> 'canceled'), 0)::BIGINT \
-           AS fulfilled_quantity \
+           AS fulfilled_quantity, l.requires_shipping \
          FROM order_lines l WHERE l.tenant_id = $1 AND l.order_id = $2 ORDER BY l.position",
     )
     .bind(scope.tenant_id())
@@ -572,6 +581,9 @@ pub async fn sync_payments(tx: &mut TenantTx, scope: &impl Scope, order_id: &str
         "order.updated"
     };
     scope.publish(tx, kind, &order).await?;
+    if next == "paid" {
+        fulfillments::deliver_digital(tx, scope, order_id).await?;
+    }
     Ok(())
 }
 
