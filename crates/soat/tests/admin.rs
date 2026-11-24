@@ -1240,3 +1240,51 @@ async fn the_dashboard_shows_what_needs_doing() {
     let html = res.text();
     assert!(!html.contains("Sales") && !html.contains("28.75"), "{html}");
 }
+
+#[tokio::test]
+async fn the_palette_finds_pages_and_records() {
+    let (client, url) = common::client_and_url().await;
+    let admin = common::setup_admin(&client).await;
+    common::create_tenants(&client, &admin, &["acme"]).await;
+    let product: serde_json::Value = client
+        .post("/api/products")
+        .header("x-soat-tenant", "acme")
+        .bearer(&admin)
+        .json(&json!({ "sku": "TEE", "title": "Organic tee", "price_minor": 1190, "currency": "EUR" }))
+        .send()
+        .await
+        .assert_status(201)
+        .json();
+    let id = product["id"].as_str().unwrap();
+    placed(&url, id).await;
+    let cookie = sign_in(&client, common::ADMIN_EMAIL, common::ADMIN_PASSWORD).await;
+
+    let home = get(&client, &cookie, "/admin/acme").await.text();
+    assert!(home.contains("id=\"palette\""));
+    assert!(home.contains("hx-get=\"/admin/acme/palette\""));
+
+    let html = get(&client, &cookie, "/admin/acme/palette?q=vat")
+        .await
+        .text();
+    assert!(
+        html.contains("href=\"/admin/acme/settings/taxes\""),
+        "{html}"
+    );
+    assert!(!html.contains("<html"));
+    let html = get(&client, &cookie, "/admin/acme/palette?q=organic")
+        .await
+        .text();
+    assert!(html.contains(&format!("href=\"/admin/acme/products/{id}\"")));
+    let html = get(&client, &cookie, "/admin/acme/palette?q=%231001")
+        .await
+        .text();
+    assert!(html.contains("#1001"), "{html}");
+    assert!(html.contains("ada@example.com"));
+    let html = get(&client, &cookie, "/admin/acme/palette?q=zzzz")
+        .await
+        .text();
+    assert!(html.contains("Nothing matches."));
+    // Signed out: to sign-in, not results.
+    let res = client.get("/admin/acme/palette?q=tee").send().await;
+    assert_eq!(res.header("location"), Some("/admin/login"));
+}

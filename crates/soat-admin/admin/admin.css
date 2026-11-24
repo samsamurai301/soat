@@ -86,3 +86,10 @@ code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: va
 .ask .working { display: none; }
 .ask.htmx-request .working { display: inline; }
 @media (max-width: 720px) { .assistant { grid-template-columns: 1fr; } }
+kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 .3rem; color: var(--muted); }
+.palette { width: min(560px, 92vw); border: 1px solid var(--line); border-radius: 10px; padding: .75rem; margin-top: 12vh; }
+.palette::backdrop { background: rgba(15, 20, 30, .35); }
+.palette input { width: 100%; font-size: 1.05rem; }
+.palette-list { list-style: none; padding: 0; margin: .5rem 0; max-height: 50vh; overflow: auto; }
+.palette-list a { display: block; padding: .4rem .5rem; border-radius: 6px; color: var(--fg); text-decoration: none; }
+.palette-list a:hover, .palette-list a:focus { background: var(--bg); outline: none; }

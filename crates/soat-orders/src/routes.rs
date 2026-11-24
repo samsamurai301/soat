@@ -60,7 +60,7 @@ pub(crate) fn mount(app: App) -> App {
 
 /// The shop's orders, newest first (`orders:read`). Filter with
 /// `?status=`, `?financial_status=`, `?fulfillment_status=` or
-/// `?customer_id=`; `?q=` searches emails.
+/// `?customer_id=`; `?q=` searches emails and order numbers.
 #[get("/api/orders", tag = "orders")]
 async fn list_orders(
     db: Db,
@@ -71,7 +71,7 @@ async fn list_orders(
     let page = TenantListing::new("orders", SUMMARY)
         .sortable(["number", "total_minor", "placed_at"])
         .default_sort("-number")
-        .search(["email"])
+        .search(["email", "number::text"])
         .filter_text("status")
         .filter_text("financial_status")
         .filter_text("fulfillment_status")

@@ -21,6 +21,7 @@ const FILES: &[(&str, &str)] = &[
     ("launch", include_str!("../admin/launch.html")),
     ("assistant", include_str!("../admin/assistant.html")),
     ("builder", include_str!("../admin/builder.html")),
+    ("palette", include_str!("../admin/palette.html")),
     ("transfer", include_str!("../admin/transfer.html")),
     ("products", include_str!("../admin/products.html")),
     ("product", include_str!("../admin/product.html")),
@@ -112,6 +113,17 @@ impl Pages {
             .map(|l| l.render_with(data, true, &partials))
             .unwrap_or_default();
         (status, Html(html)).into_response()
+    }
+
+    /// Template `name` alone, for htmx to swap into a page.
+    pub fn fragment(&self, name: &str, data: &Value) -> Response {
+        let partials = |n: &str| self.0.get(n);
+        let html = self
+            .0
+            .get(name)
+            .map(|t| t.render_with(data, true, &partials))
+            .unwrap_or_default();
+        Html(html).into_response()
     }
 
     /// A page that says what went wrong.

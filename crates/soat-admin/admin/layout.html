@@ -26,12 +26,52 @@
     <details class="switch"><summary>Shops</summary>
       {{#each shops }}<a href="/admin/{{ id }}">{{ name }}</a>{{/each}}
     </details>
+    <button type="button" class="link" data-palette-open title="Ctrl+K">Search and go to… <kbd>Ctrl K</kbd></button>
     <form method="post" action="/admin/logout"><button class="link">Sign out</button></form>
   </aside>
   <main class="main">
     {{> content }}
   </main>
 </div>
+<dialog class="palette" id="palette" aria-label="Search and go to" data-base="{{ base }}">
+  <input type="search" name="q" placeholder="Pages, products, order numbers, customers" autocomplete="off"
+    hx-get="{{ base }}/palette" hx-trigger="input changed delay:150ms, focus once" hx-target="#palette-results">
+  <div id="palette-results"></div>
+  <p class="muted small">↑ ↓ to choose, Enter to go, Esc to close. Shortcuts: g then h, o, p, c or s for home, orders, products, customers, settings.</p>
+</dialog>
+<script>
+(function () {
+  var dialog = document.getElementById("palette");
+  var base = dialog.dataset.base;
+  var input = dialog.querySelector("input");
+  function open() { if (!dialog.open) { dialog.showModal(); input.select(); htmx.trigger(input, "input"); } }
+  function links() { return Array.prototype.slice.call(dialog.querySelectorAll("#palette-results a")); }
+  function move(by) {
+    var all = links(); if (!all.length) return;
+    var i = all.indexOf(document.activeElement);
+    all[(i + by + all.length) % all.length].focus();
+  }
+  document.querySelectorAll("[data-palette-open]").forEach(function (b) { b.addEventListener("click", open); });
+  dialog.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+    else if (e.key === "Enter" && document.activeElement === input) {
+      var first = links()[0]; if (first) { e.preventDefault(); first.click(); }
+    }
+  });
+  dialog.addEventListener("click", function (e) { if (e.target.closest("a")) dialog.close(); });
+  var pending = null;
+  var go = { h: "", o: "/orders", p: "/products", c: "/customers", s: "/settings" };
+  document.addEventListener("keydown", function (e) {
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); open(); return; }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "/") { e.preventDefault(); open(); return; }
+    if (pending && go.hasOwnProperty(e.key)) { window.location = base + go[e.key]; pending = null; return; }
+    pending = e.key === "g" ? setTimeout(function () { pending = null; }, 1000) : null;
+  });
+})();
+</script>
 {{else}}
 <main class="narrow">
   {{> content }}

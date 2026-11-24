@@ -146,6 +146,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Assistant in the admin: chat with Claude about the shop, approve its changes in the chat
 - [x] Shop builder: describe the shop, review Claude's draft of products, collections and pages, build it
 - [x] Content helpers: Claude suggests product copy and SEO fields, and translates products
+- [x] Admin command palette (Ctrl+K) and keyboard shortcuts
 - [ ] WASM plugin host, built into Zapline
 
 ## License

@@ -39,6 +39,7 @@ mod launch;
 mod onboarding;
 mod orders;
 mod pages;
+mod palette;
 mod products;
 mod samples;
 mod settings;
@@ -106,6 +107,7 @@ impl Module for Admin {
             logout,
             shop_list,
             dashboard::home,
+            palette::search,
             styles,
         ))
         .mount((
