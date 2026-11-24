@@ -55,9 +55,9 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-seo", 30),
     ("soat-search", 30),
     ("soat-theme", 30),
-    // Extensions.
+    // Extensions; plugin interfaces sit under the host that runs them.
+    ("soat-plugin-api", 39),
     ("soat-apps", 40),
-    ("soat-plugin-api", 40),
     ("soat-plugin-host", 40),
     ("soat-cli", 40),
     ("soat-onboarding", 40),

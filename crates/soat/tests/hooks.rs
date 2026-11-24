@@ -313,3 +313,87 @@ async fn hooks_shape_the_checkout() {
     assert_eq!(done["order"]["total_minor"], 3300);
     assert_eq!(done["order"]["shipping_minor"], 0);
 }
+
+/// F2: a WebAssembly plugin runs at checkout like a native hook.
+#[cfg(feature = "plugins")]
+#[tokio::test]
+async fn a_wasm_plugin_discounts_at_checkout() {
+    let wasm = include_bytes!("../../soat-plugin-host/fixtures/loyalty.wasm");
+    let manifest = r#"{"name":"loyalty","version":"1.0.0","world":"discounts","api":"0.1.0"}"#;
+    let settings = [("amount".to_string(), "250".to_string())].into();
+    let plugin = soat_plugin_host::PluginHost::new()
+        .unwrap()
+        .load(manifest, wasm, settings)
+        .unwrap();
+
+    let url = common::fresh_database_url().await;
+    let mut settings = soat::Settings::for_tests(common::SETUP_TOKEN);
+    settings.hooks = Hooks::new().with(plugin);
+    let client = soat::app(Database::postgres(url), settings).test();
+    let t = common::setup_admin(&client).await;
+    common::create_tenants(&client, &t, &["acme"]).await;
+    let c = &client;
+
+    let loc = staff(
+        c,
+        &t,
+        "POST",
+        "/api/locations",
+        json!({ "name": "W", "country": "DE" }),
+    )
+    .await;
+    let p = staff(
+        c,
+        &t,
+        "POST",
+        "/api/products",
+        json!({ "sku": "MUG", "title": "Mug", "price_minor": 1000,
+        "currency": "EUR", "tags": ["plugin"] }),
+    )
+    .await;
+    let item = p["id"].as_str().unwrap().to_owned();
+    staff(
+        c,
+        &t,
+        "POST",
+        &format!("/api/inventory/{item}/adjustments"),
+        json!({ "location_id": loc["id"], "delta": 10, "reason": "received" }),
+    )
+    .await;
+    let cart: Value = c
+        .post("/api/storefront/carts")
+        .header("x-soat-tenant", "acme")
+        .json(&json!({ "currency": "EUR" }))
+        .send()
+        .await
+        .json();
+    let id = cart["cart"]["id"].as_str().unwrap().to_owned();
+    let token = cart["token"].as_str().unwrap().to_owned();
+    let (s, _) = shopper(
+        c,
+        &token,
+        "POST",
+        &format!("/api/storefront/carts/{id}/lines"),
+        json!({ "item_id": item, "quantity": 1 }),
+    )
+    .await;
+    assert_eq!(s, 200);
+    let (s, view) = shopper(
+        c,
+        &token,
+        "PATCH",
+        &format!("/api/storefront/carts/{id}/checkout"),
+        json!({ "email": "ada@example.com" }),
+    )
+    .await;
+    assert_eq!(s, 200, "{view}");
+
+    // 2.50 off the tagged line from its setting; its oversized ask is cut
+    // to what the cart still holds.
+    let adjustments = view["adjustments"].as_array().unwrap();
+    assert_eq!(adjustments.len(), 2, "{view}");
+    assert_eq!(adjustments[0]["label"], "Loyalty");
+    assert_eq!(adjustments[0]["amount_minor"], 250);
+    assert_eq!(adjustments[1]["amount_minor"], 750);
+    assert_eq!(view["discount_minor"], 1000);
+}

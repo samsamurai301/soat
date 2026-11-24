@@ -90,12 +90,15 @@ impl Settings {
     /// build keeps mail in the dev inbox at `/_dev/mail`);
     /// `SOAT_SECRET_KEY` (32 characters or more, kept across restarts) to
     /// seal the keys shops store; `SOAT_ANTHROPIC_API_BASE` to reach
-    /// Anthropic's API elsewhere (a proxy).
+    /// Anthropic's API elsewhere (a proxy); `SOAT_PLUGINS_DIR` for the
+    /// WebAssembly plugins checkout runs (one folder each, see
+    /// `docs/plugins.md`).
     ///
     /// # Errors
     ///
     /// When the storage settings are inconsistent, `SMTP_URL` is invalid
-    /// or missing in a release build, or `SOAT_SECRET_KEY` is too short.
+    /// or missing in a release build, `SOAT_SECRET_KEY` is too short, or a
+    /// plugin in `SOAT_PLUGINS_DIR` does not load.
     pub fn from_env() -> zapline::Result<Self> {
         Ok(Self {
             auth: Auth::from_env(),
@@ -126,7 +129,7 @@ impl Settings {
             sendcloud: Some(soat_sendcloud::Sendcloud::from_env()),
             #[cfg(feature = "shopify-sync")]
             shopify_api_base: std::env::var("SOAT_SHOPIFY_API_BASE").ok(),
-            hooks: soat_core::hooks::Hooks::new(),
+            hooks: hooks_from_env()?,
         })
     }
 
@@ -267,4 +270,24 @@ pub fn app(db: Database, settings: Settings) -> App {
         .plugin(Health::new().check("database", DbCheck::new()))
         .openapi(OpenApi::new("SOAT", env!("CARGO_PKG_VERSION")));
     modules(settings).build(app, db)
+}
+
+/// The plugins in `SOAT_PLUGINS_DIR`, in folder order, as checkout hooks.
+#[cfg(feature = "plugins")]
+fn hooks_from_env() -> zapline::Result<soat_core::hooks::Hooks> {
+    let mut hooks = soat_core::hooks::Hooks::new();
+    let Ok(dir) = std::env::var("SOAT_PLUGINS_DIR") else {
+        return Ok(hooks);
+    };
+    let failed = |e: String| zapline::Error::internal(format!("SOAT_PLUGINS_DIR: {e}"));
+    let host = soat_plugin_host::PluginHost::new().map_err(failed)?;
+    for plugin in host.load_dir(std::path::Path::new(&dir)).map_err(failed)? {
+        hooks = hooks.with(plugin);
+    }
+    Ok(hooks)
+}
+
+#[cfg(not(feature = "plugins"))]
+fn hooks_from_env() -> zapline::Result<soat_core::hooks::Hooks> {
+    Ok(soat_core::hooks::Hooks::new())
 }

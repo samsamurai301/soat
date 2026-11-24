@@ -43,10 +43,11 @@ soat-paypal = { workspace = true, optional = true }
 soat-sendcloud = { workspace = true, optional = true }
 soat-import = { workspace = true, optional = true }
 soat-apps = { workspace = true, optional = true }
+soat-plugin-host = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage", "mail"] }
 
 [features]
-default = ["stripe", "mollie", "paypal", "sendcloud", "shopify-sync", "apps"]
+default = ["stripe", "mollie", "paypal", "sendcloud", "shopify-sync", "apps", "plugins"]
 # Stripe payments (PaymentIntents, Connect, webhooks).
 stripe = ["dep:soat-stripe"]
 # Mollie payments: iDEAL, Bancontact, cards, Klarna and more.
@@ -59,6 +60,8 @@ sendcloud = ["dep:soat-sendcloud"]
 shopify-sync = ["dep:soat-import"]
 # Third-party apps: registration, install with consent, OAuth codes for keys.
 apps = ["dep:soat-apps", "soat-storefront/apps"]
+# WebAssembly plugins at checkout's hook points, from `SOAT_PLUGINS_DIR`.
+plugins = ["dep:soat-plugin-host"]
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg"] }

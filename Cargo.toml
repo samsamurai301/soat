@@ -45,6 +45,8 @@ soat-storefront = { path = "crates/soat-storefront" }
 soat-import = { path = "crates/soat-import" }
 soat-apps = { path = "crates/soat-apps" }
 soat-cli = { path = "crates/soat-cli" }
+soat-plugin-api = { path = "crates/soat-plugin-api" }
+soat-plugin-host = { path = "crates/soat-plugin-host" }
 soat-mcp = { path = "crates/soat-mcp" }
 soat-admin = { path = "crates/soat-admin" }
 soat-testing = { path = "crates/soat-testing" }

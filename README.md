@@ -92,6 +92,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-sendcloud` | Sendcloud labels for DHL, DPD, GLS, PostNL, UPS and more through a shop's own account (feature `sendcloud`) |
 | `crates/soat-apps` | Apps a shop finds in the directory and installs with consent: OAuth-style code for a scoped API key (feature `apps`) |
 | `crates/soat-plugin-api` | Plugin interfaces: the `soat:plugin` WIT package and the plugin manifest |
+| `crates/soat-plugin-host` | Runs WebAssembly plugins at checkout, sandboxed with fuel and memory caps |
 | `crates/soat-cli` | The `soat app` commands: start an app from a template, register it and keep it in step while developing |
 | `crates/soat-import` | Moving from Shopify without a gap: its store synced by the Admin API until cutover (feature `shopify-sync`) |
 | `crates/soat-promotions` | Discount codes and automatic discounts: percentage, fixed amount, free shipping, buy X get Y, per collection, with dates, minimums and limits |
@@ -170,7 +171,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Apps: an app directory, install with consent for a key with exactly the granted permissions, admin links and storefront blocks, and `soat app new` to start one ([guide](docs/apps.md))
 - [x] Tax by an outside tax service when zones are not enough, with the zones standing in when it is down ([guide](docs/tax-providers.md))
 - [x] Hook points at checkout (shipping filters, discounts, order validation) for native hooks today and plugins later; plugin interfaces as WIT ([guide](docs/plugins.md))
-- [ ] WASM plugin host, built into Zapline
+- [x] WASM plugin host: plugins from `SOAT_PLUGINS_DIR` run at checkout, sandboxed and metered ([guide](docs/plugins.md)); moves into Zapline later
 
 ## License
 

@@ -1,4 +1,4 @@
-# Plugins (v0 interfaces)
+# Plugins
 
 Apps run on their own servers and use the API. Plugins run inside SOAT,
 as WebAssembly components, at the hook points where SOAT works out a cart
@@ -64,9 +64,55 @@ let mut settings = soat::Settings::from_env()?;
 settings.hooks = Hooks::new().with(MyLoyaltyDiscount);
 ```
 
+## Installing plugins
+
+Build with the `plugins` feature (on by default) and point
+`SOAT_PLUGINS_DIR` at a folder holding one folder per plugin:
+
+```
+plugins/
+  10-loyalty/
+    soat.plugin.json
+    plugin.wasm        # the component
+    settings.json      # optional: {"amount": "250"}
+```
+
+They load at start, in folder name order, which is the order they run in.
+A plugin that does not load (bad manifest, not a component, the wrong
+world, or importing more than `host`) stops the server with the reason.
+
+## The sandbox
+
+The plugin host (`soat-plugin-host`, on wasmtime) gives every call a fresh
+instance:
+
+- **Fuel:** 50 million instructions a call (`PluginHost::with_fuel` to
+  change it).
+- **Memory:** 32 MiB an instance.
+- **Imports:** `host` only. No WASI: no network, files, clock or
+  randomness, so a call with the same cart gives the same answer.
+
+A call that traps, runs out of fuel or exceeds memory changes nothing: a
+`discounts` plugin takes nothing off, a `shipping-filter` keeps SOAT's
+options, and a `checkout-validation` plugin lets the order through. The
+reason goes to the plugin's log (`Plugin::log`, its last 200 lines, beside
+what it wrote with `host.log`).
+
+Loading in code:
+
+```rust
+let host = soat_plugin_host::PluginHost::new()?;
+let plugin = host.load(manifest_json, &wasm, settings)?;
+settings.hooks = Hooks::new().with(plugin);
+```
+
 ## Building one
 
 Any language with a component toolchain works, for example Rust with
-`cargo component`, against the WIT file above. Running WebAssembly plugins
-needs the plugin host (roadmap F2); it runs them through the same
-`Hook` trait.
+`cargo component` or `wit-bindgen`, against the WIT file above.
+`crates/soat-plugin-host/fixtures/loyalty` is a complete one in Rust
+(no_std, 8 KB): it takes the `amount` setting off every line tagged
+`plugin`; `fixtures/build.sh` builds it.
+
+Next: plugins installed per shop from the admin, with their permissions
+and secret settings, and the host moving into Zapline.
