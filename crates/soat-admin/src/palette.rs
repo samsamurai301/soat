@@ -24,6 +24,8 @@ const PLACES: &[(&str, &str, &str)] = &[
     ("Collections", "/collections", "groups smart"),
     ("Customers", "/customers", "buyers"),
     ("New customer", "/customers/new", "add create"),
+    ("Discounts", "/discounts", "codes promotions sale coupons"),
+    ("New discount", "/discounts/new", "add create code coupon"),
     ("Pages", "/pages", "content cms"),
     ("Menus", "/menus", "navigation"),
     ("Redirects", "/redirects", "urls"),

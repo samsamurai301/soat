@@ -63,7 +63,7 @@
   <dl class="totals">
     <dt>{{ t.subtotal }}</dt><dd>{{ totals.subtotal }}</dd>
     {{#if totals.shipping }}<dt>{{ t.shipping }}</dt><dd>{{ totals.shipping }}</dd>{{/if}}
-    {{#if totals.discount }}<dt>{{ t.discount }}{{#if checkout.discount.code }} ({{ checkout.discount.code }}){{/if}}</dt><dd>−{{ totals.discount }}</dd>{{/if}}
+    {{#if totals.discount }}<dt>{{ t.discount }}{{#if checkout.automatic_discount }} ({{ checkout.automatic_discount.title }}{{#if checkout.discount.code }}, {{ checkout.discount.code }}{{/if}}){{else}}{{#if checkout.discount.code }} ({{ checkout.discount.code }}){{/if}}{{/if}}</dt><dd>−{{ totals.discount }}</dd>{{/if}}
     {{#if totals.tax }}<dt>{{#if checkout.prices_include_tax }}{{ t.including_vat }}{{else}}{{ t.vat }}{{/if}}</dt><dd>{{ totals.tax }}</dd>{{/if}}
     <dt class="total">{{ t.total }}</dt><dd class="total">{{ totals.total }}</dd>
   </dl>

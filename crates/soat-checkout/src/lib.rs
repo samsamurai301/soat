@@ -18,12 +18,11 @@ use serde_json::Value;
 use soat_cart::storefront::CartToken;
 use soat_cart::{view, CartView};
 use soat_core::address::is_country_code;
-use soat_core::discount::allocate;
 use soat_core::{Currency, Permission};
 use soat_module::{Event, HandlerFuture, Module, Subscriber};
 use soat_orders::{NewOrder, NewOrderLine, NewShipping, Order, PostalAddress};
 use soat_payments::{Payment, Providers, StartPayment};
-use soat_promotions::{AppliedDiscount, DiscountContext};
+use soat_promotions::{AppliedDiscount, DiscountContext, DiscountLine};
 use soat_shipping::{ShippingOption, ShippingQuery};
 use soat_tax::{QuoteInput, TaxQuote};
 use soat_tenancy::{Scope, Shop, TenantTx};
@@ -110,6 +109,9 @@ pub struct CheckoutView {
     pub shipping: Option<ShippingOption>,
     /// Tax on the lines and shipping, once the address is known.
     pub tax: Option<TaxQuote>,
+    /// The automatic discount that applies, worth most of those that do;
+    /// it comes off before any code.
+    pub automatic_discount: Option<AppliedDiscount>,
     /// The code entered and what it takes off, while it applies.
     pub discount: Option<AppliedDiscount>,
     /// Why the code entered no longer applies (e.g. the cart changed).
@@ -271,14 +273,39 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
         }
     }
 
-    // The discount code, shared out over the lines.
-    let (mut discount, mut discount_error) = (None, None);
-    if let Some(code) = d.discount_code.as_deref().filter(|c| !c.is_empty()) {
-        let subtotal = lines.iter().map(|l| l.unit_price_minor * l.quantity).sum();
+    // The automatic discount worth most, then the code on what is left.
+    let mut offs: Vec<DiscountLine> = lines
+        .iter()
+        .map(|l| DiscountLine {
+            product_id: l.product_id.clone(),
+            unit_price_minor: l.unit_price_minor,
+            quantity: l.quantity,
+            off_minor: 0,
+        })
+        .collect();
+    let shipping_price = chosen.as_ref().map_or(0, |s| s.price_minor);
+    let auto = {
         let ctx = DiscountContext {
             currency: &cart.currency,
-            subtotal_minor: subtotal,
-            shipping_minor: chosen.as_ref().map_or(0, |s| s.price_minor),
+            lines: &offs,
+            shipping_minor: shipping_price,
+            email: &email,
+            customer_id: cart.customer_id.as_deref(),
+        };
+        soat_promotions::automatic(conn, scope, &ctx).await?
+    };
+    if let Some(a) = &auto {
+        for (l, off) in offs.iter_mut().zip(&a.lines_minor) {
+            l.off_minor += off;
+        }
+    }
+    let auto_shipping = auto.as_ref().map_or(0, |a| a.shipping_minor);
+    let (mut discount, mut discount_error) = (None, None);
+    if let Some(code) = d.discount_code.as_deref().filter(|c| !c.is_empty()) {
+        let ctx = DiscountContext {
+            currency: &cart.currency,
+            lines: &offs,
+            shipping_minor: shipping_price - auto_shipping,
             email: &email,
             customer_id: cart.customer_id.as_deref(),
         };
@@ -289,15 +316,14 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
         }
     }
     if let Some(a) = &discount {
-        let worth: Vec<i64> = lines
-            .iter()
-            .map(|l| l.unit_price_minor * l.quantity)
-            .collect();
-        for (line, share) in lines.iter_mut().zip(allocate(a.goods_minor, &worth)) {
-            line.discount_minor = share;
+        for (l, off) in offs.iter_mut().zip(&a.lines_minor) {
+            l.off_minor += off;
         }
     }
-    let shipping_discount = discount.as_ref().map_or(0, |a| a.shipping_minor);
+    for (line, off) in lines.iter_mut().zip(&offs) {
+        line.discount_minor = off.off_minor;
+    }
+    let shipping_discount = auto_shipping + discount.as_ref().map_or(0, |a| a.shipping_minor);
 
     if let Some(addr) = &shipping_address {
         let mut amounts: Vec<(String, i64)> = lines
@@ -376,6 +402,7 @@ async fn build(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) -> Re
             tax,
             discount_issue: discount_error.as_ref().map(|e| e.message().to_owned()),
             discount,
+            automatic_discount: auto,
             subtotal_minor: totals.subtotal,
             shipping_minor: totals.shipping,
             discount_minor: totals.discount,
@@ -554,10 +581,10 @@ pub async fn complete(
         reverse_charge: tax.is_some_and(|t| t.reverse_charge),
         vat_number: view.vat_number.clone(),
         note: String::new(),
-        discount_code: view.discount.as_ref().map(|a| a.code.clone()),
+        discount_code: view.discount.as_ref().and_then(|a| a.code.clone()),
     };
     let (placed, token) = soat_orders::place(&mut tx, shop, &order).await?;
-    if let Some(applied) = &view.discount {
+    for applied in view.automatic_discount.iter().chain(&view.discount) {
         soat_promotions::redeem(
             &mut tx,
             shop,

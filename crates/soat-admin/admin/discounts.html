@@ -1,0 +1,8 @@
+<div class="head">
+  <h1>Discounts</h1>
+  <a class="button" href="{{ base }}/discounts/new">Add discount</a>
+</div>
+{{#if discounts }}<table class="table">
+  <thead><tr><th>Discount</th><th>Code</th><th>What it does</th><th>Used</th><th>Status</th></tr></thead>
+  <tbody>{{#each discounts }}<tr><td><a href="{{ base }}/discounts/{{ id }}">{{ title }}</a></td><td>{{#if automatic }}<span class="badge">Automatic</span>{{else}}<code>{{ code }}</code>{{/if}}</td><td>{{ summary }}</td><td>{{ used_count }}{{#if usage_limit }} of {{ usage_limit }}{{/if}}</td><td>{{#if active }}<span class="badge on">Active</span>{{else}}Off{{/if}}</td></tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No discounts yet. Make a code like SUMMER10 for buyers to enter, or an automatic discount such as “buy 2, get 1 free” that applies by itself.</p>{{/if}}

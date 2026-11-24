@@ -88,7 +88,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-stripe` | Stripe provider: PaymentIntents, Connect accounts, refunds, signed webhooks (feature `stripe`) |
 | `crates/soat-mollie` | Mollie provider: iDEAL, Bancontact, cards, Klarna and more, refunds, webhooks checked with Mollie (feature `mollie`) |
 | `crates/soat-paypal` | PayPal provider: Orders v2, capture or authorize, partner merchants, refunds, verified webhooks (feature `paypal`) |
-| `crates/soat-promotions` | Discount codes: percentage, fixed amount, free shipping, with dates, minimums and limits |
+| `crates/soat-promotions` | Discount codes and automatic discounts: percentage, fixed amount, free shipping, buy X get Y, per collection, with dates, minimums and limits |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |
@@ -123,7 +123,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Orders
 - [x] Checkout
 - [x] Fulfillment, returns and refunds
-- [x] Discount codes
+- [x] Discount codes, automatic discounts and buy X get Y
 - [x] Transactional email with editable templates
 - [x] Invoices and credit notes
 - [x] Content pages from blocks, and menus

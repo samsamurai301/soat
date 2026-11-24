@@ -53,6 +53,31 @@ pub fn allocate(total: i64, amounts: &[i64]) -> Vec<i64> {
     shares
 }
 
+/// Buy X get Y: for every `buy + get` units across `lines` (`(unit
+/// price, quantity)`), the cheapest `get` units of the lot are `bps` off
+/// (10000 = free). Answers what comes off each line, in minor units.
+pub fn buy_x_get_y(lines: &[(i64, i64)], buy: i64, get: i64, bps: i64) -> Vec<i64> {
+    let mut off = vec![0; lines.len()];
+    if buy < 1 || get < 1 {
+        return off;
+    }
+    let units: i64 = lines.iter().map(|(_, q)| (*q).max(0)).sum();
+    let mut cheap = units / (buy + get) * get;
+    let mut order: Vec<usize> = (0..lines.len()).collect();
+    order.sort_by_key(|i| lines[*i].0);
+    let bps = i128::from(bps.clamp(0, 10_000));
+    for i in order {
+        if cheap == 0 {
+            break;
+        }
+        let (price, qty) = lines[i];
+        let n = qty.max(0).min(cheap);
+        cheap -= n;
+        off[i] = (i128::from(price.max(0)) * i128::from(n) * bps / 10_000) as i64;
+    }
+    off
+}
+
 /// A discount code as people type it: trimmed and uppercased; 1 to 50 of
 /// `A-Z`, `0-9`, `-` and `_`.
 pub fn normalize_code(raw: &str) -> Option<String> {
@@ -89,6 +114,23 @@ mod tests {
         let s = allocate(7, &[10, 20, 30]);
         assert_eq!(s.iter().sum::<i64>(), 7);
         assert!(s.iter().zip([10, 20, 30]).all(|(a, b)| *a <= b));
+    }
+
+    #[test]
+    fn buy_two_get_one() {
+        // Five units: one lot of three, so the cheapest unit is free.
+        assert_eq!(
+            buy_x_get_y(&[(1000, 3), (500, 2)], 2, 1, 10_000),
+            vec![0, 500]
+        );
+        // Six units: two lots, the two cheapest are half price.
+        assert_eq!(
+            buy_x_get_y(&[(1000, 4), (600, 1), (400, 1)], 2, 1, 5000),
+            vec![0, 300, 200]
+        );
+        assert_eq!(buy_x_get_y(&[(1000, 2)], 2, 1, 10_000), vec![0]);
+        assert_eq!(buy_x_get_y(&[(1000, 2)], 1, 1, 10_000), vec![1000]);
+        assert_eq!(buy_x_get_y(&[(1000, 9)], 0, 1, 10_000), vec![0]);
     }
 
     #[test]

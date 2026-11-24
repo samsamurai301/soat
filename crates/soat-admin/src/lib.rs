@@ -36,6 +36,7 @@ mod collections;
 mod content;
 mod customers;
 mod dashboard;
+mod discounts;
 mod launch;
 mod onboarding;
 mod orders;
@@ -156,6 +157,14 @@ impl Module for Admin {
             collections::create,
             collections::update,
             collections::act,
+        ))
+        .mount((
+            discounts::list,
+            discounts::new_page,
+            discounts::edit_page,
+            discounts::create,
+            discounts::update,
+            discounts::delete,
         ))
         .mount((
             variants::set_options,

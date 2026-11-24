@@ -1,0 +1,38 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/discounts">All discounts</a>
+</div>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/discounts{{#if discount.id }}/{{ discount.id }}{{/if}}" class="form">
+  <fieldset><legend>How it applies</legend>
+    <label class="check"><input type="radio" name="mode" value="code"{{#if discount.automatic }}{{else}} checked{{/if}}> Buyers enter a code</label>
+    <label class="check"><input type="radio" name="mode" value="automatic"{{#if discount.automatic }} checked{{/if}}> Automatically, when the cart qualifies; the one worth most applies, before any code</label>
+    <label>Code <input name="code" value="{{ discount.code }}" maxlength="50" placeholder="SUMMER10" autocapitalize="characters"></label>
+    <label>Title <span class="muted">(what buyers see; the code if left empty)</span> <input name="title" value="{{ discount.title }}" maxlength="200"></label>
+  </fieldset>
+  <fieldset><legend>What it does</legend>
+    <label>Kind <select name="kind">{{#each kinds }}<option value="{{ key }}"{{#if selected }} selected{{/if}}>{{ label }}</option>{{/each}}</select></label>
+    <label>Off <span class="muted">(a percentage, or an amount in {{ currency }}; for buy X get Y, what comes off the items got: 100 is free)</span> <input name="amount" value="{{ form.amount }}" inputmode="decimal"></label>
+    <p class="row tight">
+      <label>Buy <input name="buy_quantity" value="{{ discount.buy_quantity }}" inputmode="numeric" size="4"></label>
+      <label>Get <input name="get_quantity" value="{{ discount.get_quantity }}" inputmode="numeric" size="4"></label>
+    </p>
+    <p class="muted small">Buy X get Y: for every lot of buy + get items, the cheapest get items are discounted.</p>
+    <label>Products <select name="collection_id"><option value="">Every product</option>{{#each collections }}<option value="{{ id }}"{{#if selected }} selected{{/if}}>Only {{ title }}</option>{{/each}}</select></label>
+  </fieldset>
+  <fieldset><legend>Conditions</legend>
+    <label>Minimum subtotal in {{ currency }} <input name="min" value="{{ form.min }}" inputmode="decimal"></label>
+    <p class="row tight">
+      <label>Starts <input type="date" name="starts" value="{{ form.starts }}"></label>
+      <label>Ends <input type="date" name="ends" value="{{ form.ends }}"></label>
+    </p>
+    <label>Most uses in all <input name="usage_limit" value="{{ discount.usage_limit }}" inputmode="numeric"></label>
+    <label class="check"><input type="checkbox" name="once_per_customer"{{#if discount.once_per_customer }} checked{{/if}}> Once per customer</label>
+    <label class="check"><input type="checkbox" name="active"{{#if discount.active }} checked{{/if}}> Active</label>
+  </fieldset>
+  <button class="button">{{#if creating }}Create discount{{else}}Save{{/if}}</button>
+</form>
+{{#if discount.id }}
+<p class="muted">Used {{ discount.used_count }} times.</p>
+<form method="post" action="{{ base }}/discounts/{{ discount.id }}/delete" class="danger" hx-confirm="Delete this discount? Orders keep what they saved."><button class="link">Delete this discount</button></form>
+{{/if}}

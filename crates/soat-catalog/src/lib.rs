@@ -573,3 +573,33 @@ pub async fn stock_item(
         }
     }
 }
+
+/// Which of `product_ids` are in the shop's collection `collection_id`
+/// (hand-picked or smart); `None` when the shop has no such collection.
+/// Run it in the tenant transaction.
+pub async fn collection_members(
+    conn: &mut sqlx::PgConnection,
+    scope: &impl soat_tenancy::Scope,
+    collection_id: &str,
+    product_ids: &[String],
+) -> Result<Option<Vec<String>>> {
+    let found: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM collections WHERE tenant_id = $1 AND id = $2")
+            .bind(scope.tenant_id())
+            .bind(collection_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    if found.is_none() {
+        return Ok(None);
+    }
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT product_id FROM collection_products WHERE tenant_id = $1 \
+         AND collection_id = $2 AND product_id = ANY($3)",
+    )
+    .bind(scope.tenant_id())
+    .bind(collection_id)
+    .bind(product_ids)
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(Some(rows.into_iter().map(|(id,)| id).collect()))
+}

@@ -1088,7 +1088,7 @@ async fn checkout_values(
         None => c
             .discount
             .as_ref()
-            .map(|d| d.code.clone())
+            .and_then(|d| d.code.clone())
             .unwrap_or_default(),
     };
     let title = v.t("checkout");
@@ -1225,7 +1225,7 @@ async fn checkout_update(
     }
     let mut problem = None;
     if let Some(code) = f.discount_code.as_ref().map(|c| c.trim().to_owned()) {
-        let current = view.discount.as_ref().map(|d| d.code.clone());
+        let current = view.discount.as_ref().and_then(|d| d.code.clone());
         if current.as_deref().unwrap_or_default() != code {
             let change = CheckoutChange {
                 discount_code: Some(code),

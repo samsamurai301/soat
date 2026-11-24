@@ -1,4 +1,5 @@
-//! C13: discount codes, managed by staff and entered at checkout.
+//! C13: discount codes, managed by staff and entered at checkout; C14:
+//! automatic discounts and buy X get Y.
 
 mod common;
 
@@ -89,6 +90,12 @@ impl Shop {
     /// A cart with two tees, an email, a Berlin address and shipping
     /// chosen; returns its checkout path and token.
     async fn checkout(&self, email: &str) -> (String, String) {
+        let tee = self.tee.clone();
+        self.checkout_with(email, &[(&tee, 2)]).await
+    }
+
+    /// A cart with `lines`, an email, a Berlin address and shipping chosen.
+    async fn checkout_with(&self, email: &str, lines: &[(&str, i64)]) -> (String, String) {
         let c = call(
             &self.client,
             "acme",
@@ -101,14 +108,16 @@ impl Shop {
         .await;
         let id = c["cart"]["id"].as_str().unwrap().to_owned();
         let token = c["token"].as_str().unwrap().to_owned();
-        self.shopper(
-            "POST",
-            &format!("/api/storefront/carts/{id}/lines"),
-            &token,
-            json!({ "item_id": self.tee, "quantity": 2 }),
-            200,
-        )
-        .await;
+        for (item, quantity) in lines {
+            self.shopper(
+                "POST",
+                &format!("/api/storefront/carts/{id}/lines"),
+                &token,
+                json!({ "item_id": item, "quantity": quantity }),
+                200,
+            )
+            .await;
+        }
         let path = format!("/api/storefront/carts/{id}/checkout");
         self.shopper(
             "PATCH",
@@ -540,4 +549,255 @@ async fn codes_stay_in_their_shop() {
     .await;
     s.staff("GET", &format!("/api/discounts/{id}"), Value::Null, 200)
         .await;
+}
+
+/// A 5.00 mug with stock, for carts of more than one product.
+async fn mug(s: &Shop) -> String {
+    let loc = s
+        .staff(
+            "POST",
+            "/api/locations",
+            json!({ "name": "M", "country": "DE" }),
+            201,
+        )
+        .await["id"]
+        .clone();
+    let p = s
+        .staff(
+            "POST",
+            "/api/products",
+            json!({ "sku": "MUG", "title": "Mug", "price_minor": 500, "currency": "EUR" }),
+            201,
+        )
+        .await;
+    let id = p["id"].as_str().unwrap().to_owned();
+    s.staff(
+        "POST",
+        &format!("/api/inventory/{id}/adjustments"),
+        json!({ "location_id": loc, "delta": 20, "reason": "received" }),
+        200,
+    )
+    .await;
+    id
+}
+
+#[tokio::test]
+async fn automatic_discounts_need_no_code() {
+    let s = shop().await;
+    for bad in [
+        json!({ "automatic": true, "code": "X", "title": "Sale", "kind": "percentage", "value": 500 }),
+        json!({ "automatic": true, "kind": "percentage", "value": 500 }),
+        json!({ "title": "Sale", "kind": "percentage", "value": 500 }),
+        json!({ "automatic": true, "title": "B", "kind": "buy_x_get_y", "value": 10_000 }),
+        json!({ "automatic": true, "title": "C", "kind": "percentage", "value": 500, "collection_id": "col_nope" }),
+    ] {
+        s.staff("POST", "/api/discounts", bad, 422).await;
+    }
+    let small = s
+        .code(json!({ "automatic": true, "title": "Five off", "kind": "percentage", "value": 500 }))
+        .await;
+    assert!(small["code"].is_null());
+    assert_eq!(small["automatic"], true);
+    let big = s
+        .code(json!({ "automatic": true, "title": "Winter sale", "kind": "percentage", "value": 1000 }))
+        .await;
+    // Not worth it below its minimum.
+    s.code(json!({ "automatic": true, "title": "Big spender", "kind": "percentage", "value": 5000, "min_subtotal_minor": 100_000 }))
+        .await;
+    // Another shop's automatic discount never applies here.
+    call(
+        &s.client,
+        "other",
+        "POST",
+        "/api/discounts",
+        (Some(&s.admin), None),
+        json!({ "automatic": true, "title": "Other", "kind": "percentage", "value": 9000 }),
+        201,
+    )
+    .await;
+
+    let (path, token) = s.checkout("ada@example.com").await;
+    let c = s.shopper("GET", &path, &token, Value::Null, 200).await;
+    assert_eq!(c["automatic_discount"]["title"], "Winter sale");
+    assert_eq!(c["automatic_discount"]["goods_minor"], 238);
+    assert!(c["discount"].is_null());
+    assert_eq!(c["discount_minor"], 238);
+
+    // A code comes off what is left.
+    s.code(json!({ "code": "FIVE", "kind": "fixed_amount", "value": 500, "currency": "EUR" }))
+        .await;
+    let c = s
+        .shopper(
+            "PATCH",
+            &path,
+            &token,
+            json!({ "discount_code": "FIVE" }),
+            200,
+        )
+        .await;
+    assert_eq!(c["discount_minor"], 738);
+    assert_eq!(c["total_minor"], 2380 + 495 - 738);
+    let done = s.complete(&path, &token, 201).await;
+    assert_eq!(done["order"]["discount_minor"], 738);
+    assert_eq!(done["order"]["discount_code"], "FIVE");
+    let id = big["id"].as_str().unwrap();
+    let d = s
+        .staff("GET", &format!("/api/discounts/{id}"), Value::Null, 200)
+        .await;
+    assert_eq!(d["used_count"], 1);
+    let id = small["id"].as_str().unwrap();
+    let d = s
+        .staff("GET", &format!("/api/discounts/{id}"), Value::Null, 200)
+        .await;
+    assert_eq!(d["used_count"], 0);
+
+    // Switched off, it no longer applies.
+    let id = big["id"].as_str().unwrap();
+    s.staff(
+        "PUT",
+        &format!("/api/discounts/{id}"),
+        json!({ "automatic": true, "title": "Winter sale", "kind": "percentage", "value": 1000, "active": false }),
+        200,
+    )
+    .await;
+    let (path, token) = s.checkout("bob@example.com").await;
+    let c = s.shopper("GET", &path, &token, Value::Null, 200).await;
+    assert_eq!(c["automatic_discount"]["title"], "Five off");
+}
+
+#[tokio::test]
+async fn buy_two_get_one_in_a_collection() {
+    let s = shop().await;
+    let mug = mug(&s).await;
+    let col = s
+        .staff("POST", "/api/collections", json!({ "title": "Tees" }), 201)
+        .await;
+    let col = col["id"].as_str().unwrap().to_owned();
+    s.staff(
+        "PUT",
+        &format!("/api/collections/{col}/products/{}", s.tee),
+        Value::Null,
+        204,
+    )
+    .await;
+    s.code(json!({
+        "automatic": true, "title": "Three for two", "kind": "buy_x_get_y",
+        "value": 10_000, "buy_quantity": 2, "get_quantity": 1, "collection_id": col,
+    }))
+    .await;
+    s.code(json!({ "code": "MUGHALF", "kind": "buy_x_get_y", "value": 5000, "buy_quantity": 1, "get_quantity": 1 }))
+        .await;
+
+    // Two tees and a mug: the mug is not in the collection, no lot of three.
+    let (path, token) = s
+        .checkout_with("ada@example.com", &[(&s.tee, 2), (&mug, 1)])
+        .await;
+    let c = s.shopper("GET", &path, &token, Value::Null, 200).await;
+    assert!(c["automatic_discount"].is_null());
+    assert_eq!(c["discount_minor"], 0);
+    // A code for buy one get one half price: the cheapest unit, the mug.
+    let c = s
+        .shopper(
+            "PATCH",
+            &path,
+            &token,
+            json!({ "discount_code": "MUGHALF" }),
+            200,
+        )
+        .await;
+    assert_eq!(c["discount"]["lines_minor"], json!([0, 250]));
+
+    // Three tees: one is free.
+    let (path, token) = s
+        .checkout_with("bob@example.com", &[(&s.tee, 3), (&mug, 1)])
+        .await;
+    let c = s.shopper("GET", &path, &token, Value::Null, 200).await;
+    assert_eq!(c["automatic_discount"]["title"], "Three for two");
+    assert_eq!(c["automatic_discount"]["lines_minor"], json!([1190, 0]));
+    let done = s.complete(&path, &token, 201).await;
+    let order = &done["order"];
+    assert_eq!(order["discount_minor"], 1190);
+    assert_eq!(order["lines"][0]["discount_minor"], 1190);
+    assert_eq!(order["lines"][1]["discount_minor"], 0);
+    assert_eq!(order["total_minor"], 3 * 1190 + 500 + 495 - 1190);
+    let events = s
+        .staff(
+            "GET",
+            "/api/events?kind=discount.redeemed",
+            Value::Null,
+            200,
+        )
+        .await;
+    assert_eq!(events["items"][0]["payload"]["automatic"], true);
+    assert_eq!(events["items"][0]["payload"]["amount_minor"], 1190);
+}
+
+#[tokio::test]
+async fn staff_make_discounts_in_the_admin() {
+    let s = shop().await;
+    let res = s
+        .client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let cookie = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let post = |path: String, form: Value| {
+        s.client
+            .post(&path)
+            .header("cookie", &cookie)
+            .form(&form)
+            .send()
+    };
+    let get = |path: String| s.client.get(&path).header("cookie", &cookie).send();
+
+    assert!(get("/admin/acme/discounts".into())
+        .await
+        .text()
+        .contains("No discounts yet"));
+    let res = post(
+        "/admin/acme/discounts".into(),
+        json!({ "mode": "code", "code": "summer", "kind": "percentage", "amount": "250", "active": "on" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("percentage off"));
+    let res = post(
+        "/admin/acme/discounts".into(),
+        json!({ "mode": "code", "code": "summer", "kind": "percentage", "amount": "12,5",
+                "min": "20,00", "ends": "2999-01-01", "active": "on" }),
+    )
+    .await;
+    res.assert_status(303);
+    let page = res.header("location").unwrap().to_owned();
+    let html = get(page.clone()).await.text();
+    assert!(html.contains("value=\"12.5\"") && html.contains("value=\"20.00\""));
+    assert!(html.contains("value=\"2999-01-01\""));
+
+    // An automatic discount needs a title; the API says so.
+    let res = post(
+        "/admin/acme/discounts".into(),
+        json!({ "mode": "automatic", "kind": "buy_x_get_y", "amount": "100", "buy_quantity": "2", "get_quantity": "1", "active": "on" }),
+    )
+    .await;
+    res.assert_status(422);
+    assert!(res.text().contains("needs a title"));
+    post(
+        "/admin/acme/discounts".into(),
+        json!({ "mode": "automatic", "title": "Three for two", "kind": "buy_x_get_y", "amount": "100",
+                "buy_quantity": "2", "get_quantity": "1", "active": "on" }),
+    )
+    .await
+    .assert_status(303);
+
+    let list = get("/admin/acme/discounts".into()).await.text();
+    assert!(list.contains("SUMMER") && list.contains("12.5% off"));
+    assert!(list.contains("Buy 2 get 1 free") && list.contains("Automatic"));
+    post(format!("{page}/delete"), json!({}))
+        .await
+        .assert_status(303);
+    assert!(!get("/admin/acme/discounts".into())
+        .await
+        .text()
+        .contains("SUMMER"));
 }
