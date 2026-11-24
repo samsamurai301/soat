@@ -1840,6 +1840,7 @@ dependencies = [
  "soat-cart",
  "soat-catalog",
  "soat-checkout",
+ "soat-cli",
  "soat-cms",
  "soat-core",
  "soat-customers",
@@ -1968,6 +1969,17 @@ dependencies = [
  "soat-tenancy",
  "sqlx",
  "zapline",
+]
+
+[[package]]
+name = "soat-cli"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "soat-http",
+ "tokio",
 ]
 
 [[package]]

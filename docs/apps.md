@@ -4,6 +4,20 @@ An app is software you host that works for SOAT shops. It acts through the
 shop API with a key that holds exactly the permissions the shop's owner
 granted, and it can add links to the admin and blocks to the storefront.
 
+## 0. Start from the template
+
+```sh
+soat login https://your-soat.example.com you@example.com
+soat app new reviews --name Reviews
+cd reviews
+soat app dev --shop acme     # registers from soat.app.json, writes .env, prints the install link
+node server.mjs              # then open the link
+```
+
+`soat.app.json` holds everything in sections 1 and 3 below; run
+`soat app dev` (or `soat app push`) again after changing it. The steps
+below are what the template and the commands do for you.
+
 ## 1. Register
 
 Sign in as any SOAT user and register the app. The secret is shown once.
@@ -17,7 +31,9 @@ POST /api/apps
 ```
 
 Redirect addresses are `https://…`, or `http://localhost…` while
-developing. `POST /api/apps/{id}/secret` replaces a lost secret.
+developing. `POST /api/apps/{id}/secret` replaces a lost secret. `PATCH /api/apps/{id}`
+changes the redirect addresses and permissions too; shops keep what they
+granted until they install the app again.
 
 ## 2. Install (authorization code flow)
 

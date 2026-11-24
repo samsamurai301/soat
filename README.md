@@ -91,6 +91,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-paypal` | PayPal provider: Orders v2, capture or authorize, partner merchants, refunds, verified webhooks (feature `paypal`) |
 | `crates/soat-sendcloud` | Sendcloud labels for DHL, DPD, GLS, PostNL, UPS and more through a shop's own account (feature `sendcloud`) |
 | `crates/soat-apps` | Apps a shop finds in the directory and installs with consent: OAuth-style code for a scoped API key (feature `apps`) |
+| `crates/soat-cli` | The `soat app` commands: start an app from a template, register it and keep it in step while developing |
 | `crates/soat-import` | Moving from Shopify without a gap: its store synced by the Admin API until cutover (feature `shopify-sync`) |
 | `crates/soat-promotions` | Discount codes and automatic discounts: percentage, fixed amount, free shipping, buy X get Y, per collection, with dates, minimums and limits |
 | `crates/soat-giftcards` | Gift cards and store credit: balances with a ledger, spent at checkout as payments |
@@ -165,7 +166,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Content types of the shop's own (store locations, size charts, FAQs) with typed fields, on the storefront API
 - [x] Headless: the whole storefront as a JSON API in any language and market, callable from any origin ([guide](docs/headless.md))
 - [x] Smart collections picked by rules, and collection screens in the admin
-- [x] Apps: an app directory, install with consent for a key with exactly the granted permissions, admin links and storefront blocks ([guide](docs/apps.md))
+- [x] Apps: an app directory, install with consent for a key with exactly the granted permissions, admin links and storefront blocks, and `soat app new` to start one ([guide](docs/apps.md))
 - [x] Tax by an outside tax service when zones are not enough, with the zones standing in when it is down ([guide](docs/tax-providers.md))
 - [ ] WASM plugin host, built into Zapline
 

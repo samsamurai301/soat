@@ -216,6 +216,11 @@ pub const CATEGORIES: &[&str] = &[
 pub struct UpdateApp {
     #[validate(length(min = 1, max = 100))]
     pub name: Option<String>,
+    /// Replaces the redirect addresses (1 to 5).
+    pub redirect_uris: Option<Vec<String>>,
+    /// Replaces the permissions it asks for. Shops that installed it keep
+    /// what they granted until they install it again.
+    pub permissions: Option<Vec<String>>,
     #[validate(length(max = 140))]
     pub tagline: Option<String>,
     #[validate(length(max = 5000))]
@@ -417,6 +422,18 @@ fn is_redirect(uri: &str) -> bool {
         && uri.len() <= 500
         && !uri.contains('#')
         && !uri.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
+fn check_redirects(uris: Vec<String>) -> Result<Vec<String>> {
+    if uris.is_empty() || uris.len() > 5 {
+        return Err(invalid("an app has 1 to 5 redirect addresses"));
+    }
+    if let Some(bad) = uris.iter().find(|u| !is_redirect(u)) {
+        return Err(invalid(format!(
+            "{bad} is not a redirect address: https://…, or http://localhost while developing"
+        )));
+    }
+    Ok(uris)
 }
 
 fn check_permissions(known: &Permissions, asked: &[String]) -> Result<Vec<String>> {
@@ -668,6 +685,7 @@ async fn app_links(
 async fn update_app(
     db: Db,
     staff: Staff,
+    known: State<Permissions>,
     Path(id): Path<String>,
     Valid(Json(b)): Valid<Json<UpdateApp>>,
 ) -> Result<Json<AppView>> {
@@ -681,6 +699,14 @@ async fn update_app(
         Some("") => return Err(invalid("name cannot be blank")),
         Some(n) => n.to_owned(),
         None => app.name,
+    };
+    let redirect_uris = match b.redirect_uris {
+        Some(uris) => check_redirects(uris)?,
+        None => app.redirect_uris,
+    };
+    let permissions = match b.permissions {
+        Some(asked) => check_permissions(&known, &asked)?,
+        None => app.permissions,
     };
     let category = b
         .category
@@ -728,7 +754,8 @@ async fn update_app(
     let app = sqlx::query_as::<_, AppView>(&format!(
         "UPDATE apps SET name = $2, tagline = $3, description = $4, category = $5, \
          app_url = $6, listed_at = CASE WHEN $7 THEN coalesce(listed_at, now()) END, \
-         admin_links = $8, storefront_blocks = $9 WHERE id = $1 RETURNING {APP_COLUMNS}"
+         admin_links = $8, storefront_blocks = $9, redirect_uris = $10, \
+         permissions = $11 WHERE id = $1 RETURNING {APP_COLUMNS}"
     ))
     .bind(&app.id)
     .bind(&name)
@@ -739,6 +766,8 @@ async fn update_app(
     .bind(listed)
     .bind(sqlx::types::Json(&admin_links))
     .bind(sqlx::types::Json(&storefront_blocks))
+    .bind(&redirect_uris)
+    .bind(&permissions)
     .fetch_one(&*db)
     .await?;
     Ok(Json(app))
@@ -802,14 +831,7 @@ async fn register_app(
     known: State<Permissions>,
     Valid(Json(b)): Valid<Json<NewApp>>,
 ) -> Result<(StatusCode, Json<RegisteredApp>)> {
-    if b.redirect_uris.is_empty() || b.redirect_uris.len() > 5 {
-        return Err(invalid("an app has 1 to 5 redirect addresses"));
-    }
-    if let Some(bad) = b.redirect_uris.iter().find(|u| !is_redirect(u)) {
-        return Err(invalid(format!(
-            "{bad} is not a redirect address: https://…, or http://localhost while developing"
-        )));
-    }
+    let redirect_uris = check_redirects(b.redirect_uris)?;
     let permissions = check_permissions(&known, &b.permissions)?;
     let name = b.name.trim();
     if name.is_empty() {
@@ -825,7 +847,7 @@ async fn register_app(
     .bind(staff.user_id.as_str())
     .bind(name)
     .bind(hash_token(&secret))
-    .bind(&b.redirect_uris)
+    .bind(&redirect_uris)
     .bind(&permissions)
     .fetch_one(&*db)
     .await?;
