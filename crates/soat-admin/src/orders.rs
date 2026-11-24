@@ -272,6 +272,7 @@ async fn detail(mut cx: Ctx, id: &str, error: Option<String>, status: StatusCode
         Vec::new()
     };
     cx.set("carrier_accounts", Value::Array(accounts));
+    crate::apps::links(&mut cx, "order", Some(id)).await;
     cx.set("shipments", Value::Array(shipments));
     if let Some(e) = error {
         cx.set("error", json!(e));

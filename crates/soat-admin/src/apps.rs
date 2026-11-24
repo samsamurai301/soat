@@ -20,6 +20,7 @@ pub(crate) async fn list(
 ) -> Result<Response> {
     let mut cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "settings").await);
     let apps = page!(cx.get("/api/app-installations").await);
+    links(&mut cx, "app", None).await;
     cx.set("apps", apps);
     cx.set("page_title", json!("Apps"));
     Ok(cx.render("apps", StatusCode::OK))
@@ -139,5 +140,18 @@ pub(crate) async fn authorize(
         }
         401 => Ok(crate::to_login()),
         s => Ok(cx.failed(s, &out)),
+    }
+}
+
+/// The links installed apps add to a page, as `app_links`; none when the
+/// staff member may not see them or apps are off.
+pub(crate) async fn links(cx: &mut Ctx, target: &str, id: Option<&str>) {
+    let mut path = format!("/api/app-links?target={target}");
+    if let Some(id) = id {
+        path.push_str(&format!("&id={}", encode(id)));
+    }
+    let (status, links) = cx.call(Method::GET, &path, None).await;
+    if status == 200 {
+        cx.set("app_links", links);
     }
 }

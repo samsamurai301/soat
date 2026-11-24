@@ -18,6 +18,10 @@
 //! with `listed`), where shops find it (`GET /api/app-directory`). A shop
 //! starts installing at the app's `app_url?shop=…`, and the app sends its
 //! owner on to the consent screen with its own `state`.
+//!
+//! An app can add links to the admin (`admin_links`): to itself, or next
+//! to a product, order or customer, opening the app with the shop and the
+//! record's id (`GET /api/app-links`).
 
 use soat_auth::Staff;
 use soat_core::{id_kind, Permission, TenantId};
@@ -35,6 +39,10 @@ id_kind!(InstallationId, InstallationKind, "install");
 
 /// Install apps, change what they may do, and uninstall them.
 pub const APPS_MANAGE: Permission = Permission::new("apps:manage", "Install and uninstall apps");
+
+/// See the links installed apps add to the admin.
+pub const APPS_READ: Permission =
+    Permission::new("apps:read", "See installed apps' links in the admin").for_staff();
 
 /// How long a code waits to be traded for a key.
 const CODE_MINUTES: i32 = 10;
@@ -56,7 +64,7 @@ impl Module for Apps {
     }
 
     fn permissions(&self) -> &'static [Permission] {
-        &[APPS_MANAGE]
+        &[APPS_MANAGE, APPS_READ]
     }
 
     fn mount(&self, app: App) -> App {
@@ -71,6 +79,7 @@ impl Module for Apps {
             token,
             update_app,
             directory,
+            app_links,
         ))
     }
 }
@@ -96,7 +105,45 @@ pub struct AppView {
     pub app_url: Option<String>,
     /// Whether shops find it in the directory.
     pub listed: bool,
+    /// Links it adds to the admin of shops that installed it.
+    #[sqlx(json)]
+    pub admin_links: Vec<AdminLink>,
     pub created_at: String,
+}
+
+/// Where in the admin an app's link shows.
+pub const LINK_TARGETS: &[&str] = &["app", "product", "order", "customer"];
+
+/// A link an app adds to the admin.
+#[model]
+#[derive(PartialEq)]
+pub struct AdminLink {
+    /// `app` (on the Apps page), `product`, `order` or `customer` (on
+    /// that record's page).
+    pub target: String,
+    /// What the link says, e.g. `Ask for reviews`.
+    pub label: String,
+    /// `https://…`; SOAT adds `shop` and, on a record's page, `id`.
+    pub url: String,
+}
+
+/// A link on an admin page.
+#[model]
+pub struct AppLink {
+    pub app_id: String,
+    pub app_name: String,
+    pub label: String,
+    /// The app's address with `shop` and, for a record, `id`.
+    pub url: String,
+}
+
+/// Query of `GET /api/app-links`.
+#[model]
+pub struct LinksQuery {
+    /// `app`, `product`, `order` or `customer`.
+    pub target: String,
+    /// The record's id, added to each link.
+    pub id: Option<String>,
 }
 
 /// The directory's categories.
@@ -127,6 +174,8 @@ pub struct UpdateApp {
     pub app_url: Option<String>,
     /// List the app in the directory; it needs a tagline and an `app_url`.
     pub listed: Option<bool>,
+    /// Up to 10 links the app adds to the admin; replaces them all.
+    pub admin_links: Option<Vec<AdminLink>>,
 }
 
 /// An app in the directory, as a shop sees it.
@@ -256,7 +305,7 @@ pub struct AppToken {
 }
 
 const APP_COLUMNS: &str = "id, name, redirect_uris, permissions, tagline, description, \
-     category, app_url, listed_at IS NOT NULL AS listed, \
+     category, app_url, listed_at IS NOT NULL AS listed, admin_links, \
      to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at";
 
 const INSTALL_COLUMNS: &str = "i.id, i.app_id, a.name AS app_name, i.permissions, \
@@ -326,6 +375,95 @@ fn install_url(app_url: &str, shop: &str) -> String {
     format!("{app_url}{sep}{query}")
 }
 
+fn check_links(links: Vec<AdminLink>) -> Result<Vec<AdminLink>> {
+    if links.len() > 10 {
+        return Err(invalid("an app adds up to 10 admin links"));
+    }
+    links
+        .into_iter()
+        .map(|l| {
+            let label = l.label.trim().to_owned();
+            if !LINK_TARGETS.contains(&l.target.as_str()) {
+                return Err(invalid(format!(
+                    "a link's target is one of {}",
+                    LINK_TARGETS.join(", ")
+                )));
+            }
+            if label.is_empty() || label.chars().count() > 40 {
+                return Err(invalid("a link's label is 1 to 40 characters"));
+            }
+            if !is_redirect(&l.url) {
+                return Err(invalid(format!(
+                    "{} is not a link: https://…, or http://localhost while developing",
+                    l.url
+                )));
+            }
+            Ok(AdminLink {
+                target: l.target,
+                label,
+                url: l.url,
+            })
+        })
+        .collect()
+}
+
+/// The links installed apps add to an admin page (`apps:read`): each
+/// opens the app with `shop` and, given `?id=`, the record's id. Only apps
+/// that have their key are shown.
+#[get("/api/app-links", tag = "apps")]
+async fn app_links(
+    db: Db,
+    tenant: Tenant,
+    Query(q): Query<LinksQuery>,
+) -> Result<Json<Vec<AppLink>>> {
+    if !LINK_TARGETS.contains(&q.target.as_str()) {
+        return Err(invalid(format!(
+            "target is one of {}",
+            LINK_TARGETS.join(", ")
+        )));
+    }
+    let mut tx = tenant.begin_for(&db, &APPS_READ).await?;
+    let rows: Vec<(String, String, sqlx::types::Json<Vec<AdminLink>>)> = sqlx::query_as(
+        "SELECT a.id, a.name, a.admin_links FROM app_installations i \
+         JOIN apps a ON a.id = i.app_id \
+         WHERE i.tenant_id = $1 AND i.api_key_id IS NOT NULL ORDER BY lower(a.name), a.id",
+    )
+    .bind(tenant.id())
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let id = q.id.filter(|i| !i.is_empty());
+    let links = rows
+        .into_iter()
+        .flat_map(|(app_id, app_name, links)| {
+            let id = id.clone();
+            let shop = tenant.id().to_owned();
+            links
+                .0
+                .into_iter()
+                .filter(|l| l.target == q.target)
+                .map(move |l| {
+                    let mut query = vec![("shop", shop.clone())];
+                    if let Some(id) = &id {
+                        query.push(("id", id.clone()));
+                    }
+                    let sep = if l.url.contains('?') { '&' } else { '?' };
+                    AppLink {
+                        app_id: app_id.clone(),
+                        app_name: app_name.clone(),
+                        label: l.label,
+                        url: format!(
+                            "{}{sep}{}",
+                            l.url,
+                            serde_urlencoded::to_string(&query).unwrap_or_default()
+                        ),
+                    }
+                })
+        })
+        .collect();
+    Ok(Json(links))
+}
+
 /// Change one of your apps, or list it in the directory (its owner).
 #[patch("/api/apps/{id}", tag = "apps")]
 async fn update_app(
@@ -373,6 +511,10 @@ async fn update_app(
         .description
         .map(|d| d.trim().to_owned())
         .unwrap_or(app.description);
+    let admin_links = match b.admin_links {
+        Some(links) => check_links(links)?,
+        None => app.admin_links,
+    };
     let listed = b.listed.unwrap_or(app.listed);
     if listed && (tagline.is_empty() || app_url.is_none()) {
         return Err(
@@ -382,8 +524,8 @@ async fn update_app(
     }
     let app = sqlx::query_as::<_, AppView>(&format!(
         "UPDATE apps SET name = $2, tagline = $3, description = $4, category = $5, \
-         app_url = $6, listed_at = CASE WHEN $7 THEN coalesce(listed_at, now()) END \
-         WHERE id = $1 RETURNING {APP_COLUMNS}"
+         app_url = $6, listed_at = CASE WHEN $7 THEN coalesce(listed_at, now()) END, \
+         admin_links = $8 WHERE id = $1 RETURNING {APP_COLUMNS}"
     ))
     .bind(&app.id)
     .bind(&name)
@@ -392,6 +534,7 @@ async fn update_app(
     .bind(&category)
     .bind(&app_url)
     .bind(listed)
+    .bind(sqlx::types::Json(&admin_links))
     .fetch_one(&*db)
     .await?;
     Ok(Json(app))

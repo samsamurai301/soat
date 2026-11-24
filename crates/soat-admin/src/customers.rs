@@ -152,6 +152,7 @@ async fn show_form(
 ) -> Response {
     let creating = customer["id"].is_null();
     if let Some(id) = customer["id"].as_str() {
+        crate::apps::links(&mut cx, "customer", Some(id)).await;
         let id = encode(id);
         let orders = page_or!(
             cx.get(&format!("/api/orders?customer_id={id}&limit=20"))

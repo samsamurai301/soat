@@ -303,6 +303,9 @@ pub(crate) async fn page(
 ) -> Response {
     languages(&mut cx).await;
     crate::variants::load(&mut cx, p).await;
+    if let Some(id) = p["id"].as_str() {
+        crate::apps::links(&mut cx, "product", Some(id)).await;
+    }
     show_form(cx, ProductForm::of(p), error, status)
 }
 

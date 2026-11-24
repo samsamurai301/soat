@@ -105,3 +105,9 @@
   <button class="link">Delete product</button>
 </form>
 {{/if}}
+{{#if app_links }}
+<section class="panel">
+  <h2>Apps</h2>
+  <ul>{{#each app_links }}<li><a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a> <span class="muted">{{ app_name }}</span></li>{{/each}}</ul>
+</section>
+{{/if}}

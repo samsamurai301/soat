@@ -522,3 +522,141 @@ async fn shops_find_listed_apps_in_the_directory() {
     .await;
     assert_eq!(dir["apps"], json!([]));
 }
+
+#[tokio::test]
+async fn apps_add_links_to_the_admin() {
+    let (client, t) = common::with_tenants(&["acme"]).await;
+    let reg = call(
+        &client,
+        Some(&t),
+        None,
+        "POST",
+        "/api/apps",
+        json!({ "name": "Reviews", "redirect_uris": ["https://reviews.example.com/cb"],
+                "permissions": ["products:read"] }),
+        201,
+    )
+    .await;
+    let client_id = reg["app"]["id"].as_str().unwrap().to_owned();
+    let secret = reg["client_secret"].as_str().unwrap().to_owned();
+    let path = format!("/api/apps/{client_id}");
+    for bad in [
+        json!({ "admin_links": [{ "target": "rocket", "label": "Go", "url": "https://r.example.com" }] }),
+        json!({ "admin_links": [{ "target": "product", "label": "", "url": "https://r.example.com" }] }),
+        json!({ "admin_links": [{ "target": "product", "label": "Go", "url": "javascript:alert(1)" }] }),
+    ] {
+        call(&client, Some(&t), None, "PATCH", &path, bad, 422).await;
+    }
+    let app = call(
+        &client,
+        Some(&t),
+        None,
+        "PATCH",
+        &path,
+        json!({ "admin_links": [
+            { "target": "app", "label": "Open Reviews", "url": "https://reviews.example.com/admin" },
+            { "target": "product", "label": "Ask for reviews", "url": "https://reviews.example.com/ask?from=soat" }
+        ] }),
+        200,
+    )
+    .await;
+    assert_eq!(app["admin_links"].as_array().unwrap().len(), 2);
+
+    // Nothing shows until the app is installed and has its key.
+    let links = |target: &'static str| {
+        let client = &client;
+        let t = &t;
+        async move {
+            call(
+                client,
+                Some(t),
+                Some("acme"),
+                "GET",
+                &format!("/api/app-links?target={target}&id=prod_1"),
+                Value::Null,
+                200,
+            )
+            .await
+        }
+    };
+    assert_eq!(links("product").await, json!([]));
+    let installed = call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "POST",
+        "/api/app-installations",
+        json!({ "client_id": client_id, "redirect_uri": "https://reviews.example.com/cb" }),
+        201,
+    )
+    .await;
+    assert_eq!(links("product").await, json!([]));
+    let code = query(installed["redirect_to"].as_str().unwrap(), "code");
+    call(
+        &client,
+        None,
+        None,
+        "POST",
+        "/api/apps/token",
+        json!({ "client_id": client_id, "client_secret": secret, "code": code,
+                "shop": "acme", "redirect_uri": "https://reviews.example.com/cb" }),
+        200,
+    )
+    .await;
+    let product = links("product").await;
+    assert_eq!(product.as_array().unwrap().len(), 1, "{product}");
+    assert_eq!(product[0]["label"], "Ask for reviews");
+    assert_eq!(
+        product[0]["url"],
+        "https://reviews.example.com/ask?from=soat&shop=acme&id=prod_1"
+    );
+    assert_eq!(links("order").await, json!([]));
+    call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "GET",
+        "/api/app-links?target=nowhere",
+        Value::Null,
+        422,
+    )
+    .await;
+
+    // The admin shows them on the product's page and the Apps page.
+    let p = call(
+        &client,
+        Some(&t),
+        Some("acme"),
+        "POST",
+        "/api/products",
+        json!({ "sku": "TS", "title": "Trail Shoe", "price_minor": 100, "currency": "EUR" }),
+        201,
+    )
+    .await;
+    let id = p["id"].as_str().unwrap();
+    let res = client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let me = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let html = client
+        .get(&format!("/admin/acme/products/{id}"))
+        .header("cookie", &me)
+        .send()
+        .await
+        .text();
+    assert!(
+        html.contains(&format!(
+            "https://reviews.example.com/ask?from=soat&amp;shop=acme&amp;id={id}"
+        )) && html.contains("Ask for reviews"),
+        "{html}"
+    );
+    let html = client
+        .get("/admin/acme/apps")
+        .header("cookie", &me)
+        .send()
+        .await
+        .text();
+    assert!(html.contains("Open Reviews"), "{html}");
+}
