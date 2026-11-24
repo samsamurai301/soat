@@ -32,6 +32,7 @@ macro_rules! page_or {
 mod api;
 mod assistant;
 mod builder;
+mod collections;
 mod content;
 mod customers;
 mod dashboard;
@@ -147,6 +148,14 @@ impl Module for Admin {
             products::delete,
             products::write,
             products::translate,
+        ))
+        .mount((
+            collections::list,
+            collections::new_page,
+            collections::edit_page,
+            collections::create,
+            collections::update,
+            collections::act,
         ))
         .mount((
             variants::set_options,

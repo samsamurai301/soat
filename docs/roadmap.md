@@ -47,7 +47,7 @@ layer.
 
 - [x] B1 Variants and options: up to 3 options per product, variants with own SKU and price (product currency), options change only while variants still fit **alpha**
 - [x] B2 Collections: hand-picked, ordered, unique handles per shop **alpha**
-- [ ] B3 Smart collections
+- [x] B3 Smart collections: rules on tag, title, SKU, tax class, price or weight (all or any), membership refilled when rules change and kept as products are created or changed; hand-picked edits refused (409 `smart_collection`); admin collection screens for both kinds
 - [x] B4 Categories (a tree, up to 8 deep, listing includes subtrees) and product tags (`?tag=`) **alpha**
 - [x] B5 Custom fields: `soat-fields` (foundation), typed definitions per resource type, product values at `/api/products/{id}/fields` **alpha**
 - [x] B6 Files and media: `soat-files` (foundation) on Zapline storage, type from content (no HTML/SVG), signed links, ordered product media **alpha**

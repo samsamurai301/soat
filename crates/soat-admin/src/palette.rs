@@ -21,6 +21,7 @@ const PLACES: &[(&str, &str, &str)] = &[
     ("Unpaid orders", "/orders?view=unpaid", "payments"),
     ("Products", "/products", "catalog"),
     ("New product", "/products/new", "add create"),
+    ("Collections", "/collections", "groups smart"),
     ("Customers", "/customers", "buyers"),
     ("New customer", "/customers/new", "add create"),
     ("Pages", "/pages", "content cms"),

@@ -12,6 +12,7 @@ pub mod categories;
 pub mod collections;
 pub mod media;
 pub mod search;
+mod smart;
 pub mod storefront;
 pub mod variants;
 
@@ -304,6 +305,7 @@ async fn create_product(
     .bind(p.seo_description.as_deref().unwrap_or_default().trim())
     .fetch_one(&mut *tx)
     .await?;
+    smart::place(&mut tx, tenant.id(), &product.id).await?;
     tenant.publish(&mut tx, "product.created", &product).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(product)))
@@ -376,6 +378,7 @@ async fn update_product(
     .bind(change.seo_description.as_deref().map(str::trim))
     .fetch_one(&mut *tx)
     .await?;
+    smart::place(&mut tx, tenant.id(), &product.id).await?;
     tenant.publish(&mut tx, "product.updated", &product).await?;
     if before != product.handle {
         tenant

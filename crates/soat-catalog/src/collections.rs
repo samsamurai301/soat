@@ -1,7 +1,9 @@
 //! Collections: hand-picked groups of products in the merchant's order
-//! (`summer-sale`, `new-in`). Rule-based collections come in B3.
+//! (`summer-sale`, `new-in`), or smart ones whose rules pick the products
+//! (tag is `summer`, price below 50.00) and keep picking as products change.
 
 use soat_core::handle::{handleize, is_handle};
+use soat_core::rules;
 use soat_core::{id_kind, Permission};
 use soat_tenancy::{Tenant, TenantListing, TenantTx};
 use zapline::db::{sqlx, Db, ListParams, Paged};
@@ -32,6 +34,36 @@ pub struct Collection {
     pub seo_title: String,
     /// The description search engines show; empty uses the description.
     pub seo_description: String,
+    /// For a smart collection, the rules that pick its products; `null`
+    /// for one picked by hand.
+    #[sqlx(json(nullable))]
+    pub rules: Option<Vec<Rule>>,
+    /// Whether a product must meet every rule (`true`) or any one.
+    pub match_all: bool,
+}
+
+/// A condition that picks products: a `field` (`tag`, `title`, `sku`,
+/// `tax_class`, `price_minor`, `weight_grams`), a comparison `op` (`equals`
+/// and `not_equals`; for text also `contains`, `not_contains`,
+/// `starts_with`; for numbers `greater_than` and `less_than`) and a
+/// `value` (a whole number for numbers; prices in minor units). Text
+/// compares ignoring case.
+#[model]
+#[derive(PartialEq, Eq)]
+pub struct Rule {
+    pub field: String,
+    pub op: String,
+    pub value: String,
+}
+
+impl Rule {
+    pub(crate) fn core(&self) -> rules::Rule {
+        rules::Rule {
+            field: self.field.clone(),
+            op: self.op.clone(),
+            value: self.value.clone(),
+        }
+    }
 }
 
 /// Body of a create request.
@@ -47,6 +79,11 @@ pub struct NewCollection {
     pub seo_title: Option<String>,
     #[validate(length(max = 500))]
     pub seo_description: Option<String>,
+    /// Rules that pick the products, making it a smart collection; see
+    /// [`Rule`]. Absent or empty: picked by hand.
+    pub rules: Option<Vec<Rule>>,
+    /// Every rule (the default) or any one.
+    pub match_all: Option<bool>,
 }
 
 /// Body of an update request; absent fields stay as they are.
@@ -61,6 +98,10 @@ pub struct CollectionChange {
     pub seo_title: Option<String>,
     #[validate(length(max = 500))]
     pub seo_description: Option<String>,
+    /// New rules, refilling the collection; an empty list makes it
+    /// hand-picked again, keeping its products.
+    pub rules: Option<Vec<Rule>>,
+    pub match_all: Option<bool>,
 }
 
 /// Body of a reorder request: every product of the collection, in the new
@@ -86,7 +127,40 @@ pub(crate) fn mount(app: App) -> App {
     ))
 }
 
-const COLUMNS: &str = "id, handle, title, description, seo_title, seo_description";
+const COLUMNS: &str =
+    "id, handle, title, description, seo_title, seo_description, rules, match_all";
+
+/// Checked rules, `None` for none (hand-picked).
+fn checked(rules: Option<Vec<Rule>>) -> Result<Option<Vec<Rule>>> {
+    match rules {
+        Some(r) if !r.is_empty() => {
+            let mut core: Vec<rules::Rule> = r.iter().map(Rule::core).collect();
+            rules::check(&mut core)
+                .map_err(|e| Error::unprocessable(e).with_code("invalid_rules"))?;
+            Ok(Some(
+                core.into_iter()
+                    .map(|c| Rule {
+                        field: c.field,
+                        op: c.op,
+                        value: c.value,
+                    })
+                    .collect(),
+            ))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// 409 `smart_collection` for a collection its rules fill.
+fn by_hand(c: &Collection) -> Result<()> {
+    if c.rules.is_some() {
+        return Err(Error::conflict(
+            "rules pick this collection's products: change its rules instead",
+        )
+        .with_code("smart_collection"));
+    }
+    Ok(())
+}
 
 fn check_handle(handle: &str) -> Result<()> {
     if is_handle(handle) {
@@ -139,10 +213,13 @@ async fn create_collection(
 ) -> Result<(StatusCode, Json<Collection>)> {
     let handle = body.handle.unwrap_or_else(|| handleize(&body.title));
     check_handle(&handle)?;
+    let rules = checked(body.rules)?;
+    let all = body.match_all.unwrap_or(true);
     let mut tx = tenant.begin_for(&db, &COLLECTIONS_WRITE).await?;
     let collection = sqlx::query_as::<_, Collection>(&format!(
         "INSERT INTO collections (id, tenant_id, handle, title, description, seo_title, \
-         seo_description) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {COLUMNS}"
+         seo_description, rules, match_all) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+         RETURNING {COLUMNS}"
     ))
     .bind(CollectionId::new().as_str())
     .bind(tenant.id())
@@ -151,8 +228,20 @@ async fn create_collection(
     .bind(body.description.unwrap_or_default())
     .bind(body.seo_title.as_deref().unwrap_or_default().trim())
     .bind(body.seo_description.as_deref().unwrap_or_default().trim())
+    .bind(rules.as_ref().map(sqlx::types::Json))
+    .bind(all)
     .fetch_one(&mut *tx)
     .await?;
+    if let Some(r) = &rules {
+        crate::smart::refill(
+            &mut tx,
+            tenant.id(),
+            &collection.id,
+            &r.iter().map(Rule::core).collect::<Vec<_>>(),
+            all,
+        )
+        .await?;
+    }
     tenant
         .publish(&mut tx, "collection.created", &collection)
         .await?;
@@ -186,12 +275,20 @@ async fn update_collection(
     if let Some(handle) = &change.handle {
         check_handle(handle)?;
     }
+    let new_rules = change.rules.is_some();
+    let rules = checked(change.rules)?;
     let mut tx = tenant.begin_for(&db, &COLLECTIONS_WRITE).await?;
     let current = load(&mut tx, &tenant, &id).await?;
+    let rules = if new_rules {
+        rules
+    } else {
+        current.rules.clone()
+    };
+    let all = change.match_all.unwrap_or(current.match_all);
     let collection = sqlx::query_as::<_, Collection>(&format!(
         "UPDATE collections SET handle = COALESCE($3, handle), title = COALESCE($4, title), \
          description = COALESCE($5, description), seo_title = COALESCE($6, seo_title), \
-         seo_description = COALESCE($7, seo_description) \
+         seo_description = COALESCE($7, seo_description), rules = $8, match_all = $9 \
          WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
     ))
     .bind(tenant.id())
@@ -201,8 +298,22 @@ async fn update_collection(
     .bind(&change.description)
     .bind(change.seo_title.as_deref().map(str::trim))
     .bind(change.seo_description.as_deref().map(str::trim))
+    .bind(rules.as_ref().map(sqlx::types::Json))
+    .bind(all)
     .fetch_one(&mut *tx)
     .await?;
+    if let Some(r) = &collection.rules {
+        if new_rules || all != current.match_all {
+            crate::smart::refill(
+                &mut tx,
+                tenant.id(),
+                &collection.id,
+                &r.iter().map(Rule::core).collect::<Vec<_>>(),
+                all,
+            )
+            .await?;
+        }
+    }
     tenant
         .publish(&mut tx, "collection.updated", &collection)
         .await?;
@@ -284,6 +395,7 @@ async fn add_product(
 ) -> Result<StatusCode> {
     let mut tx = tenant.begin_for(&db, &COLLECTIONS_WRITE).await?;
     let collection = load(&mut tx, &tenant, &id).await?;
+    by_hand(&collection)?;
     let product_id = ProductId::parse(&product_id).map_err(|_| Error::not_found())?;
     let exists: Option<(String,)> =
         sqlx::query_as("SELECT id FROM products WHERE tenant_id = $1 AND id = $2")
@@ -332,6 +444,7 @@ async fn remove_product(
 ) -> Result<StatusCode> {
     let mut tx = tenant.begin_for(&db, &COLLECTIONS_WRITE).await?;
     let collection = load(&mut tx, &tenant, &id).await?;
+    by_hand(&collection)?;
     let removed = sqlx::query(
         "DELETE FROM collection_products \
          WHERE tenant_id = $1 AND collection_id = $2 AND product_id = $3",
@@ -367,6 +480,7 @@ async fn reorder_products(
 ) -> Result<StatusCode> {
     let mut tx = tenant.begin_for(&db, &COLLECTIONS_WRITE).await?;
     let collection = load(&mut tx, &tenant, &id).await?;
+    by_hand(&collection)?;
     let mut members: Vec<(String,)> = sqlx::query_as(
         "SELECT product_id FROM collection_products WHERE tenant_id = $1 AND collection_id = $2",
     )
