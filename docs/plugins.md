@@ -36,8 +36,37 @@ A plugin ships with `soat.plugin.json`:
 plugin built for `0.1.x` runs on any `0.1` SOAT. Secret settings are
 sealed and never shown again.
 
+## Where the hooks run
+
+At the storefront checkout (`/api/storefront/carts/{id}/checkout` and the
+HTML checkout):
+
+1. `shipping-filter` once the address is known, on the options SOAT
+   offers (the cart at its full prices).
+2. `discounts` after SOAT's automatic discount and code, on what is left.
+   A line's amount comes off that line; a cart's amount is spread over the
+   lines in proportion, so tax stays right. The checkout lists them under
+   `adjustments`.
+3. `checkout-validation` when the order is placed: a block is a 422
+   `order_blocked` with the hook's reason.
+
+Hooks run in the order they were added, each seeing what the ones before
+it did. Draft orders staff make are not hooked.
+
+## Native hooks
+
+An install can run hooks written in Rust today, without the plugin host:
+implement `soat_core::hooks::Hook` (each method defaults to changing
+nothing) and pass them in `Settings::hooks`:
+
+```rust
+let mut settings = soat::Settings::from_env()?;
+settings.hooks = Hooks::new().with(MyLoyaltyDiscount);
+```
+
 ## Building one
 
 Any language with a component toolchain works, for example Rust with
-`cargo component`, against the WIT file above. Running plugins needs the
-plugin host (roadmap F2) and the hook points wired into SOAT (F3).
+`cargo component`, against the WIT file above. Running WebAssembly plugins
+needs the plugin host (roadmap F2); it runs them through the same
+`Hook` trait.

@@ -11,13 +11,19 @@
 //! Stock is held for an hour while a card payment completes, and for
 //! good once the order is paid; payments staff confirm (bank transfer)
 //! hold it until the order is paid or canceled.
+//!
+//! The install's hooks (`soat_core::hooks`) run here: they may hide or
+//! lower shipping options, take amounts off the cart after SOAT's own
+//! discounts, and block an order before it is placed.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::Value;
 use soat_cart::storefront::CartToken;
 use soat_cart::{view, CartView};
 use soat_core::address::is_country_code;
+use soat_core::hooks::{spread, HookCart, HookLine, HookShippingOption, Hooks, Verdict};
 use soat_core::{Currency, Permission};
 use soat_module::{Event, HandlerFuture, Module, Subscriber};
 use soat_orders::{NewOrder, NewOrderLine, NewShipping, Order, PostalAddress};
@@ -31,6 +37,7 @@ use zapline::db::sqlx::types::Json as SqlJson;
 use zapline::db::sqlx::{PgConnection, PgPool};
 use zapline::db::{sqlx, Db};
 use zapline::embed::Dir;
+use zapline::extract::FromRequestParts;
 use zapline::prelude::*;
 use zapline::Resources;
 
@@ -39,8 +46,52 @@ pub mod drafts;
 /// How long stock is held for an order whose payment is still running.
 pub const HOLD_SECONDS: i64 = 3600;
 
-/// The checkout module.
-pub struct Checkout;
+/// The checkout module, with the install's hooks.
+#[derive(Default)]
+pub struct Checkout {
+    hooks: Hooks,
+}
+
+impl Checkout {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Runs `hooks` at every checkout.
+    pub fn with_hooks(mut self, hooks: Hooks) -> Self {
+        self.hooks = hooks;
+        self
+    }
+}
+
+/// What working out a checkout needs besides the database: the tax
+/// providers and the hooks. An extractor.
+#[derive(Clone)]
+pub struct CheckoutServices {
+    pub taxes: TaxProviders,
+    pub hooks: Hooks,
+}
+
+impl CheckoutServices {
+    /// Tax by the zones and no hooks, for callers outside a request.
+    pub fn plain() -> Self {
+        Self {
+            taxes: TaxProviders::none(),
+            hooks: Hooks::new(),
+        }
+    }
+}
+
+impl FromRequestParts for CheckoutServices {
+    async fn from_request_parts(req: &mut Request) -> Result<Self> {
+        let State(taxes) = State::<TaxProviders>::from_request_parts(req).await?;
+        let hooks = State::<Hooks>::from_request_parts(req)
+            .await
+            .map(|s| s.0)
+            .unwrap_or_default();
+        Ok(Self { taxes, hooks })
+    }
+}
 
 impl Module for Checkout {
     fn name(&self) -> &'static str {
@@ -78,7 +129,11 @@ impl Module for Checkout {
     }
 
     fn mount(&self, app: App) -> App {
-        drafts::mount(app).mount((get_checkout, update_checkout, complete_checkout))
+        drafts::mount(app.state(self.hooks.clone())).mount((
+            get_checkout,
+            update_checkout,
+            complete_checkout,
+        ))
     }
 }
 
@@ -138,6 +193,8 @@ pub struct CheckoutView {
     pub automatic_discount: Option<AppliedDiscount>,
     /// The code entered and what it takes off, while it applies.
     pub discount: Option<AppliedDiscount>,
+    /// What the install's hooks took off, after the discounts above.
+    pub adjustments: Vec<HookAdjustment>,
     /// Why the code entered no longer applies (e.g. the cart changed).
     pub discount_issue: Option<String>,
     pub subtotal_minor: i64,
@@ -166,6 +223,16 @@ pub struct CheckoutView {
     /// when nothing ships.
     pub missing: Vec<String>,
     pub ready: bool,
+}
+
+/// An amount a hook took off.
+#[model]
+pub struct HookAdjustment {
+    /// The line (index into the cart's lines that are ordered), or null
+    /// for the cart, spread over its lines.
+    pub line: Option<u32>,
+    pub amount_minor: i64,
+    pub label: String,
 }
 
 /// The order placed and its payment.
@@ -240,12 +307,84 @@ struct Built {
     currency: Currency,
     /// The error a code entered gives, while it does not apply.
     discount_error: Option<Error>,
+    /// The cart as hooks see it, when there are hooks.
+    hook_cart: Option<HookCart>,
+}
+
+/// Tags hooks see: the products' and the customer's.
+struct Tags {
+    products: HashMap<String, Vec<String>>,
+    customer: Vec<String>,
+}
+
+async fn tags(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    lines: &[NewOrderLine],
+    customer: Option<&str>,
+) -> Result<Tags> {
+    let ids: Vec<String> = lines.iter().filter_map(|l| l.product_id.clone()).collect();
+    let rows: Vec<(String, Vec<String>)> =
+        sqlx::query_as("SELECT id, tags FROM products WHERE tenant_id = $1 AND id = ANY($2)")
+            .bind(scope.tenant_id())
+            .bind(&ids)
+            .fetch_all(&mut *conn)
+            .await?;
+    let customer = match customer {
+        Some(c) => {
+            sqlx::query_scalar("SELECT tags FROM customers WHERE tenant_id = $1 AND id = $2")
+                .bind(scope.tenant_id())
+                .bind(c)
+                .fetch_optional(&mut *conn)
+                .await?
+                .unwrap_or_default()
+        }
+        None => Vec::new(),
+    };
+    Ok(Tags {
+        products: rows.into_iter().collect(),
+        customer,
+    })
+}
+
+/// The cart as hooks see it, each line at `total(line)`.
+fn hook_cart(
+    currency: &str,
+    country: Option<&str>,
+    tags: &Tags,
+    lines: &[NewOrderLine],
+    total: impl Fn(&NewOrderLine) -> i64,
+) -> HookCart {
+    let lines: Vec<HookLine> = lines
+        .iter()
+        .map(|l| HookLine {
+            item_id: l.item_id.clone(),
+            sku: l.sku.clone(),
+            title: l.title.clone(),
+            quantity: l.quantity,
+            unit_price_minor: l.unit_price_minor,
+            line_total_minor: total(l),
+            tags: l
+                .product_id
+                .as_ref()
+                .and_then(|p| tags.products.get(p))
+                .cloned()
+                .unwrap_or_default(),
+        })
+        .collect();
+    HookCart {
+        currency: currency.to_owned(),
+        country: country.map(str::to_owned),
+        customer_tags: tags.customer.clone(),
+        subtotal_minor: lines.iter().map(|l| l.line_total_minor).sum(),
+        lines,
+    }
 }
 
 async fn build(
     conn: &mut PgConnection,
     scope: &impl Scope,
-    taxes: &TaxProviders,
+    services: &CheckoutServices,
     cart_id: &str,
 ) -> Result<Built> {
     let cart = view(conn, scope, cart_id).await?;
@@ -294,6 +433,17 @@ async fn build(
         });
     }
 
+    let hooks = &services.hooks;
+    let tags = if hooks.is_empty() {
+        None
+    } else {
+        Some(tags(conn, scope, &lines, cart.customer_id.as_deref()).await?)
+    };
+    let country = shipping_address
+        .as_ref()
+        .or(billing_address.as_ref())
+        .map(|a| a.country.clone());
+
     let mut missing = Vec::new();
     if !cart.ready {
         missing.push("lines".to_owned());
@@ -324,6 +474,30 @@ async fn build(
                 weight_grams: weight,
             };
             options = soat_shipping::options(conn, scope, &q).await?;
+            if let Some(tags) = &tags {
+                let seen = hook_cart(&cart.currency, Some(&addr.country), tags, &lines, |l| {
+                    l.unit_price_minor * l.quantity
+                });
+                let offered: Vec<HookShippingOption> = options
+                    .iter()
+                    .map(|o| HookShippingOption {
+                        rate_id: o.rate_id.clone(),
+                        name: o.name.clone(),
+                        price_minor: o.price_minor,
+                    })
+                    .collect();
+                let kept = hooks.filter_shipping(scope.tenant_id(), &seen, &offered);
+                options = kept
+                    .iter()
+                    .filter_map(|k| {
+                        let o = options.iter().find(|o| o.rate_id == k.rate_id)?;
+                        Some(ShippingOption {
+                            price_minor: k.price_minor,
+                            ..o.clone()
+                        })
+                    })
+                    .collect();
+            }
             chosen = d
                 .shipping_rate_id
                 .as_ref()
@@ -384,6 +558,36 @@ async fn build(
     for (line, off) in lines.iter_mut().zip(&offs) {
         line.discount_minor = off.off_minor;
     }
+    // The hooks', on what is left.
+    let mut adjustments = Vec::new();
+    let mut seen_by_hooks = None;
+    if let Some(tags) = &tags {
+        let left = |l: &NewOrderLine| l.unit_price_minor * l.quantity - l.discount_minor;
+        let seen = hook_cart(&cart.currency, country.as_deref(), tags, &lines, left);
+        for a in hooks.discounts(scope.tenant_id(), &seen) {
+            match a.line.and_then(|i| lines.get_mut(i as usize)) {
+                Some(line) => line.discount_minor += a.amount_minor,
+                None => {
+                    let weights: Vec<i64> = lines.iter().map(left).collect();
+                    for (line, share) in lines.iter_mut().zip(spread(a.amount_minor, &weights)) {
+                        line.discount_minor += share;
+                    }
+                }
+            }
+            adjustments.push(HookAdjustment {
+                line: a.line,
+                amount_minor: a.amount_minor,
+                label: a.label,
+            });
+        }
+        seen_by_hooks = Some(hook_cart(
+            &cart.currency,
+            country.as_deref(),
+            tags,
+            &lines,
+            left,
+        ));
+    }
     let shipping_discount = auto_shipping + discount.as_ref().map_or(0, |a| a.shipping_minor);
 
     if let Some(addr) = &tax_address {
@@ -402,7 +606,7 @@ async fn build(
         let quote = soat_tax::quote(
             conn,
             scope,
-            taxes,
+            &services.taxes,
             &QuoteInput {
                 country: addr.country.clone(),
                 postal_code: Some(addr.postal_code.clone()).filter(|p| !p.is_empty()),
@@ -505,6 +709,7 @@ async fn build(
             discount_issue: discount_error.as_ref().map(|e| e.message().to_owned()),
             discount,
             automatic_discount: auto,
+            adjustments,
             subtotal_minor: totals.subtotal,
             shipping_minor: totals.shipping,
             discount_minor: totals.discount,
@@ -524,6 +729,7 @@ async fn build(
         shipping,
         currency,
         discount_error,
+        hook_cart: seen_by_hooks,
     })
 }
 
@@ -533,11 +739,11 @@ async fn build(
 async fn get_checkout(
     db: Db,
     holder: CartToken,
-    taxes: State<TaxProviders>,
+    services: CheckoutServices,
     Path(id): Path<String>,
 ) -> Result<Json<CheckoutView>> {
     let (mut tx, id) = holder.open(&db, &id).await?;
-    let built = build(&mut tx, &holder.shop, &taxes, &id).await?;
+    let built = build(&mut tx, &holder.shop, &services, &id).await?;
     tx.commit().await?;
     Ok(Json(built.view))
 }
@@ -552,7 +758,7 @@ async fn get_checkout(
 pub async fn update(
     tx: &mut TenantTx,
     shop: &Shop,
-    taxes: &TaxProviders,
+    services: &CheckoutServices,
     id: &str,
     c: &CheckoutChange,
 ) -> Result<CheckoutView> {
@@ -613,7 +819,7 @@ pub async fn update(
     .bind(c.use_store_credit)
     .execute(&mut **tx)
     .await?;
-    let mut built = build(tx, shop, taxes, id).await?;
+    let mut built = build(tx, shop, services, id).await?;
     if c.discount_code
         .as_deref()
         .is_some_and(|c| !c.trim().is_empty())
@@ -638,10 +844,10 @@ pub async fn update(
 pub async fn checkout(
     conn: &mut PgConnection,
     scope: &impl Scope,
-    taxes: &TaxProviders,
+    services: &CheckoutServices,
     id: &str,
 ) -> Result<CheckoutView> {
-    Ok(build(conn, scope, taxes, id).await?.view)
+    Ok(build(conn, scope, services, id).await?.view)
 }
 
 /// Give the checkout's email, addresses, VAT number, shipping choice or
@@ -651,12 +857,12 @@ pub async fn checkout(
 async fn update_checkout(
     db: Db,
     holder: CartToken,
-    taxes: State<TaxProviders>,
+    services: CheckoutServices,
     Path(id): Path<String>,
     Valid(Json(c)): Valid<Json<CheckoutChange>>,
 ) -> Result<Json<CheckoutView>> {
     let (mut tx, id) = holder.open(&db, &id).await?;
-    let view = update(&mut tx, &holder.shop, &taxes, &id, &c).await?;
+    let view = update(&mut tx, &holder.shop, &services, &id, &c).await?;
     tx.commit().await?;
     Ok(Json(view))
 }
@@ -669,14 +875,14 @@ async fn update_checkout(
 pub async fn complete(
     db: &Db,
     providers: &Providers,
-    taxes: &TaxProviders,
+    services: &CheckoutServices,
     holder: &CartToken,
     id: &str,
     c: Complete,
 ) -> Result<Completed> {
     let (mut tx, id) = holder.open(db, id).await?;
     let shop = &holder.shop;
-    let mut built = build(&mut tx, shop, taxes, &id).await?;
+    let mut built = build(&mut tx, shop, services, &id).await?;
     if let Some(e) = built.discount_error.take() {
         return Err(e);
     }
@@ -690,6 +896,11 @@ pub async fn complete(
     }
     if let Some(why) = built.view.gift_card_issue.take() {
         return Err(Error::unprocessable(why).with_code("invalid_gift_card"));
+    }
+    if let Some(cart) = &built.hook_cart {
+        if let Verdict::Block(why) = services.hooks.validate(shop.tenant_id(), cart) {
+            return Err(Error::unprocessable(why).with_code("order_blocked"));
+        }
     }
     let due = built.view.amount_due_minor;
     let method = match c.payment_method_id.as_deref().filter(|_| due > 0) {
@@ -802,11 +1013,11 @@ async fn complete_checkout(
     db: Db,
     holder: CartToken,
     providers: State<Providers>,
-    taxes: State<TaxProviders>,
+    services: CheckoutServices,
     Path(id): Path<String>,
     Valid(Json(c)): Valid<Json<Complete>>,
 ) -> Result<(StatusCode, Json<Completed>)> {
-    let done = complete(&db, &providers, &taxes, &holder, &id, c).await?;
+    let done = complete(&db, &providers, &services, &holder, &id, c).await?;
     Ok((StatusCode::CREATED, Json(done)))
 }
 

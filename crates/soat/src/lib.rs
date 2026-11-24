@@ -52,6 +52,9 @@ pub struct Settings {
     /// Seals secrets shops store, such as their own Anthropic key; none
     /// when `SOAT_SECRET_KEY` is unset, and then shops cannot store them.
     pub sealer: Option<Sealer>,
+    /// Native hooks this install runs at checkout (`soat_core::hooks`);
+    /// none by default.
+    pub hooks: soat_core::hooks::Hooks,
     /// Where Anthropic's API is: `soat_mcp::ANTHROPIC_API` unless a test
     /// or a proxy says otherwise.
     pub anthropic_api: String,
@@ -123,6 +126,7 @@ impl Settings {
             sendcloud: Some(soat_sendcloud::Sendcloud::from_env()),
             #[cfg(feature = "shopify-sync")]
             shopify_api_base: std::env::var("SOAT_SHOPIFY_API_BASE").ok(),
+            hooks: soat_core::hooks::Hooks::new(),
         })
     }
 
@@ -147,6 +151,7 @@ impl Settings {
             // Nothing listens here: tests that sync set a fake.
             #[cfg(feature = "shopify-sync")]
             shopify_api_base: Some("http://127.0.0.1:9".to_owned()),
+            hooks: soat_core::hooks::Hooks::new(),
         }
     }
 }
@@ -214,7 +219,7 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(Promotions)
         .with(GiftCards)
         .with(Orders)
-        .with(Checkout)
+        .with(Checkout::new().with_hooks(settings.hooks.clone()))
         .with(Invoices)
         .with(Notify::new(settings.mailer, settings.mail_from))
         .with(Cms)

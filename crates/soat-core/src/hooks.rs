@@ -13,6 +13,8 @@
 //! | `checkout-validation` | before an order is placed | block it, saying why |
 //! | `events` | after any change, at least once | react (no change to the cart) |
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 /// A line of a cart, as hooks see it.
@@ -138,6 +140,138 @@ pub fn filtered(
         .collect()
 }
 
+/// Code run at the hook points: native Rust an install adds, or (with
+/// the plugin host) a plugin. Every method has a default that changes
+/// nothing; `shop` is the shop's id.
+pub trait Hook: Send + Sync {
+    /// Names it in logs and errors.
+    fn name(&self) -> &str;
+
+    /// Amounts to take off the cart.
+    fn discount(&self, shop: &str, cart: &HookCart) -> Vec<Adjustment> {
+        let _ = (shop, cart);
+        Vec::new()
+    }
+
+    /// The shipping options to offer, from those given.
+    fn filter_shipping(
+        &self,
+        shop: &str,
+        cart: &HookCart,
+        options: &[HookShippingOption],
+    ) -> Vec<HookShippingOption> {
+        let _ = (shop, cart);
+        options.to_vec()
+    }
+
+    /// Whether the order may be placed.
+    fn validate(&self, shop: &str, cart: &HookCart) -> Verdict {
+        let _ = (shop, cart);
+        Verdict::Allow
+    }
+}
+
+/// The hooks of this install, run in the order added; an app state.
+#[derive(Clone, Default)]
+pub struct Hooks(Arc<Vec<Arc<dyn Hook>>>);
+
+impl Hooks {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds `hook` after those already there.
+    pub fn with(self, hook: impl Hook + 'static) -> Self {
+        let mut list: Vec<Arc<dyn Hook>> = self.0.iter().cloned().collect();
+        list.push(Arc::new(hook));
+        Self(Arc::new(list))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Every hook's adjustments, each kept [`bounded`] by what the ones
+    /// before it took.
+    pub fn discounts(&self, shop: &str, cart: &HookCart) -> Vec<Adjustment> {
+        let mut out: Vec<Adjustment> = Vec::new();
+        for hook in self.0.iter() {
+            let mut seen = cart.clone();
+            for a in &out {
+                if let Some(l) = a.line.and_then(|i| seen.lines.get_mut(i as usize)) {
+                    l.line_total_minor -= a.amount_minor;
+                }
+                seen.subtotal_minor -= a.amount_minor;
+            }
+            out.extend(bounded(&seen, hook.discount(shop, &seen)));
+        }
+        out
+    }
+
+    /// The options every hook keeps, each [`filtered`].
+    pub fn filter_shipping(
+        &self,
+        shop: &str,
+        cart: &HookCart,
+        offered: &[HookShippingOption],
+    ) -> Vec<HookShippingOption> {
+        let mut options = offered.to_vec();
+        for hook in self.0.iter() {
+            let kept = hook.filter_shipping(shop, cart, &options);
+            options = filtered(&options, &kept);
+        }
+        options
+    }
+
+    /// The first hook's block, with its reason, or allow.
+    pub fn validate(&self, shop: &str, cart: &HookCart) -> Verdict {
+        for hook in self.0.iter() {
+            if let Verdict::Block(reason) = hook.validate(shop, cart) {
+                let reason = reason.trim();
+                let reason = if reason.is_empty() {
+                    format!("{} does not allow this order", hook.name())
+                } else {
+                    reason.chars().take(300).collect()
+                };
+                return Verdict::Block(reason);
+            }
+        }
+        Verdict::Allow
+    }
+}
+
+/// Splits `amount` over `weights` in proportion, in whole units, the
+/// largest remainders getting the leftovers; never more than a weight.
+pub fn spread(amount: i64, weights: &[i64]) -> Vec<i64> {
+    let total: i64 = weights.iter().map(|w| (*w).max(0)).sum();
+    if amount <= 0 || total <= 0 {
+        return vec![0; weights.len()];
+    }
+    let amount = amount.min(total);
+    let mut shares: Vec<(usize, i64, i128)> = weights
+        .iter()
+        .enumerate()
+        .map(|(i, w)| {
+            let exact = i128::from(amount) * i128::from((*w).max(0));
+            let share = exact / i128::from(total);
+            (i, share as i64, exact % i128::from(total))
+        })
+        .collect();
+    let mut left = amount - shares.iter().map(|s| s.1).sum::<i64>();
+    let mut order: Vec<usize> = (0..shares.len()).collect();
+    order.sort_by(|a, b| shares[*b].2.cmp(&shares[*a].2).then(a.cmp(b)));
+    for i in order {
+        if left == 0 {
+            break;
+        }
+        if shares[i].1 < weights[i] {
+            shares[i].1 += 1;
+            left -= 1;
+        }
+    }
+    shares.into_iter().map(|s| s.1).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,6 +334,47 @@ mod tests {
         let offered = [o("a", 500), o("b", 900), o("c", 0)];
         let kept = [o("c", 300), o("b", 400), o("x", 1)];
         assert_eq!(filtered(&offered, &kept), vec![o("b", 400), o("c", 0)]);
+    }
+
+    #[test]
+    fn amounts_spread_in_proportion() {
+        assert_eq!(spread(100, &[1000, 500]), vec![67, 33]);
+        assert_eq!(spread(10, &[1, 1, 1]), vec![1, 1, 1]);
+        assert_eq!(spread(2, &[1, 1, 1]), vec![1, 1, 0]);
+        assert_eq!(spread(5, &[0, 0]), vec![0, 0]);
+        assert_eq!(spread(-1, &[3]), vec![0]);
+    }
+
+    struct Half;
+    impl Hook for Half {
+        fn name(&self) -> &str {
+            "half"
+        }
+        fn discount(&self, _: &str, cart: &HookCart) -> Vec<Adjustment> {
+            vec![adj(None, cart.subtotal_minor / 2)]
+        }
+        fn validate(&self, _: &str, cart: &HookCart) -> Verdict {
+            if cart.lines.len() > 1 {
+                Verdict::Block(" ".into())
+            } else {
+                Verdict::Allow
+            }
+        }
+    }
+
+    #[test]
+    fn hooks_run_in_turn() {
+        let hooks = Hooks::new().with(Half).with(Half);
+        let out = hooks.discounts("acme", &cart());
+        assert_eq!(
+            out.iter().map(|a| a.amount_minor).collect::<Vec<_>>(),
+            vec![750, 375]
+        );
+        assert_eq!(
+            hooks.validate("acme", &cart()),
+            Verdict::Block("half does not allow this order".into())
+        );
+        assert!(Hooks::new().is_empty());
     }
 
     #[test]
