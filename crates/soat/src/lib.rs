@@ -67,6 +67,10 @@ pub struct Settings {
     /// Sendcloud labels; shops bring their own accounts.
     #[cfg(feature = "sendcloud")]
     pub sendcloud: Option<soat_sendcloud::Sendcloud>,
+    /// Where Shopify stores are called for the sync before cutover: each
+    /// store's own domain, unless a test or proxy says otherwise.
+    #[cfg(feature = "shopify-sync")]
+    pub shopify_api_base: Option<String>,
 }
 
 impl Settings {
@@ -77,7 +81,8 @@ impl Settings {
     /// `SOAT_MOLLIE_API_KEY` and `SOAT_PUBLIC_URL` (for its webhooks) for Mollie;
     /// `SOAT_PAYPAL_CLIENT_ID`, `SOAT_PAYPAL_CLIENT_SECRET` and
     /// `SOAT_PAYPAL_WEBHOOK_ID` for PayPal; `SOAT_SENDCLOUD_API_BASE` to
-    /// reach Sendcloud elsewhere;
+    /// reach Sendcloud elsewhere; `SOAT_SHOPIFY_API_BASE` to reach Shopify
+    /// stores elsewhere;
     /// `SMTP_URL` and `MAIL_FROM` for email (without `SMTP_URL`, a debug
     /// build keeps mail in the dev inbox at `/_dev/mail`);
     /// `SOAT_SECRET_KEY` (32 characters or more, kept across restarts) to
@@ -116,6 +121,8 @@ impl Settings {
             paypal: soat_paypal::PayPalConfig::from_env(),
             #[cfg(feature = "sendcloud")]
             sendcloud: Some(soat_sendcloud::Sendcloud::from_env()),
+            #[cfg(feature = "shopify-sync")]
+            shopify_api_base: std::env::var("SOAT_SHOPIFY_API_BASE").ok(),
         })
     }
 
@@ -137,6 +144,9 @@ impl Settings {
             paypal: None,
             #[cfg(feature = "sendcloud")]
             sendcloud: None,
+            // Nothing listens here: tests that sync set a fake.
+            #[cfg(feature = "shopify-sync")]
+            shopify_api_base: Some("http://127.0.0.1:9".to_owned()),
         }
     }
 }
@@ -226,6 +236,12 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         Some(p) => modules.with(p.webhooks()),
         None => modules,
     };
+    #[cfg(feature = "shopify-sync")]
+    let modules = modules.with(
+        soat_import::Imports::new()
+            .with_sealer(settings.sealer.clone())
+            .with_api_base(settings.shopify_api_base.clone()),
+    );
     modules
 }
 

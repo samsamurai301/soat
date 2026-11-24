@@ -4,37 +4,37 @@
 fn module_list_is_valid_and_ordered() {
     let modules = soat::modules(soat::Settings::for_tests("t"));
     assert_eq!(modules.validate(), Ok(()));
-    assert_eq!(
-        modules.names(),
-        [
-            "auth",
-            "events",
-            "tenancy",
-            "webhooks",
-            "fields",
-            "files",
-            "catalog",
-            "inventory",
-            "pricing",
-            "customers",
-            "cart",
-            "tax",
-            "shipping",
-            "payments",
-            "promotions",
-            "giftcards",
-            "orders",
-            "checkout",
-            "invoices",
-            "notify",
-            "cms",
-            "i18n",
-            "theme",
-            "storefront",
-            "mcp",
-            "admin"
-        ]
-    );
+    #[allow(unused_mut)]
+    let mut expected = vec![
+        "auth",
+        "events",
+        "tenancy",
+        "webhooks",
+        "fields",
+        "files",
+        "catalog",
+        "inventory",
+        "pricing",
+        "customers",
+        "cart",
+        "tax",
+        "shipping",
+        "payments",
+        "promotions",
+        "giftcards",
+        "orders",
+        "checkout",
+        "invoices",
+        "notify",
+        "cms",
+        "i18n",
+        "theme",
+        "storefront",
+    ];
+    #[cfg(feature = "shopify-sync")]
+    expected.push("import");
+    expected.extend(["mcp", "admin"]);
+    assert_eq!(modules.names(), expected);
 }
 
 #[test]

@@ -42,6 +42,7 @@ soat-cms = { path = "crates/soat-cms" }
 soat-i18n = { path = "crates/soat-i18n" }
 soat-theme = { path = "crates/soat-theme" }
 soat-storefront = { path = "crates/soat-storefront" }
+soat-import = { path = "crates/soat-import" }
 soat-mcp = { path = "crates/soat-mcp" }
 soat-admin = { path = "crates/soat-admin" }
 soat-testing = { path = "crates/soat-testing" }

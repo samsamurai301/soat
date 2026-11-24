@@ -1847,6 +1847,7 @@ dependencies = [
  "soat-files",
  "soat-giftcards",
  "soat-i18n",
+ "soat-import",
  "soat-inventory",
  "soat-invoices",
  "soat-mcp",
@@ -2074,6 +2075,20 @@ dependencies = [
  "serde",
  "serde_json",
  "soat-core",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-import"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-http",
  "soat-module",
  "soat-tenancy",
  "sqlx",

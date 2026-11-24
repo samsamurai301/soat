@@ -90,6 +90,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-mollie` | Mollie provider: iDEAL, Bancontact, cards, Klarna and more, refunds, webhooks checked with Mollie (feature `mollie`) |
 | `crates/soat-paypal` | PayPal provider: Orders v2, capture or authorize, partner merchants, refunds, verified webhooks (feature `paypal`) |
 | `crates/soat-sendcloud` | Sendcloud labels for DHL, DPD, GLS, PostNL, UPS and more through a shop's own account (feature `sendcloud`) |
+| `crates/soat-import` | Moving from Shopify without a gap: its store synced by the Admin API until cutover (feature `shopify-sync`) |
 | `crates/soat-promotions` | Discount codes and automatic discounts: percentage, fixed amount, free shipping, buy X get Y, per collection, with dates, minimums and limits |
 | `crates/soat-giftcards` | Gift cards and store credit: balances with a ledger, spent at checkout as payments |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
@@ -150,6 +151,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Setup in the browser: the first admin at `/admin/setup`, a new shop, then welcome steps for country and currency, EU VAT, bank transfer, shipping and the first product, or sample products from a store template (clothing, coffee, home goods) removed again in one click
 - [x] CSV import and export of products (a row per variant, with stock) and customers, as spreadsheets save it (`;` or `,`, decimal commas)
 - [x] Moving from Shopify: its product and customer exports import as they are (descriptions turned into Markdown; images not yet)
+- [x] Moving from Shopify without a gap: keep its store synced until the day you cut over
 - [x] Moving from WooCommerce or Shopware: their product exports (and Shopware's customer export) import as they are
 - [x] Launch checklist: what a shop still needs before real orders, including the EU's legal pages (started as drafts to write)
 - [x] Each shop's own Anthropic key, encrypted at rest (`SOAT_SECRET_KEY`)

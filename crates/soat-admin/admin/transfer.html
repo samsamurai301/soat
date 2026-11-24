@@ -31,3 +31,31 @@
   </form>
   <p class="muted">An email the shop has updates that customer. Columns: <code>{{ customer_columns }}</code>.</p>
 </section>
+
+<section class="panel">
+  <h2>Sync from Shopify</h2>
+  {{#if shopify }}
+  <p>Connected to <strong>{{ shopify.shop_domain }}</strong>.
+    {{#if shopify.products_synced_at }}Products synced until {{ shopify.products_synced_at }}.{{/if}}
+    {{#if shopify.customers_synced_at }}Customers synced until {{ shopify.customers_synced_at }}.{{/if}}</p>
+  {{#if shopify.cut_over_at }}
+  <p>Cut over on {{ shopify.cut_over_at }}: SOAT is the shop now.</p>
+  {{else}}
+  <form method="post" action="{{ base }}/transfer/shopify/sync" class="form">
+    <button class="button">Sync changes</button>
+  </form>
+  <form method="post" action="{{ base }}/transfer/shopify/sync" class="form">
+    <input type="hidden" name="cutover" value="1">
+    <button class="button">Last sync and cut over</button>
+  </form>
+  <p class="muted">Keep selling on Shopify while you set up here; each sync brings over the products and customers changed since the last one. When you are ready, the last sync cuts over: point your domain at SOAT then.</p>
+  {{/if}}
+  {{else}}
+  <form method="post" action="{{ base }}/transfer/shopify" class="form">
+    <label>Store domain <input name="shop_domain" placeholder="your-store.myshopify.com" required></label>
+    <label>Admin API access token <input name="access_token" type="password" autocomplete="off" required></label>
+    <button class="button">Connect</button>
+  </form>
+  <p class="muted">In Shopify, create a custom app (Settings › Apps and sales channels › Develop apps) with read access to products and customers, and paste its Admin API access token. It is stored encrypted.</p>
+  {{/if}}
+</section>

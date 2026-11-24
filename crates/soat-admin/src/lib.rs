@@ -141,6 +141,8 @@ impl Module for Admin {
             transfer::export_customers,
             transfer::import_products,
             transfer::import_customers,
+            transfer::connect_shopify,
+            transfer::sync_shopify,
         ))
         .mount((
             products::list,

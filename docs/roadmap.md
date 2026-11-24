@@ -125,7 +125,7 @@ layer.
 - [x] G3 Launch checklist
 - [x] G4 CSV import and export **alpha**
 - [x] G5 Shopify importer **alpha** (from Shopify's product and customer CSV exports; images not yet)
-- [ ] G6 Shopify delta sync and cutover
+- [x] G6 Shopify delta sync and cutover: a shop connects its store (`*.myshopify.com` and an Admin API token, sealed) at `/api/imports/shopify`; each sync pulls the products and customers changed since the last one as SOAT's import file and the admin imports them through the API; the last sync cuts over and later pulls are refused (crate `soat-import`, feature `shopify-sync`)
 - [x] G7 WooCommerce and Shopware importers: WooCommerce's product export (simple and variable products, variations as variants) and Shopware 6's product and customer exports (default profiles; variants under one `Variant` option) import as they are on the admin's import screen, prices and weights normalized; images not yet
 
 ## H. AI layer

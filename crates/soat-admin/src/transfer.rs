@@ -10,7 +10,7 @@ use zapline::db::Db;
 use zapline::multipart::Multipart;
 use zapline::prelude::*;
 
-use crate::settings::amount;
+use crate::settings::{amount, Fields};
 use crate::util::encode;
 use crate::{Ctx, Page, Shared};
 
@@ -49,7 +49,16 @@ pub(crate) const CUSTOMER_COLUMNS: [&str; 7] = [
     "note",
 ];
 
-fn page(mut cx: Ctx, result: Option<Value>, error: Option<String>, status: StatusCode) -> Response {
+async fn page(
+    mut cx: Ctx,
+    result: Option<Value>,
+    error: Option<String>,
+    status: StatusCode,
+) -> Response {
+    let (got, shopify) = cx.call(Method::GET, "/api/imports/shopify", None).await;
+    if got == 200 {
+        cx.set("shopify", shopify);
+    }
     cx.set("page_title", json!("Import and export"));
     cx.set("product_columns", json!(PRODUCT_COLUMNS.join(", ")));
     cx.set("customer_columns", json!(CUSTOMER_COLUMNS.join(", ")));
@@ -72,7 +81,7 @@ pub(crate) async fn show(
     Path(shop): Path<String>,
 ) -> Result<Response> {
     let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
-    Ok(page(cx, None, None, StatusCode::OK))
+    Ok(page(cx, None, None, StatusCode::OK).await)
 }
 
 fn csv_file(name: &str, rows: &[Vec<String>]) -> Response {
@@ -353,7 +362,7 @@ pub(crate) async fn import_products(
     .await
     {
         Ok(t) => t,
-        Err(e) => return Ok(page(cx, None, Some(e), StatusCode::UNPROCESSABLE_ENTITY)),
+        Err(e) => return Ok(page(cx, None, Some(e), StatusCode::UNPROCESSABLE_ENTITY).await),
     };
     let out = match import_product_rows(&cx, &table).await {
         Ok(out) => out,
@@ -364,7 +373,7 @@ pub(crate) async fn import_products(
     } else {
         StatusCode::UNPROCESSABLE_ENTITY
     };
-    Ok(page(cx, Some(out.view("products")), None, status))
+    Ok(page(cx, Some(out.view("products")), None, status).await)
 }
 
 /// The uploaded CSV, turned into SOAT's file by `convert` when it is
@@ -681,7 +690,7 @@ pub(crate) async fn import_customers(
     .await
     {
         Ok(t) => t,
-        Err(e) => return Ok(page(cx, None, Some(e), StatusCode::UNPROCESSABLE_ENTITY)),
+        Err(e) => return Ok(page(cx, None, Some(e), StatusCode::UNPROCESSABLE_ENTITY).await),
     };
     let out = match import_customer_rows(&cx, &table).await {
         Ok(out) => out,
@@ -692,7 +701,131 @@ pub(crate) async fn import_customers(
     } else {
         StatusCode::UNPROCESSABLE_ENTITY
     };
-    Ok(page(cx, Some(out.view("customers")), None, status))
+    Ok(page(cx, Some(out.view("customers")), None, status).await)
+}
+
+/// Connect the shop's Shopify store (a form post with `shop_domain` and
+/// `access_token`), to sync it until cutover.
+#[post("/admin/{shop}/transfer/shopify", tag = "admin")]
+pub(crate) async fn connect_shopify(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path(shop): Path<String>,
+    body: Bytes,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
+    let f = Fields::parse(&body);
+    let (status, out) = cx
+        .call(
+            Method::PUT,
+            "/api/imports/shopify",
+            Some(&json!({
+                "shop_domain": f.get("shop_domain"),
+                "access_token": f.get("access_token"),
+            })),
+        )
+        .await;
+    match status {
+        200 => Ok(page(cx, None, None, StatusCode::OK).await),
+        401 => Ok(crate::to_login()),
+        403 => Ok(cx.failed(403, &out)),
+        s => Ok(page(
+            cx,
+            None,
+            Some(reason(&out)),
+            StatusCode::from_u16(s).unwrap_or(StatusCode::UNPROCESSABLE_ENTITY),
+        )
+        .await),
+    }
+}
+
+/// Pull what changed on Shopify since the last sync and import it:
+/// products, then customers. With `cutover` set, this is the last sync
+/// and the shop cuts over when it went through.
+#[post("/admin/{shop}/transfer/shopify/sync", tag = "admin")]
+pub(crate) async fn sync_shopify(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path(shop): Path<String>,
+    body: Bytes,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "products").await);
+    let cutover = !Fields::parse(&body).get("cutover").is_empty();
+    let mut total = Outcome::default();
+    for what in ["products", "customers"] {
+        // A pull takes up to 10 000; a few rounds catch up a big store.
+        for _ in 0..5 {
+            let (status, pulled) = cx
+                .call(
+                    Method::POST,
+                    "/api/imports/shopify/pull",
+                    Some(&json!({ "what": what })),
+                )
+                .await;
+            match status {
+                200 => {}
+                401 => return Ok(crate::to_login()),
+                403 => return Ok(cx.failed(403, &pulled)),
+                s => {
+                    let code = StatusCode::from_u16(s).unwrap_or(StatusCode::BAD_GATEWAY);
+                    return Ok(page(cx, None, Some(reason(&pulled)), code).await);
+                }
+            }
+            let table = Table::parse(pulled["csv"].as_str().unwrap_or_default()).unwrap_or(Table {
+                headers: Vec::new(),
+                rows: Vec::new(),
+            });
+            let out = match what {
+                "products" => import_product_rows(&cx, &table).await,
+                _ => import_customer_rows(&cx, &table).await,
+            };
+            let out = match out {
+                Ok(out) => out,
+                Err(stop) => return Ok(stop.into_response(&cx)),
+            };
+            total.created += out.created;
+            total.updated += out.updated;
+            if !out.problems.is_empty() {
+                // Not recorded: the next sync pulls these again.
+                total.problems.extend(out.problems);
+                let result = Some(total.view(what));
+                return Ok(page(cx, result, None, StatusCode::UNPROCESSABLE_ENTITY).await);
+            }
+            let (status, recorded) = cx
+                .call(
+                    Method::POST,
+                    "/api/imports/shopify/synced",
+                    Some(&json!({ "what": what, "until": pulled["until"] })),
+                )
+                .await;
+            if status != 200 {
+                let code = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+                return Ok(page(cx, None, Some(reason(&recorded)), code).await);
+            }
+            if pulled["more"] != true {
+                break;
+            }
+        }
+    }
+    if cutover {
+        let (status, out) = cx
+            .call(Method::POST, "/api/imports/shopify/cutover", None)
+            .await;
+        if status != 200 {
+            let code = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+            return Ok(page(cx, None, Some(reason(&out)), code).await);
+        }
+    }
+    let kind = if cutover {
+        "the last sync from Shopify"
+    } else {
+        "changes from Shopify"
+    };
+    Ok(page(cx, Some(total.view(kind)), None, StatusCode::OK).await)
 }
 
 /// Imports SOAT's product file through the API.
