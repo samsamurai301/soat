@@ -242,6 +242,8 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
             .with_sealer(settings.sealer.clone())
             .with_api_base(settings.shopify_api_base.clone()),
     );
+    #[cfg(feature = "apps")]
+    let modules = modules.with(soat_apps::Apps);
     modules
 }
 

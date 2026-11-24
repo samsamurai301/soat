@@ -30,6 +30,7 @@ macro_rules! page_or {
 }
 
 mod api;
+mod apps;
 mod assistant;
 mod blog;
 mod builder;
@@ -143,6 +144,12 @@ impl Module for Admin {
             transfer::import_customers,
             transfer::connect_shopify,
             transfer::sync_shopify,
+        ))
+        .mount((
+            apps::list,
+            apps::uninstall,
+            apps::authorize_page,
+            apps::authorize,
         ))
         .mount((
             products::list,

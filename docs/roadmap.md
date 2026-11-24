@@ -112,7 +112,7 @@ layer.
 - [ ] F1 WIT interfaces v0
 - [ ] F2 Plugin host in Zapline
 - [ ] F3 Hook points in SOAT
-- [ ] F4 App installs and consent
+- [x] F4 App installs and consent: developers register apps (`/api/apps`, client id and secret, https redirect URIs, declared permissions); an owner approves on the consent screen (`/admin/{shop}/apps/authorize`), the app trades a single-use code for an API key holding exactly the granted permissions in that shop, and uninstalling revokes the key at once (crate `soat-apps`, feature `apps`)
 - [ ] F5 `soat app new` and dev loop
 - [ ] F6 Admin UI extensions
 - [ ] F7 Storefront blocks from apps

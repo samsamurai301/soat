@@ -1,0 +1,21 @@
+<h1>Apps</h1>
+<p class="muted">Apps act for the shop with exactly the permissions you granted when you installed them. Uninstalling stops them at once.</p>
+<section class="panel">
+  {{#if apps }}
+  <table class="table">
+    <thead><tr><th>App</th><th>May</th><th>Installed</th><th></th></tr></thead>
+    <tbody>
+    {{#each apps }}
+    <tr>
+      <td>{{ app_name }}{{#if connected }}{{else}} <span class="muted">(not connected yet)</span>{{/if}}</td>
+      <td><code>{{#each permissions }}{{ this }} {{/each}}</code></td>
+      <td>{{ created_at }}</td>
+      <td><form method="post" action="{{ base }}/apps/{{ id }}/uninstall"><button class="button">Uninstall</button></form></td>
+    </tr>
+    {{/each}}
+    </tbody>
+  </table>
+  {{else}}
+  <p>No apps yet. An app you want sends you here to install it.</p>
+  {{/if}}
+</section>

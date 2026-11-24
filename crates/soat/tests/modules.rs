@@ -33,6 +33,8 @@ fn module_list_is_valid_and_ordered() {
     ];
     #[cfg(feature = "shopify-sync")]
     expected.push("import");
+    #[cfg(feature = "apps")]
+    expected.push("apps");
     expected.extend(["mcp", "admin"]);
     assert_eq!(modules.names(), expected);
 }

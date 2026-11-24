@@ -1835,6 +1835,7 @@ dependencies = [
  "serde",
  "serde_json",
  "soat-admin",
+ "soat-apps",
  "soat-auth",
  "soat-cart",
  "soat-catalog",
@@ -1881,6 +1882,21 @@ dependencies = [
  "serde_urlencoded",
  "soat-core",
  "soat-module",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-apps"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "soat-auth",
+ "soat-core",
+ "soat-module",
+ "soat-tenancy",
  "sqlx",
  "zapline",
 ]

@@ -45,6 +45,63 @@ pub struct CreatedApiKey {
     pub secret: String,
 }
 
+/// Stores a new key of shop `tenant_id` granting `permissions`, made by
+/// `created_by` (a user, or an app install's consenting user), in the
+/// shop's transaction. Returns it with its secret, which is never stored.
+/// Permissions are not checked here: callers check them.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn insert_key(
+    conn: &mut zapline::db::sqlx::PgConnection,
+    tenant_id: &str,
+    name: &str,
+    mut permissions: Vec<String>,
+    created_by: Option<&str>,
+) -> Result<(ApiKeyView, String)> {
+    permissions.sort();
+    permissions.dedup();
+    let id = ApiKeyId::new();
+    let secret = format!("{API_KEY_PREFIX}{tenant_id}_{}", new_token()?);
+    sqlx::query(
+        "INSERT INTO api_keys (id, tenant_id, name, token_hash, permissions, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(id.as_str())
+    .bind(tenant_id)
+    .bind(name)
+    .bind(hash_token(&secret))
+    .bind(&permissions)
+    .bind(created_by)
+    .execute(conn)
+    .await?;
+    Ok((
+        ApiKeyView {
+            id: id.to_string(),
+            name: name.to_owned(),
+            permissions,
+            revoked: false,
+        },
+        secret,
+    ))
+}
+
+/// Revokes key `id` in the shop's transaction; `false` when it is unknown
+/// or revoked already.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn revoke(conn: &mut zapline::db::sqlx::PgConnection, id: &str) -> Result<bool> {
+    let done =
+        sqlx::query("UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL")
+            .bind(id)
+            .execute(conn)
+            .await?;
+    Ok(done.rows_affected() > 0)
+}
+
 pub fn mount(app: App) -> App {
     app.mount((create_key, list_keys, revoke_key))
 }
@@ -88,29 +145,14 @@ async fn create_key(
         )
         .with_code("beyond_own_permissions"));
     }
-    let mut permissions = body.permissions;
-    permissions.sort();
-    permissions.dedup();
-    let id = ApiKeyId::new();
-    let secret = format!("{API_KEY_PREFIX}{}_{}", tenant.id(), new_token()?);
-    sqlx::query(
-        "INSERT INTO api_keys (id, tenant_id, name, token_hash, permissions, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6)",
+    let (key, secret) = insert_key(
+        &mut tx,
+        tenant.id(),
+        &body.name,
+        body.permissions,
+        Some(staff.user_id.as_str()),
     )
-    .bind(id.as_str())
-    .bind(tenant.id())
-    .bind(&body.name)
-    .bind(hash_token(&secret))
-    .bind(&permissions)
-    .bind(staff.user_id.as_str())
-    .execute(&mut *tx)
     .await?;
-    let key = ApiKeyView {
-        id: id.to_string(),
-        name: body.name,
-        permissions,
-        revoked: false,
-    };
     // The event carries the key's view, never its secret.
     tenant.publish(&mut tx, "api_key.created", &key).await?;
     tx.commit().await?;
@@ -135,12 +177,7 @@ async fn list_keys(db: Db, tenant: Tenant) -> Result<Json<Vec<ApiKeyView>>> {
 #[delete("/api/api-keys/{id}", tag = "api keys", status = 204)]
 async fn revoke_key(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<StatusCode> {
     let mut tx = tenant.begin_for(&db, &API_KEYS_MANAGE).await?;
-    let revoked =
-        sqlx::query("UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL")
-            .bind(&id)
-            .execute(&mut *tx)
-            .await?;
-    if revoked.rows_affected() == 0 {
+    if !revoke(&mut tx, &id).await? {
         return Err(Error::not_found());
     }
     tenant
