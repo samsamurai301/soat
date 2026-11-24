@@ -119,6 +119,7 @@ layer.
 - [x] F7 Storefront blocks from apps: an app offers up to 10 blocks (`storefront_blocks`: a script it hosts, on every page or on product pages); the owner turns each on per install (`PUT /api/app-installations/{id}/blocks`, or the Apps page), and the default theme loads the script and leaves a `.soat-app-block` element for it (guide: `docs/apps.md`)
 - [x] F8 App directory: a developer lists an app (`PATCH /api/apps/{id}` with tagline, description, category, `app_url` and `listed`); shops search listed apps at `GET /api/app-directory` and `/admin/{shop}/apps/directory`, and installing starts at the app's `app_url?shop=…`, which sends the owner to the consent screen
 - [x] F9 Plugins per shop: plugins run only for shops that turn them on (`GET /api/plugins`, `PUT /api/plugins/{name}`, `plugins:read` and `plugins:manage`), with each shop's settings over the install's, secret ones sealed; admin Settings, Plugins
+- [x] F10 A shop's own plugins: a shop uploads a plugin (manifest and component, `POST /api/plugins/uploads`, up to 8 MiB, checkout worlds only) that runs for it alone, after the install's, once turned on; replace by uploading again, remove with `DELETE /api/plugins/uploads/{name}`; compiled once per manifest and component; admin Settings, Plugins
 
 ## G. Onboarding and import
 

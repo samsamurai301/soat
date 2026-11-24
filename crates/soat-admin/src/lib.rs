@@ -244,6 +244,7 @@ impl Module for Admin {
         .mount((
             settings::index,
             settings::show_area,
+            settings::upload_plugin,
             settings::act,
             settings::act_on,
             settings::email_template,

@@ -216,6 +216,13 @@ impl Hooks {
         Self(Arc::new(list))
     }
 
+    /// Adds a shared hook after those already there.
+    pub fn with_shared(self, hook: Arc<dyn Hook>) -> Self {
+        let mut list: Vec<Arc<dyn Hook>> = self.0.iter().cloned().collect();
+        list.push(hook);
+        Self(Arc::new(list))
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -328,9 +335,36 @@ pub fn spread(amount: i64, weights: &[i64]) -> Vec<i64> {
     shares.into_iter().map(|s| s.1).collect()
 }
 
+/// Turns a plugin a shop uploads (its manifest and component) into a
+/// [`Hook`]; the install's plugin host implements it.
+pub trait PluginLoader: Send + Sync {
+    /// The plugin as a hook, before any shop's settings; why it cannot
+    /// run otherwise (not a component, a world it may not use, imports
+    /// the host does not lend).
+    fn load(&self, manifest: &str, wasm: &[u8]) -> Result<Arc<dyn Hook>, String>;
+}
+
+/// The hex SHA-256 of a plugin package's component: what a compiled
+/// plugin is cached under.
+pub fn fingerprint(wasm: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(wasm)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fingerprints_are_hex_sha256() {
+        assert_eq!(
+            fingerprint(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 
     fn cart() -> HookCart {
         let line = |total| HookLine {

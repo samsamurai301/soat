@@ -95,6 +95,31 @@ the install offers in the admin under Settings, Plugins, or through the API:
   keeps the one stored. Publishes `plugin.configured`, without secrets.
 
 Native hooks run for every shop.
+
+## A shop's own plugins
+
+A shop can also upload a plugin of its own, in the admin under Settings,
+Plugins, or through the API. It is listed and turned on like the install's
+(`"uploaded": true` and its `version`), runs for that shop alone in the
+same sandbox, and runs after the install's hooks.
+
+- `POST /api/plugins/uploads` (`plugins:manage`): `multipart/form-data`
+  with the fields `manifest` (its `soat.plugin.json`) and `component` (the
+  `.wasm`, at most 8 MiB). It must be a `discounts`, `shipping-filter` or
+  `checkout-validation` plugin and load in the sandbox, or it is a 422
+  `invalid_plugin`; a name one of the install's plugins uses is a 409
+  `plugin_exists`. A new plugin starts turned off (201); uploading one the
+  shop has again replaces it and keeps its settings (200). Publishes
+  `plugin.uploaded` with its name, version, size and `sha256`, never the
+  component.
+- `DELETE /api/plugins/uploads/{name}` (`plugins:manage`): removes it and
+  its settings. Publishes `plugin.removed`.
+
+`events` plugins come only from the install, since they react for every
+shop. An install built without the `plugins` feature answers uploads with
+a 503 `plugins_unavailable`. Compiled plugins are kept in memory by the
+fingerprints of their manifest and component, so a checkout compiles each
+at most once.
 A plugin that does not load (bad manifest, not a component, the wrong
 world, or importing more than `host`) stops the server with the reason.
 
@@ -131,5 +156,4 @@ Any language with a component toolchain works, for example Rust with
 (no_std, 8 KB): it takes the `amount` setting off every line tagged
 `plugin`; `fixtures/build.sh` builds it.
 
-Next: uploading plugins from the admin instead of the install's folder,
-and the host moving into Zapline.
+Next: the host moving into Zapline (`zapline-wasm`).

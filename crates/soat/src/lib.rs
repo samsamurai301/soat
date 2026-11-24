@@ -55,6 +55,9 @@ pub struct Settings {
     /// Native hooks this install runs at checkout (`soat_core::hooks`);
     /// none by default.
     pub hooks: soat_core::hooks::Hooks,
+    /// Compiles the plugins shops upload: the plugin host with the
+    /// `plugins` feature, otherwise none and uploads are refused.
+    pub plugin_loader: Option<std::sync::Arc<dyn soat_core::hooks::PluginLoader>>,
     /// Where Anthropic's API is: `soat_mcp::ANTHROPIC_API` unless a test
     /// or a proxy says otherwise.
     pub anthropic_api: String,
@@ -130,6 +133,7 @@ impl Settings {
             #[cfg(feature = "shopify-sync")]
             shopify_api_base: std::env::var("SOAT_SHOPIFY_API_BASE").ok(),
             hooks: hooks_from_env()?,
+            plugin_loader: plugin_loader()?,
         })
     }
 
@@ -155,6 +159,7 @@ impl Settings {
             #[cfg(feature = "shopify-sync")]
             shopify_api_base: Some("http://127.0.0.1:9".to_owned()),
             hooks: soat_core::hooks::Hooks::new(),
+            plugin_loader: plugin_loader().ok().flatten(),
         }
     }
 }
@@ -223,9 +228,12 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(GiftCards)
         .with(Orders)
         .with(
-            Checkout::new()
-                .with_hooks(settings.hooks.clone())
-                .with_sealer(settings.sealer.clone()),
+            match settings.plugin_loader.clone() {
+                Some(loader) => Checkout::new().with_plugin_loader(loader),
+                None => Checkout::new(),
+            }
+            .with_hooks(settings.hooks.clone())
+            .with_sealer(settings.sealer.clone()),
         )
         .with(Invoices)
         .with(Notify::new(settings.mailer, settings.mail_from))
@@ -294,4 +302,19 @@ fn hooks_from_env() -> zapline::Result<soat_core::hooks::Hooks> {
 #[cfg(not(feature = "plugins"))]
 fn hooks_from_env() -> zapline::Result<soat_core::hooks::Hooks> {
     Ok(soat_core::hooks::Hooks::new())
+}
+
+/// The plugin host, compiling the plugins shops upload.
+#[cfg(feature = "plugins")]
+#[allow(clippy::unnecessary_wraps)]
+fn plugin_loader() -> zapline::Result<Option<std::sync::Arc<dyn soat_core::hooks::PluginLoader>>> {
+    let host = soat_plugin_host::PluginHost::new()
+        .map_err(|e| zapline::Error::internal(format!("plugin host: {e}")))?;
+    Ok(Some(std::sync::Arc::new(host)))
+}
+
+#[cfg(not(feature = "plugins"))]
+#[allow(clippy::unnecessary_wraps)]
+fn plugin_loader() -> zapline::Result<Option<std::sync::Arc<dyn soat_core::hooks::PluginLoader>>> {
+    Ok(None)
 }

@@ -171,7 +171,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Apps: an app directory, install with consent for a key with exactly the granted permissions, admin links and storefront blocks, and `soat app new` to start one ([guide](docs/apps.md))
 - [x] Tax by an outside tax service when zones are not enough, with the zones standing in when it is down ([guide](docs/tax-providers.md))
 - [x] Hook points at checkout (shipping filters, discounts, order validation) for native hooks today and plugins later; plugin interfaces as WIT ([guide](docs/plugins.md))
-- [x] WASM plugin host: plugins from `SOAT_PLUGINS_DIR` run at checkout, sandboxed and metered, for the shops that turn them on (admin Settings, Plugins) ([guide](docs/plugins.md)); moves into Zapline later
+- [x] WASM plugin host: plugins from `SOAT_PLUGINS_DIR` run at checkout, sandboxed and metered, for the shops that turn them on (admin Settings, Plugins), and shops can upload their own ([guide](docs/plugins.md)); moves into Zapline later
 
 ## License
 

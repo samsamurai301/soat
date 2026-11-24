@@ -225,6 +225,30 @@ impl PluginHost {
     }
 }
 
+/// Largest component a shop may upload.
+pub const MAX_UPLOAD_BYTES: usize = 8 << 20;
+
+/// Plugins a shop uploads: checkout worlds only (`events` plugins run for
+/// the whole install and come from `SOAT_PLUGINS_DIR`).
+impl core::PluginLoader for PluginHost {
+    fn load(&self, manifest: &str, wasm: &[u8]) -> Result<Arc<dyn core::Hook>, String> {
+        if wasm.len() > MAX_UPLOAD_BYTES {
+            return Err(format!(
+                "the component is {} bytes; at most {MAX_UPLOAD_BYTES}",
+                wasm.len()
+            ));
+        }
+        let plugin = PluginHost::load(self, manifest, wasm, HashMap::new())?;
+        if plugin.manifest().world == "events" {
+            return Err(format!(
+                "{}: events plugins cannot be uploaded by a shop",
+                plugin.manifest().name
+            ));
+        }
+        Ok(Arc::new(plugin))
+    }
+}
+
 fn to_wit_line(l: &core::HookLine) -> wit::HookLine {
     wit::HookLine {
         item_id: l.item_id.clone(),

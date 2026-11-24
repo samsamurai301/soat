@@ -2,7 +2,7 @@
 {{#if plugins }}
 {{#each plugins }}
 <section class="panel">
-  <h2>{{ name }}{{#if enabled }} <span class="badge">On</span>{{/if}}</h2>
+  <h2>{{ name }}{{#if version }} <span class="muted">{{ version }}</span>{{/if}}{{#if enabled }} <span class="badge">On</span>{{/if}}{{#if uploaded }} <span class="badge">Uploaded</span>{{/if}}</h2>
   <form method="post" action="{{ base }}/settings/plugins/save/{{ name }}" class="form">
     <label class="check"><input type="checkbox" name="enabled" value="1"{{#if enabled }} checked{{/if}}> Run it at this shop's checkout</label>
     {{#each settings }}
@@ -14,10 +14,24 @@
     {{/each}}
     <button class="button">Save</button>
   </form>
+  {{#if uploaded }}
+  <form method="post" action="{{ base }}/settings/plugins/remove/{{ name }}">
+    <button class="link">Remove this plugin</button>
+  </form>
+  {{/if}}
 </section>
 {{/each}}
 {{else}}
 <section class="panel">
-  <p class="muted">This install offers no plugins yet. Plugins are WebAssembly components the install adds to <code>SOAT_PLUGINS_DIR</code>; each shop then turns on the ones it wants here.</p>
+  <p class="muted">No plugins yet. The install offers the ones in its <code>SOAT_PLUGINS_DIR</code>; this shop can also upload its own below. Each shop turns on the ones it wants here.</p>
 </section>
 {{/if}}
+<section class="panel">
+  <h2>Upload a plugin</h2>
+  <p class="muted">A WebAssembly component built against <code>soat:plugin</code> (a discounts, shipping filter or checkout validation plugin) and its <code>soat.plugin.json</code>. It runs for this shop alone, in the sandbox, and starts turned off. Uploading one with the same name replaces it.</p>
+  <form method="post" action="{{ base }}/settings/plugins/upload" enctype="multipart/form-data" class="form">
+    <label>Manifest <input type="file" name="manifest" accept=".json,application/json" required></label>
+    <label>Component <input type="file" name="component" accept=".wasm,application/wasm" required></label>
+    <button class="button">Upload</button>
+  </form>
+</section>

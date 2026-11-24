@@ -2367,6 +2367,7 @@ dependencies = [
  "soat-tax",
  "soat-tenancy",
  "sqlx",
+ "tokio",
  "zapline",
 ]
 

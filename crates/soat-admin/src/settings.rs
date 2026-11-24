@@ -5,6 +5,7 @@
 
 use serde_json::{json, Map, Value};
 use zapline::db::Db;
+use zapline::multipart::Multipart;
 use zapline::prelude::*;
 
 use soat_core::Currency;
@@ -602,6 +603,9 @@ async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Field
                 Some(json!({ "enabled": !f.get("enabled").is_empty(), "settings": settings })),
             )
         }
+        ("plugins", "remove", Some(name)) => {
+            Call::Plain(Method::DELETE, format!("/api/plugins/uploads/{name}"), None)
+        }
         ("assistant", "approval", None) => Call::Plain(
             Method::PUT,
             "/api/assistant/settings".into(),
@@ -649,6 +653,82 @@ async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Field
             page(cx, area, Some(message(&out)), code).await
         }
     }
+}
+
+/// Upload a plugin for this shop alone (a `multipart/form-data` form post
+/// with the files `manifest`, its `soat.plugin.json`, and `component`, the
+/// `.wasm`).
+#[post("/admin/{shop}/settings/plugins/upload", tag = "admin")]
+pub(crate) async fn upload_plugin(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path(shop): Path<String>,
+    mut form: Multipart,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "settings").await);
+    let mut manifest = None;
+    let mut component = None;
+    while let Ok(Some(field)) = form.next_field().await {
+        match field.name() {
+            Some("manifest") => manifest = field.bytes().await.ok(),
+            Some("component") => component = field.bytes().await.ok(),
+            _ => {}
+        }
+    }
+    let manifest = manifest
+        .filter(|m| !m.is_empty())
+        .and_then(|m| String::from_utf8(m.to_vec()).ok());
+    let (Some(manifest), Some(component)) = (manifest, component.filter(|c| !c.is_empty())) else {
+        let e = "Choose the plugin's soat.plugin.json and its .wasm component.";
+        return Ok(page(
+            cx,
+            "plugins",
+            Some(e.into()),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        )
+        .await);
+    };
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let boundary = format!("----soat-plugin-{nanos:x}-{:x}", component.len());
+    let mut body = Vec::with_capacity(component.len() + manifest.len() + 512);
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\ncontent-disposition: form-data; name=\"manifest\"\r\n\r\n{manifest}\r\n\
+             --{boundary}\r\ncontent-disposition: form-data; name=\"component\"; filename=\"plugin.wasm\"\r\n\
+             content-type: application/wasm\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(&component);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let (status, out) =
+        cx.s.api
+            .send_raw(
+                &cx.db,
+                Method::POST,
+                "/api/plugins/uploads",
+                Bytes::from(body),
+                &format!("multipart/form-data; boundary={boundary}"),
+                &cx.token,
+                &cx.shop,
+                cx.conn,
+            )
+            .await;
+    Ok(match status {
+        200 | 201 => {
+            Redirect::to(&format!("/admin/{}/settings/plugins?done=1", cx.shop)).into_response()
+        }
+        401 => Redirect::to("/admin/login").into_response(),
+        403 => cx.failed(403, &out),
+        _ => {
+            let code = StatusCode::from_u16(status).unwrap_or(StatusCode::UNPROCESSABLE_ENTITY);
+            page(cx, "plugins", Some(message(&out)), code).await
+        }
+    })
 }
 
 /// An email's wording to edit.

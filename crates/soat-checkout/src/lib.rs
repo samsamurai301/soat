@@ -44,7 +44,7 @@ use zapline::Resources;
 pub mod drafts;
 pub mod plugins;
 
-pub use plugins::{PluginSecrets, PLUGINS_MANAGE, PLUGINS_READ};
+pub use plugins::{PluginSecrets, PluginUploads, PLUGINS_MANAGE, PLUGINS_READ};
 
 /// How long stock is held for an order whose payment is still running.
 pub const HOLD_SECONDS: i64 = 3600;
@@ -54,6 +54,7 @@ pub const HOLD_SECONDS: i64 = 3600;
 pub struct Checkout {
     hooks: Hooks,
     secrets: PluginSecrets,
+    uploads: PluginUploads,
 }
 
 impl Checkout {
@@ -64,6 +65,13 @@ impl Checkout {
     /// Runs `hooks` at every checkout.
     pub fn with_hooks(mut self, hooks: Hooks) -> Self {
         self.hooks = hooks;
+        self
+    }
+
+    /// Lets shops upload their own plugins, compiled by `loader` (the
+    /// install's plugin host).
+    pub fn with_plugin_loader(mut self, loader: Arc<dyn soat_core::hooks::PluginLoader>) -> Self {
+        self.uploads = PluginUploads::new(loader);
         self
     }
 
@@ -82,6 +90,8 @@ pub struct CheckoutServices {
     /// The install's; each shop runs those it turned on ([`plugins`]).
     pub hooks: Hooks,
     pub plugin_secrets: PluginSecrets,
+    /// The plugins shops upload.
+    pub plugin_uploads: PluginUploads,
 }
 
 impl CheckoutServices {
@@ -91,6 +101,7 @@ impl CheckoutServices {
             taxes: TaxProviders::none(),
             hooks: Hooks::new(),
             plugin_secrets: PluginSecrets::default(),
+            plugin_uploads: PluginUploads::default(),
         }
     }
 }
@@ -106,10 +117,15 @@ impl FromRequestParts for CheckoutServices {
             .await
             .map(|s| s.0)
             .unwrap_or_default();
+        let plugin_uploads = State::<PluginUploads>::from_request_parts(req)
+            .await
+            .map(|s| s.0)
+            .unwrap_or_default();
         Ok(Self {
             taxes,
             hooks,
             plugin_secrets,
+            plugin_uploads,
         })
     }
 }
@@ -150,7 +166,10 @@ impl Module for Checkout {
     }
 
     fn mount(&self, app: App) -> App {
-        let app = app.state(self.hooks.clone()).state(self.secrets.clone());
+        let app = app
+            .state(self.hooks.clone())
+            .state(self.secrets.clone())
+            .state(self.uploads.clone());
         plugins::mount(drafts::mount(app)).mount((get_checkout, update_checkout, complete_checkout))
     }
 }
@@ -453,8 +472,14 @@ async fn build(
         });
     }
 
-    let hooks =
-        &plugins::shop_hooks(conn, scope, &services.hooks, &services.plugin_secrets).await?;
+    let hooks = &plugins::shop_hooks(
+        conn,
+        scope,
+        &services.hooks,
+        &services.plugin_secrets,
+        &services.plugin_uploads,
+    )
+    .await?;
     let tags = if hooks.is_empty() {
         None
     } else {
