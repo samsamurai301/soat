@@ -9,7 +9,12 @@
 //!
 //! [`markets`] group countries that buy in one currency; with an exchange
 //! rate they convert items priced in their base currency when no list
-//! prices them. Customer groups and quantity tiers come in B11.
+//! prices them.
+//!
+//! A list can be for one customer group (customers with a tag), and a
+//! price in it can start at a quantity: [`resolve_for`] takes the buyer's
+//! tags and the quantity, and picks the largest tier that quantity reaches
+//! in the best list that applies.
 
 pub mod markets;
 
@@ -96,6 +101,8 @@ pub struct PriceList {
     /// Higher wins when several active lists price an item.
     pub priority: i32,
     pub active: bool,
+    /// Only customers with this tag get the list's prices; null is everyone.
+    pub customer_tag: Option<String>,
 }
 
 /// Body of a create request.
@@ -106,6 +113,9 @@ pub struct NewPriceList {
     pub currency: String,
     pub priority: Option<i32>,
     pub active: Option<bool>,
+    /// A customer tag, e.g. `wholesale`: the list is for that group only.
+    #[validate(length(max = 100))]
+    pub customer_tag: Option<String>,
 }
 
 /// Body of an update request; the currency is fixed.
@@ -115,6 +125,9 @@ pub struct PriceListChange {
     pub name: Option<String>,
     pub priority: Option<i32>,
     pub active: Option<bool>,
+    /// A customer tag; an empty string opens the list to everyone.
+    #[validate(length(max = 100))]
+    pub customer_tag: Option<String>,
 }
 
 /// An item's price in a list.
@@ -125,6 +138,8 @@ pub struct Price {
     pub price_minor: i64,
     /// The struck-through "was" price, above `price_minor`.
     pub compare_at_minor: Option<i64>,
+    /// The quantity from which this price applies (a tier); 1 when left out.
+    pub min_quantity: Option<i32>,
 }
 
 /// Body of `PUT /api/price-lists/{id}/prices`.
@@ -144,32 +159,84 @@ pub struct ResolvedPrice {
     pub price_list_id: Option<String>,
     /// The market whose exchange rate converted the item's own price.
     pub market_id: Option<String>,
+    /// The tier the price comes from: 1 unless a quantity price applies.
+    pub min_quantity: i32,
 }
 
-const COLUMNS: &str = "id, name, currency, priority, active";
+/// Who is buying, for [`resolve_for`]: the customer's tags (none for a
+/// guest) and how many units.
+#[derive(Debug, Clone, Copy)]
+pub struct Buyer<'a> {
+    pub tags: &'a [String],
+    pub quantity: i64,
+}
 
-/// The price of `item_id` in `currency`: from the best active price list,
-/// else the item's own price in its currency, else its own price converted
-/// by a market. `None` when it is not sold in that currency (or does not
-/// exist). Run it in the tenant transaction.
+impl Default for Buyer<'_> {
+    fn default() -> Self {
+        Buyer {
+            tags: &[],
+            quantity: 1,
+        }
+    }
+}
+
+const COLUMNS: &str = "id, name, currency, priority, active, customer_tag";
+
+/// Lists the buyer qualifies for: everyone's, and their groups' (tags
+/// match whatever their case).
+const LIST_APPLIES: &str = "(l.customer_tag IS NULL \
+     OR EXISTS (SELECT 1 FROM unnest($4::text[]) t WHERE lower(t) = lower(l.customer_tag))) \
+     AND p.min_quantity <= $5";
+
+fn tag(raw: Option<&str>) -> Result<Option<String>> {
+    let Some(raw) = raw else { return Ok(None) };
+    if raw.contains(',') {
+        return Err(
+            Error::unprocessable("a customer tag has no comma").with_code("invalid_customer_tag")
+        );
+    }
+    Ok(Some(raw.trim().to_owned()))
+}
+
+/// The price a guest pays for one unit of `item_id` in `currency`; see
+/// [`resolve_for`].
 pub async fn resolve(
     conn: &mut PgConnection,
     scope: &impl Scope,
     item_id: &str,
     currency: Currency,
 ) -> Result<Option<ResolvedPrice>> {
-    let listed: Option<(String, i64, Option<i64>)> = sqlx::query_as(
-        "SELECT l.id, p.price_minor, p.compare_at_minor \
+    resolve_for(conn, scope, item_id, currency, Buyer::default()).await
+}
+
+/// The unit price of `item_id` in `currency` for `buyer`: from the best
+/// active price list that applies to them (highest priority, then the
+/// largest tier their quantity reaches), else the item's own price in its
+/// currency, else its own price converted by a market. `None` when it is
+/// not sold in that currency (or does not exist). Run it in the tenant
+/// transaction.
+pub async fn resolve_for(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    item_id: &str,
+    currency: Currency,
+    buyer: Buyer<'_>,
+) -> Result<Option<ResolvedPrice>> {
+    let listed: Option<(String, i64, Option<i64>, i32)> = sqlx::query_as(&format!(
+        "SELECT l.id, p.price_minor, p.compare_at_minor, p.min_quantity \
          FROM price_list_prices p JOIN price_lists l ON l.id = p.price_list_id \
          WHERE p.tenant_id = $1 AND p.item_id = $2 AND l.currency = $3 AND l.active \
-         ORDER BY l.priority DESC, l.id LIMIT 1",
-    )
+         AND {LIST_APPLIES} \
+         ORDER BY l.priority DESC, p.min_quantity DESC, l.id LIMIT 1"
+    ))
     .bind(scope.tenant_id())
     .bind(item_id)
     .bind(currency.as_str())
+    .bind(buyer.tags)
+    .bind(buyer.quantity.clamp(1, i64::from(i32::MAX)) as i32)
     .fetch_optional(&mut *conn)
     .await?;
-    if let Some((list, price_minor, compare_at_minor)) = listed {
+    if let Some((list, price_minor, compare_at_minor, min_quantity)) = listed {
         return Ok(Some(ResolvedPrice {
             item_id: item_id.to_owned(),
             currency: currency.as_str().to_owned(),
@@ -177,6 +244,7 @@ pub async fn resolve(
             compare_at_minor,
             price_list_id: Some(list),
             market_id: None,
+            min_quantity,
         }));
     }
     let Some(item) = stock_item(&mut *conn, scope, item_id).await? else {
@@ -190,6 +258,7 @@ pub async fn resolve(
             compare_at_minor: None,
             price_list_id: None,
             market_id: None,
+            min_quantity: 1,
         }));
     }
     let Ok(own) = Currency::parse(&item.currency) else {
@@ -205,12 +274,13 @@ pub async fn resolve(
                 compare_at_minor: None,
                 price_list_id: None,
                 market_id: Some(market),
+                min_quantity: 1,
             }),
     )
 }
 
 /// What `own_minor` of `own` shows as in `currency`, for listings: the
-/// item's best list price, else the amount itself in its own currency,
+/// item's best list price for a guest buying one, else the amount itself in its own currency,
 /// else converted by a market. `None` when it is not sold in `currency`.
 pub async fn shown_price(
     conn: &mut PgConnection,
@@ -224,6 +294,7 @@ pub async fn shown_price(
         "SELECT p.price_minor FROM price_list_prices p \
          JOIN price_lists l ON l.id = p.price_list_id \
          WHERE p.tenant_id = $1 AND p.item_id = $2 AND l.currency = $3 AND l.active \
+         AND l.customer_tag IS NULL AND p.min_quantity = 1 \
          ORDER BY l.priority DESC, l.id LIMIT 1",
     )
     .bind(scope.tenant_id())
@@ -285,10 +356,11 @@ async fn create_price_list(
     Valid(Json(b)): Valid<Json<NewPriceList>>,
 ) -> Result<(StatusCode, Json<PriceList>)> {
     let currency = currency(&b.currency)?;
+    let customer_tag = tag(b.customer_tag.as_deref())?.filter(|t| !t.is_empty());
     let mut tx = tenant.begin_for(&db, &PRICING_WRITE).await?;
     let list = sqlx::query_as::<_, PriceList>(&format!(
-        "INSERT INTO price_lists (id, tenant_id, name, currency, priority, active) \
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING {COLUMNS}"
+        "INSERT INTO price_lists (id, tenant_id, name, currency, priority, active, customer_tag) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {COLUMNS}"
     ))
     .bind(PriceListId::new().as_str())
     .bind(tenant.id())
@@ -296,6 +368,7 @@ async fn create_price_list(
     .bind(currency.as_str())
     .bind(b.priority.unwrap_or(0))
     .bind(b.active.unwrap_or(true))
+    .bind(&customer_tag)
     .fetch_one(&mut *tx)
     .await?;
     tenant.publish(&mut tx, "price_list.created", &list).await?;
@@ -312,7 +385,8 @@ async fn get_price_list(db: Db, tenant: Tenant, Path(id): Path<String>) -> Resul
     Ok(Json(list))
 }
 
-/// Rename, reprioritize, or switch a list on or off (`pricing:write`).
+/// Rename, reprioritize, switch a list on or off, or give it to a
+/// customer group (`pricing:write`).
 /// Publishes `price_list.updated`.
 #[patch("/api/price-lists/{id}", tag = "pricing")]
 async fn update_price_list(
@@ -322,16 +396,20 @@ async fn update_price_list(
     Valid(Json(c)): Valid<Json<PriceListChange>>,
 ) -> Result<Json<PriceList>> {
     let mut tx = tenant.begin_for(&db, &PRICING_WRITE).await?;
+    let customer_tag = tag(c.customer_tag.as_deref())?;
     let current = load(&mut tx, &tenant, &id).await?;
     let list = sqlx::query_as::<_, PriceList>(&format!(
         "UPDATE price_lists SET name = COALESCE($3, name), priority = COALESCE($4, priority), \
-         active = COALESCE($5, active) WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
+         active = COALESCE($5, active), \
+         customer_tag = CASE WHEN $6::text IS NULL THEN customer_tag ELSE NULLIF($6, '') END \
+         WHERE tenant_id = $1 AND id = $2 RETURNING {COLUMNS}"
     ))
     .bind(tenant.id())
     .bind(&current.id)
     .bind(&c.name)
     .bind(c.priority)
     .bind(c.active)
+    .bind(&customer_tag)
     .fetch_one(&mut *tx)
     .await?;
     tenant.publish(&mut tx, "price_list.updated", &list).await?;
@@ -369,10 +447,10 @@ async fn list_prices(
     let list = load(&mut tx, &tenant, &id).await?;
     let page = TenantListing::new(
         "(SELECT item_id AS id, * FROM price_list_prices) AS prices",
-        "item_id, price_minor, compare_at_minor",
+        "item_id, price_minor, compare_at_minor, min_quantity",
     )
     .scope_text("price_list_id", list.id)
-    .sortable(["price_minor"])
+    .sortable(["price_minor", "min_quantity"])
     .filter_text("item_id")
     .fetch(&mut tx, &params)
     .await?;
@@ -381,8 +459,9 @@ async fn list_prices(
 }
 
 /// Set prices in a list, up to 500 at once (`pricing:write`). Items are
-/// variants or products without variants; an unknown item, or a
-/// compare-at price not above the price, is a 422 and nothing changes.
+/// variants or products without variants; `min_quantity` makes a price a
+/// tier from that many units. An unknown item, or a compare-at price not
+/// above the price, is a 422 and nothing changes.
 /// Publishes `price_list.prices_changed`.
 #[put("/api/price-lists/{id}/prices", tag = "pricing")]
 async fn set_prices(
@@ -398,9 +477,13 @@ async fn set_prices(
         );
     }
     for p in &body.prices {
-        if p.price_minor < 0 || p.compare_at_minor.is_some_and(|c| c <= p.price_minor) {
+        if p.price_minor < 0
+            || p.compare_at_minor.is_some_and(|c| c <= p.price_minor)
+            || p.min_quantity.is_some_and(|q| !(1..=100_000).contains(&q))
+        {
             return Err(Error::unprocessable(format!(
-                "{}: prices are at least 0 and a compare-at price is above the price",
+                "{}: prices are at least 0, a compare-at price is above the price, \
+                 and a tier starts at 1 to 100000 units",
                 p.item_id
             ))
             .with_code("invalid_price"));
@@ -416,8 +499,9 @@ async fn set_prices(
             })?;
         sqlx::query(
             "INSERT INTO price_list_prices \
-             (tenant_id, price_list_id, item_id, price_minor, compare_at_minor) \
-             VALUES ($1, $2, $3, $4, $5) ON CONFLICT (price_list_id, item_id) DO UPDATE \
+             (tenant_id, price_list_id, item_id, price_minor, compare_at_minor, min_quantity) \
+             VALUES ($1, $2, $3, $4, $5, $6) \
+             ON CONFLICT (price_list_id, item_id, min_quantity) DO UPDATE \
              SET price_minor = EXCLUDED.price_minor, compare_at_minor = EXCLUDED.compare_at_minor",
         )
         .bind(tenant.id())
@@ -425,6 +509,7 @@ async fn set_prices(
         .bind(&item.id)
         .bind(p.price_minor)
         .bind(p.compare_at_minor)
+        .bind(p.min_quantity.unwrap_or(1))
         .execute(&mut *tx)
         .await?;
     }
@@ -436,11 +521,19 @@ async fn set_prices(
         )
         .await?;
     tx.commit().await?;
-    Ok(Json(body.prices))
+    Ok(Json(
+        body.prices
+            .into_iter()
+            .map(|p| Price {
+                min_quantity: Some(p.min_quantity.unwrap_or(1)),
+                ..p
+            })
+            .collect(),
+    ))
 }
 
-/// Remove an item's price from a list (`pricing:write`). Publishes
-/// `price_list.prices_changed`.
+/// Remove an item's prices from a list (`pricing:write`), or only one
+/// tier with `?min_quantity=`. Publishes `price_list.prices_changed`.
 #[delete(
     "/api/price-lists/{id}/prices/{item_id}",
     tag = "pricing",
@@ -450,15 +543,26 @@ async fn delete_price(
     db: Db,
     tenant: Tenant,
     Path((id, item_id)): Path<(String, String)>,
+    params: ListParams,
 ) -> Result<StatusCode> {
+    let tier = params
+        .get("min_quantity")
+        .map(|q| {
+            q.parse::<i32>().map_err(|_| {
+                Error::bad_request("min_quantity is a number").with_code("invalid_quantity")
+            })
+        })
+        .transpose()?;
     let mut tx = tenant.begin_for(&db, &PRICING_WRITE).await?;
     let list = load(&mut tx, &tenant, &id).await?;
     let gone = sqlx::query(
-        "DELETE FROM price_list_prices WHERE tenant_id = $1 AND price_list_id = $2 AND item_id = $3",
+        "DELETE FROM price_list_prices WHERE tenant_id = $1 AND price_list_id = $2 \
+         AND item_id = $3 AND ($4::int IS NULL OR min_quantity = $4)",
     )
     .bind(tenant.id())
     .bind(&list.id)
     .bind(&item_id)
+    .bind(tier)
     .execute(&mut *tx)
     .await?;
     if gone.rows_affected() == 0 {
@@ -475,8 +579,10 @@ async fn delete_price(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// What a buyer pays for an item in `?currency=` (`pricing:read`): 404
-/// when the item is not sold in that currency.
+/// What a buyer pays for one unit of an item in `?currency=`
+/// (`pricing:read`), buying `?quantity=` (default 1) as a customer with
+/// `?tags=` (comma separated; none for a guest): 404 when the item is not
+/// sold in that currency.
 #[get("/api/prices/{item_id}", tag = "pricing")]
 async fn resolved_price(
     db: Db,
@@ -488,8 +594,31 @@ async fn resolved_price(
         .get("currency")
         .ok_or_else(|| Error::bad_request("pass ?currency=EUR").with_code("missing_currency"))?;
     let currency = currency(code)?;
+    let quantity = match params.get("quantity") {
+        None => 1,
+        Some(q) => q.parse::<i64>().ok().filter(|q| *q >= 1).ok_or_else(|| {
+            Error::bad_request("quantity is 1 or more").with_code("invalid_quantity")
+        })?,
+    };
+    let tags: Vec<String> = params
+        .get("tags")
+        .unwrap_or("")
+        .split(',')
+        .map(|t| t.trim().to_owned())
+        .filter(|t| !t.is_empty())
+        .collect();
     let mut tx = tenant.begin_for(&db, &PRICING_READ).await?;
-    let price = resolve(&mut tx, &tenant, &item_id, currency).await?;
+    let price = resolve_for(
+        &mut tx,
+        &tenant,
+        &item_id,
+        currency,
+        Buyer {
+            tags: &tags,
+            quantity,
+        },
+    )
+    .await?;
     tx.commit().await?;
     price
         .map(Json)

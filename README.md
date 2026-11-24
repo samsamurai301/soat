@@ -79,7 +79,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-files` | Uploads checked by content, stored on disk or S3 |
 | `crates/soat-catalog` | Products, variants, collections (by hand or by rules), categories, tags, product media |
 | `crates/soat-inventory` | Locations, stock levels, reservations, adjustments and their ledger |
-| `crates/soat-pricing` | Price lists per currency, compare-at prices, price resolution |
+| `crates/soat-pricing` | Price lists per currency, customer groups and quantity tiers, compare-at prices, price resolution |
 | `crates/soat-customers` | Customers, addresses, marketing consent |
 | `crates/soat-cart` | Carts: storefront carts by token, live prices and stock |
 | `crates/soat-tax` | Tax zones and rates per tax class, EU VAT (OSS, reverse charge), tax quotes |
@@ -115,6 +115,7 @@ The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 - [x] Inventory and locations
 - [x] Stock reservations
 - [x] Price lists and currencies
+- [x] Customer group and quantity tier prices
 - [x] Customers
 - [x] Cart
 - [x] Tax zones and EU VAT

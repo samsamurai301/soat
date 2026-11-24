@@ -14,6 +14,7 @@ soat-tenancy.workspace = true
 soat-catalog.workspace = true
 soat-customers.workspace = true
 soat-inventory.workspace = true
+soat-pricing.workspace = true
 soat-cart.workspace = true
 soat-tax.workspace = true
 soat-shipping.workspace = true

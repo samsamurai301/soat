@@ -1,6 +1,6 @@
 [package]
 name = "soat-pricing"
-description = "Pricing: price lists per currency, compare-at prices and price resolution."
+description = "Pricing: price lists per currency, customer groups, quantity tiers, compare-at prices and price resolution."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -2,9 +2,9 @@
 //!
 //! A cart has a currency and lines of stock items (variants, or products
 //! without variants) with quantities. Prices are never stored: every read
-//! resolves each line's current price in the cart's currency
-//! ([`soat_pricing::resolve`]) and checks stock
-//! ([`soat_inventory::reservations::availability`]), flagging lines that
+//! resolves each line's current price in the cart's currency for the
+//! customer's groups and the line's quantity ([`soat_pricing::resolve_for`])
+//! and checks stock ([`soat_inventory::reservations::availability`]), flagging lines that
 //! can no longer be bought. Stock is only reserved at checkout (C9).
 //!
 //! Shoppers use the [`storefront`] endpoints, holding the cart by its
@@ -143,6 +143,18 @@ pub async fn view(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) ->
     .fetch_all(&mut *conn)
     .await?;
     let code = Currency::parse(&currency).map_err(|e| Error::internal(e.to_string()))?;
+    // A signed-in customer's tags pick their group's price lists.
+    let tags: Vec<String> = match &customer_id {
+        None => Vec::new(),
+        Some(c) => {
+            sqlx::query_scalar("SELECT tags FROM customers WHERE tenant_id = $1 AND id = $2")
+                .bind(scope.tenant_id())
+                .bind(c)
+                .fetch_optional(&mut *conn)
+                .await?
+                .unwrap_or_default()
+        }
+    };
     let mut out = Vec::with_capacity(lines.len());
     let (mut subtotal, mut count, mut ready) = (0i64, 0i64, true);
     for (line_id, item_id, quantity) in lines {
@@ -171,7 +183,18 @@ pub async fn view(conn: &mut PgConnection, scope: &impl Scope, cart_id: &str) ->
         line.product_id = Some(item.product_id);
         line.sku = Some(item.sku);
         line.title = Some(item.title);
-        match soat_pricing::resolve(conn, scope, &item_id, code).await? {
+        match soat_pricing::resolve_for(
+            conn,
+            scope,
+            &item_id,
+            code,
+            soat_pricing::Buyer {
+                tags: &tags,
+                quantity,
+            },
+        )
+        .await?
+        {
             None => line.issue = Some("not_sold_in_currency".to_owned()),
             Some(price) => {
                 let total = price

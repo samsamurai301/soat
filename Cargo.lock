@@ -1790,6 +1790,7 @@ dependencies = [
  "soat-module",
  "soat-orders",
  "soat-payments",
+ "soat-pricing",
  "soat-promotions",
  "soat-shipping",
  "soat-tax",

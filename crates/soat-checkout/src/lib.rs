@@ -53,6 +53,7 @@ impl Module for Checkout {
             "catalog",
             "customers",
             "inventory",
+            "pricing",
             "cart",
             "tax",
             "shipping",

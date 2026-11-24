@@ -55,7 +55,7 @@ layer.
 - [x] B8 Inventory and locations: stock per variant (or variant-less product) and location, adjustments with reasons, counts, transfers, a ledger **alpha**
 - [x] B9 Stock reservations: by reference (cart or order), optional expiry, locked per item so nothing oversells **alpha**
 - [x] B10 Price lists and currencies: lists per currency with priority, compare-at prices, `GET /api/prices/{item}?currency=` resolution **alpha**
-- [ ] B11 Group and tier prices
+- [x] B11 Group and tier prices: a price list can be for one customer tag (a group); prices can start at a quantity (tiers); carts and draft orders price lines for the customer and quantity
 - [ ] B12 Digital products and bundles
 
 ## C. Selling

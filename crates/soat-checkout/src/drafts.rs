@@ -44,7 +44,8 @@ pub struct DraftLineInput {
     pub item_id: String,
     #[validate(range(min = 1, max = 10000))]
     pub quantity: i64,
-    /// A price of your own, per unit; the catalog's when left out.
+    /// A price of your own, per unit; when left out, what the customer would
+    /// pay (their groups' price lists and quantity tiers).
     #[validate(range(min = 0))]
     pub unit_price_minor: Option<i64>,
 }
@@ -115,7 +116,7 @@ pub struct DraftOrder {
     pub total_minor: i64,
     pub prices_include_tax: bool,
     pub note: String,
-    /// Lines whose item is gone or in another currency.
+    /// Lines whose item is gone or not sold in the draft's currency.
     pub issues: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -174,6 +175,18 @@ async fn work_out(
     let mut lines: Vec<NewOrderLine> = Vec::new();
     let mut custom = Vec::new();
     let mut issues = Vec::new();
+    // The customer's groups get their price lists.
+    let tags: Vec<String> = match &r.customer_id {
+        None => Vec::new(),
+        Some(c) => {
+            sqlx::query_scalar("SELECT tags FROM customers WHERE tenant_id = $1 AND id = $2")
+                .bind(scope.tenant_id())
+                .bind(c)
+                .fetch_optional(&mut *conn)
+                .await?
+                .unwrap_or_default()
+        }
+    };
     for l in &r.lines.0 {
         let Some(item) = soat_catalog::stock_item(conn, scope, &l.item_id)
             .await
@@ -183,10 +196,22 @@ async fn work_out(
             issues.push(format!("{} is not an item of the shop", l.item_id));
             continue;
         };
-        if l.unit_price_minor.is_none() && item.currency != r.currency {
-            issues.push(format!("{} is priced in {}", item.sku, item.currency));
-            continue;
-        }
+        let price = match l.unit_price_minor {
+            Some(p) => p,
+            None => {
+                let buyer = soat_pricing::Buyer {
+                    tags: &tags,
+                    quantity: l.quantity,
+                };
+                match soat_pricing::resolve_for(conn, scope, &item.id, currency, buyer).await? {
+                    Some(p) => p.price_minor,
+                    None => {
+                        issues.push(format!("{} is not sold in {}", item.sku, r.currency));
+                        continue;
+                    }
+                }
+            }
+        };
         custom.push(l.unit_price_minor.is_some());
         lines.push(NewOrderLine {
             item_id: item.id,
@@ -194,7 +219,7 @@ async fn work_out(
             sku: item.sku,
             title: item.title,
             quantity: l.quantity,
-            unit_price_minor: l.unit_price_minor.unwrap_or(item.price_minor),
+            unit_price_minor: price,
             tax_class: item.tax_class,
             tax_rate_bps: 0,
             tax_minor: 0,

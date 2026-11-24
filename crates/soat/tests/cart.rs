@@ -20,6 +20,7 @@ async fn call(
     let req = match method {
         "POST" => client.post(path),
         "PATCH" => client.patch(path),
+        "PUT" => client.put(path),
         "DELETE" => client.delete(path),
         _ => client.get(path),
     }
@@ -424,4 +425,219 @@ async fn another_shops_cart_is_not_found() {
     )
     .await;
     assert_eq!(page["total"], 0);
+}
+
+/// B11: a customer group's list and quantity tiers price the cart.
+#[tokio::test]
+async fn groups_and_tiers_price_the_cart() {
+    let (client, admin) = common::with_tenants(&["acme"]).await;
+    let staff = Some(admin.as_str());
+    let tee = stocked(&client, &admin, "TEE", 2000, 50).await;
+    let list = |name: &'static str, priority: i32, tag: Option<&'static str>| {
+        let client = &client;
+        async move {
+            call(
+                client,
+                "acme",
+                "POST",
+                "/api/price-lists",
+                staff,
+                None,
+                json!({ "name": name, "currency": "EUR", "priority": priority, "customer_tag": tag }),
+                201,
+            )
+            .await["id"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    let bulk = list("Bulk", 0, None).await;
+    let trade = list("Trade", 5, Some("Wholesale")).await;
+    let set = |list: String, prices: Value| {
+        let client = &client;
+        async move {
+            call(
+                client,
+                "acme",
+                "PUT",
+                &format!("/api/price-lists/{list}/prices"),
+                staff,
+                None,
+                json!({ "prices": prices }),
+                200,
+            )
+            .await
+        }
+    };
+    set(
+        bulk.clone(),
+        json!([{ "item_id": tee, "price_minor": 1800, "min_quantity": 5 }]),
+    )
+    .await;
+    let set_trade = set(
+        trade.clone(),
+        json!([
+            { "item_id": tee, "price_minor": 1500 },
+            { "item_id": tee, "price_minor": 1200, "min_quantity": 10 },
+        ]),
+    )
+    .await;
+    assert_eq!(set_trade[0]["min_quantity"], 1);
+    // A tier below 1 is refused.
+    call(
+        &client,
+        "acme",
+        "PUT",
+        &format!("/api/price-lists/{bulk}/prices"),
+        staff,
+        None,
+        json!({ "prices": [{ "item_id": tee, "price_minor": 1, "min_quantity": 0 }] }),
+        422,
+    )
+    .await;
+
+    let (id, token) = new_cart(&client, "acme", "EUR").await;
+    let cart = call(
+        &client,
+        "acme",
+        "POST",
+        &format!("/api/storefront/carts/{id}/lines"),
+        None,
+        Some(&token),
+        json!({ "item_id": tee, "quantity": 2 }),
+        200,
+    )
+    .await;
+    let line = cart["lines"][0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(cart["lines"][0]["unit_price_minor"], 2000);
+    let quantity = |n: i64| {
+        let (client, token, path) = (
+            &client,
+            &token,
+            format!("/api/storefront/carts/{id}/lines/{line}"),
+        );
+        async move {
+            call(
+                client,
+                "acme",
+                "PATCH",
+                &path,
+                None,
+                Some(token),
+                json!({ "quantity": n }),
+                200,
+            )
+            .await["lines"][0]["unit_price_minor"]
+                .as_i64()
+                .unwrap()
+        }
+    };
+    // A guest gets the public tier from 5, not the trade list.
+    assert_eq!(quantity(5).await, 1800);
+
+    let s = call(
+        &client,
+        "acme",
+        "POST",
+        "/api/storefront/account/register",
+        None,
+        None,
+        json!({ "email": "trade@example.com", "password": "a long password" }),
+        201,
+    )
+    .await;
+    let customer = s["customer"]["id"].as_str().unwrap();
+    call(
+        &client,
+        "acme",
+        "PATCH",
+        &format!("/api/customers/{customer}"),
+        staff,
+        None,
+        json!({ "tags": ["wholesale"] }),
+        200,
+    )
+    .await;
+    call(
+        &client,
+        "acme",
+        "POST",
+        &format!("/api/storefront/carts/{id}/customer"),
+        s["token"].as_str(),
+        Some(&token),
+        Value::Null,
+        200,
+    )
+    .await;
+    // The trade list has the higher priority; its own tier starts at 10.
+    assert_eq!(quantity(5).await, 1500);
+    assert_eq!(quantity(12).await, 1200);
+
+    // The same through the price API.
+    let p = call(
+        &client,
+        "acme",
+        "GET",
+        &format!("/api/prices/{tee}?currency=EUR&quantity=10&tags=WHOLESALE"),
+        staff,
+        None,
+        Value::Null,
+        200,
+    )
+    .await;
+    assert_eq!(
+        (p["price_minor"].as_i64(), p["min_quantity"].as_i64()),
+        (Some(1200), Some(10))
+    );
+    assert_eq!(p["price_list_id"], trade.as_str());
+
+    // Opening the list to everyone gives guests its prices too.
+    call(
+        &client,
+        "acme",
+        "PATCH",
+        &format!("/api/price-lists/{trade}"),
+        staff,
+        None,
+        json!({ "customer_tag": "" }),
+        200,
+    )
+    .await;
+    let p = call(
+        &client,
+        "acme",
+        "GET",
+        &format!("/api/prices/{tee}?currency=EUR"),
+        staff,
+        None,
+        Value::Null,
+        200,
+    )
+    .await;
+    assert_eq!(p["price_minor"], 1500);
+    // Removing one tier keeps the others.
+    call(
+        &client,
+        "acme",
+        "DELETE",
+        &format!("/api/price-lists/{trade}/prices/{tee}?min_quantity=10"),
+        staff,
+        None,
+        Value::Null,
+        204,
+    )
+    .await;
+    let prices = call(
+        &client,
+        "acme",
+        "GET",
+        &format!("/api/price-lists/{trade}/prices"),
+        staff,
+        None,
+        Value::Null,
+        200,
+    )
+    .await;
+    assert_eq!(prices["total"], 1);
 }
