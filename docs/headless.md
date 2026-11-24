@@ -32,6 +32,7 @@ The full reference, with every field, is at `/docs` under the
 | Collections | `GET /api/storefront/collections`, `/collections/{handle}` |
 | Content pages and menus | `GET /api/storefront/pages/{handle}`, `/menus/{handle}` |
 | Blog | `GET /api/storefront/blog`, `/blog/{handle}` |
+| The shop's own content types | `GET /api/storefront/content/{type}`, `/content/{type}/{handle}` |
 | Markets | `GET /api/storefront/markets?country=CH` |
 
 Product images carry `srcset`, `width` and `height` for responsive `<img>`

@@ -22,6 +22,7 @@ use zapline::prelude::*;
 
 pub mod blog;
 pub mod redirects;
+pub mod types;
 
 pub use redirects::redirect_for;
 
@@ -59,7 +60,7 @@ impl Module for Cms {
     }
 
     fn permissions(&self) -> &'static [Permission] {
-        &[CONTENT_READ, CONTENT_WRITE]
+        &[CONTENT_READ, CONTENT_WRITE, types::CONTENT_TYPES_MANAGE]
     }
 
     fn subscribers(&self) -> Vec<std::sync::Arc<dyn soat_module::Subscriber>> {
@@ -67,7 +68,7 @@ impl Module for Cms {
     }
 
     fn mount(&self, app: App) -> App {
-        let app = blog::mount(redirects::mount(app));
+        let app = types::mount(blog::mount(redirects::mount(app)));
         app.mount((
             list_pages,
             create_page,
