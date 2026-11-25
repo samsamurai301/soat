@@ -809,9 +809,17 @@ async fn search_engines_find_the_shop() {
         )
         .await;
     }
-    soat_events::dispatch_resources(&client.resources().await)
-        .await
-        .unwrap();
+    // The app's own dispatcher may hold a delivery while ours skips it, so
+    // wait for both redirects to be made.
+    let res = client.resources().await;
+    for _ in 0..50 {
+        soat_events::dispatch_resources(&res).await.unwrap();
+        let list = admin(&client, &t, "GET", "/api/redirects", Value::Null).await;
+        if list["total"] == 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     for old in ["/products/trail-shoe", "/products/trail-shoe-2"] {
         let res = on_host(&client, "acme.example", old, 301).await;
         assert_eq!(
