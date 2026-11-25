@@ -121,6 +121,7 @@ pub fn sample(shop: &str) -> Value {
             "code": "sample",
             "minutes": 60,
         },
+        "gift_card": { "code": "ABCD-EFGH-JKLM-NPQR", "amount": "50.00 EUR", "expires_at": null },
         "order": {
             "id": "ord_sample",
             "number": 1001,

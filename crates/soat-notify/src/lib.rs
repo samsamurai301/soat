@@ -77,7 +77,14 @@ impl Module for Notify {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy", "events", "customers", "payments", "orders"]
+        &[
+            "tenancy",
+            "events",
+            "customers",
+            "payments",
+            "orders",
+            "giftcards",
+        ]
     }
 
     fn migrations(&self) -> Option<Dir> {
@@ -513,9 +520,9 @@ async fn resend_message(
 ) -> Result<Json<SentEmail>> {
     let mut tx = tenant.begin_for(&db, &NOTIFICATIONS_MANAGE).await?;
     let m = message(&mut tx, &tenant, &id).await?;
-    if ACCESS_TEMPLATES.contains(&m.template.as_str()) {
+    if SECRET_TEMPLATES.contains(&m.template.as_str()) {
         return Err(Error::unprocessable(
-            "an email with an access link cannot be resent; the customer asks for a new one",
+            "an email with an access link or a gift card code cannot be resent",
         )
         .with_code("not_resendable"));
     }
@@ -615,9 +622,13 @@ impl Scope for EventScope {
 
 /// A customer asked for a link to set a password.
 const ACCESS_REQUESTED: &str = "customer.access_requested";
-/// The emails that carry such a link: their bodies are not kept once sent,
-/// and they cannot be resent.
+/// The emails that carry such a link.
 const ACCESS_TEMPLATES: &[&str] = &["password_reset", "account_activation"];
+/// A gift card bought with an order was issued.
+const GIFT_CARD_ISSUED: &str = "gift_card.issued";
+/// The emails that carry a secret (an access link, a gift card code):
+/// their bodies are not kept once sent, and they cannot be resent.
+const SECRET_TEMPLATES: &[&str] = &["password_reset", "account_activation", "gift_card_issued"];
 
 /// Which emails an event sends: `(template, what it is about)`.
 fn templates_for(kind: &str) -> &'static [&'static str] {
@@ -628,6 +639,7 @@ fn templates_for(kind: &str) -> &'static [&'static str] {
         "fulfillment.created" => &["shipping_confirmation"],
         "payment.refunded" => &["refund_issued"],
         ACCESS_REQUESTED => ACCESS_TEMPLATES,
+        GIFT_CARD_ISSUED => &["gift_card_issued"],
         _ => &[],
     }
 }
@@ -689,6 +701,9 @@ impl Subscriber for Mailings {
             let shop = shop_name(&mut tx, &scope).await?;
             let ids = if event.kind == ACCESS_REQUESTED {
                 access_emails(&mut tx, &scope, event, &shop).await?
+            } else if event.kind == GIFT_CARD_ISSUED {
+                // The buyer's only copy of what they paid for: always sent.
+                gift_card_emails(&mut tx, &scope, event, &shop).await?
             } else {
                 let Some(order) = Self::order(&mut tx, &scope, event).await? else {
                     return Ok(());
@@ -705,8 +720,8 @@ impl Subscriber for Mailings {
                 let m = message(&mut tx, &scope, &id).await?;
                 let outcome = deliver(&mailer, &sender, s.reply_to.as_deref(), &m).await;
                 record(&mut tx, &scope, &id, &outcome).await?;
-                if outcome.is_ok() && ACCESS_TEMPLATES.contains(&m.template.as_str()) {
-                    redact(&mut tx, &scope, &id).await?;
+                if outcome.is_ok() && SECRET_TEMPLATES.contains(&m.template.as_str()) {
+                    redact(&mut tx, &scope, &id, &m.template).await?;
                 }
                 tx.commit().await?;
                 if let Err(e) = outcome {
@@ -806,6 +821,63 @@ async fn access_emails(
         .collect())
 }
 
+/// Writes down the email with a gift card's code for its buyer. The code
+/// is read once; a retried event finds the email already written.
+async fn gift_card_emails(
+    tx: &mut PgConnection,
+    scope: &EventScope,
+    event: &Event,
+    shop: &str,
+) -> Result<Vec<String>> {
+    let Some(card) = event.payload["id"].as_str() else {
+        return Ok(Vec::new());
+    };
+    let Some(mail) = soat_giftcards::issued_mail(tx, scope, card).await? else {
+        let unsent: Vec<(String,)> = sqlx::query_as(
+            "SELECT id FROM email_messages WHERE tenant_id = $1 AND event_id = $2 \
+             AND status <> 'sent'",
+        )
+        .bind(&event.tenant_id)
+        .bind(&event.id)
+        .fetch_all(&mut *tx)
+        .await?;
+        return Ok(unsent.into_iter().map(|(id,)| id).collect());
+    };
+    if mail.email.is_empty() {
+        return Ok(Vec::new());
+    }
+    let order = match &mail.card.order_id {
+        Some(o) => soat_orders::load(tx, scope, o).await?,
+        None => None,
+    };
+    let amount = match soat_core::Currency::parse(&mail.card.currency) {
+        Ok(c) => c.format(mail.card.initial_minor),
+        Err(_) => format!("{} {}", mail.card.initial_minor, mail.card.currency),
+    };
+    let data = json!({
+        "shop": { "name": shop },
+        "order": order.as_ref().map(context::order),
+        "gift_card": {
+            "code": mail.code,
+            "amount": amount,
+            "expires_at": mail.card.expires_at,
+        },
+    });
+    let key = "gift_card_issued";
+    let r = rendered(tx, scope, key, &data).await?;
+    Ok(write_message(
+        tx,
+        event,
+        key,
+        mail.card.order_id.as_deref(),
+        &mail.email,
+        &r,
+    )
+    .await?
+    .into_iter()
+    .collect())
+}
+
 /// Template `key` in the shop's wording (the built-in one if the shop's
 /// does not render).
 async fn rendered(
@@ -857,15 +929,25 @@ async fn write_message(
     Ok(id.map(|(id,)| id))
 }
 
-/// Drops the body of a sent email that carried an access link.
-async fn redact(conn: &mut PgConnection, scope: &impl Scope, id: &str) -> Result<()> {
+/// Drops the body of a sent email that carried a secret.
+async fn redact(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    id: &str,
+    template: &str,
+) -> Result<()> {
+    let note = if template == "gift_card_issued" {
+        "This email held a gift card code; it is not kept."
+    } else {
+        "This email held a link to set a password; it is not kept."
+    };
     sqlx::query(
         "UPDATE email_messages SET text_body = $3, html_body = '' \
          WHERE tenant_id = $1 AND id = $2",
     )
     .bind(scope.tenant_id())
     .bind(id)
-    .bind("This email held a link to set a password; it is not kept.")
+    .bind(note)
     .execute(conn)
     .await?;
     Ok(())

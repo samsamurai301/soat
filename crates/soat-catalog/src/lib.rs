@@ -513,6 +513,26 @@ pub struct StockItem {
     pub requires_shipping: bool,
 }
 
+/// A product's tags, or None for a product the shop does not have. Run it
+/// in the tenant transaction.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn product_tags(
+    conn: &mut sqlx::PgConnection,
+    scope: &impl soat_tenancy::Scope,
+    id: &str,
+) -> Result<Option<Vec<String>>> {
+    let row: Option<(Vec<String>,)> =
+        sqlx::query_as("SELECT tags FROM products WHERE tenant_id = $1 AND id = $2")
+            .bind(scope.tenant_id())
+            .bind(id)
+            .fetch_optional(conn)
+            .await?;
+    Ok(row.map(|(t,)| t))
+}
+
 /// Looks up a stock item of the shop. A product that has variants is not
 /// one (`Err` 422 `has_variants`: stock its variants); an unknown id is
 /// `Ok(None)`. Run it in the tenant transaction.

@@ -14,6 +14,7 @@ soat-tenancy.workspace = true
 soat-customers.workspace = true
 soat-payments.workspace = true
 soat-orders.workspace = true
+soat-giftcards.workspace = true
 zapline = { workspace = true, features = ["mail"] }
 serde.workspace = true
 serde_json.workspace = true

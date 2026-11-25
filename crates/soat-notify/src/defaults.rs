@@ -133,6 +133,26 @@ pub const BUILTINS: &[Builtin] = &[
             "<p>{{#if access.link}}Or enter{{else}}Enter{{/if}} this code on the shop's password page: <code>{{access.code}}</code></p>",
             "<p>It works once, for {{access.minutes}} minutes. If you did not ask, ignore this email.</p><p>{{shop.name}}</p>"
         ),
+    },    Builtin {
+        key: "gift_card_issued",
+        description: "To the buyer of a gift card, with its code, once the order is paid. Not kept once sent.",
+        subject: "Your {{gift_card.amount}} gift card from {{shop.name}}",
+        text: concat!(
+            "Hello,\n\n",
+            "Here is the {{gift_card.amount}} gift card you bought at {{shop.name}}",
+            "{{#if order.number}} with order {{order.number}}{{/if}}.\n\n",
+            "Code: {{gift_card.code}}\n\n",
+            "{{#if gift_card.expires_at}}It can be used until {{gift_card.expires_at}}. {{/if}}",
+            "Enter the code at checkout. Keep it safe: anyone with the code can spend it.\n\n{{shop.name}}\n"
+        ),
+        html: concat!(
+            "<p>Hello,</p>",
+            "<p>Here is the {{gift_card.amount}} gift card you bought at {{shop.name}}",
+            "{{#if order.number}} with order {{order.number}}{{/if}}.</p>",
+            "<p>Code: <code>{{gift_card.code}}</code></p>",
+            "<p>{{#if gift_card.expires_at}}It can be used until {{gift_card.expires_at}}. {{/if}}",
+            "Enter the code at checkout. Keep it safe: anyone with the code can spend it.</p><p>{{shop.name}}</p>"
+        ),
     },
 ];
 

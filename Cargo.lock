@@ -2472,6 +2472,7 @@ version = "0.0.1"
 dependencies = [
  "serde",
  "serde_json",
+ "soat-catalog",
  "soat-core",
  "soat-customers",
  "soat-module",
@@ -2604,6 +2605,7 @@ dependencies = [
  "serde_json",
  "soat-core",
  "soat-customers",
+ "soat-giftcards",
  "soat-module",
  "soat-orders",
  "soat-payments",

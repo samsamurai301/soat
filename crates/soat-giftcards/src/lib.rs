@@ -11,6 +11,12 @@
 //! records it as a paid payment of the order (provider `gift_card` or
 //! `store_credit`), so the order's financial status counts it. Refunding
 //! that payment puts the money back on the card.
+//!
+//! A shop sells gift cards as ordinary products tagged [`GIFT_CARD_TAG`]
+//! (best marked as not shipping, so the order line is delivered at once).
+//! When such an order is paid, one card per unit is issued for the line's
+//! unit price and `gift_card.issued` is published; the code is kept only
+//! until [`issued_mail`] hands it to the email that sends it to the buyer.
 
 use std::sync::Arc;
 
@@ -47,7 +53,7 @@ impl Module for GiftCards {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy", "events", "customers", "payments"]
+        &["tenancy", "events", "catalog", "customers", "payments"]
     }
 
     fn migrations(&self) -> Option<Dir> {
@@ -59,7 +65,7 @@ impl Module for GiftCards {
     }
 
     fn subscribers(&self) -> Vec<Arc<dyn Subscriber>> {
-        vec![Arc::new(RefundToCard)]
+        vec![Arc::new(RefundToCard), Arc::new(SellCards)]
     }
 
     fn mount(&self, app: App) -> App {
@@ -96,12 +102,14 @@ pub struct GiftCard {
     pub expires_at: Option<String>,
     pub note: String,
     pub active: bool,
+    /// The order that bought it, for a gift card sold as a product.
+    pub order_id: Option<String>,
     pub created_at: String,
 }
 
 const COLUMNS: &str = "id, kind, last_chars, currency, initial_minor, balance_minor, customer_id, \
      to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS expires_at, \
-     note, active, \
+     note, active, order_id, \
      to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at";
 
 /// A change of a balance.
@@ -704,6 +712,132 @@ pub async fn redeem(
         )
         .await?;
     Ok(())
+}
+
+/// The product tag that makes a product a gift card.
+pub const GIFT_CARD_TAG: &str = "gift-card";
+
+/// A gift card sold as a product, ready to email to its buyer.
+#[derive(Debug, Clone)]
+pub struct IssuedMail {
+    pub card: GiftCard,
+    pub email: String,
+    pub code: String,
+}
+
+/// The email for gift card `id` sold with an order, once: the code is
+/// cleared as it is read. None when it has been read before.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn issued_mail(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    id: &str,
+) -> Result<Option<IssuedMail>> {
+    let row: Option<(String, String)> = sqlx::query_as(
+        "WITH old AS (SELECT id, unsent_code, recipient_email FROM gift_cards \
+         WHERE tenant_id = $1 AND id = $2 AND unsent_code IS NOT NULL FOR UPDATE) \
+         UPDATE gift_cards SET unsent_code = NULL FROM old WHERE gift_cards.id = old.id \
+         RETURNING old.unsent_code, COALESCE(old.recipient_email, '')",
+    )
+    .bind(scope.tenant_id())
+    .bind(id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let Some((code, email)) = row else {
+        return Ok(None);
+    };
+    let card = load(conn, scope, id)
+        .await?
+        .ok_or_else(|| Error::internal("gift card vanished"))?;
+    Ok(Some(IssuedMail { card, email, code }))
+}
+
+/// Issues the gift cards a paid order bought.
+struct SellCards;
+
+impl Subscriber for SellCards {
+    fn name(&self) -> &'static str {
+        "giftcards-sold"
+    }
+
+    fn wants(&self, kind: &str) -> bool {
+        kind == "order.paid"
+    }
+
+    fn handle<'a>(&'a self, event: &'a Event, res: &'a Resources) -> HandlerFuture<'a> {
+        Box::pin(async move {
+            let order = &event.payload;
+            let (Some(order_id), Some(currency)) =
+                (order["id"].as_str(), order["currency"].as_str())
+            else {
+                return Ok(());
+            };
+            let email = order["email"].as_str().unwrap_or_default();
+            let lines = order["lines"].as_array().cloned().unwrap_or_default();
+            let pool: PgPool = res.require()?;
+            let scope = EventShop(event.tenant_id.clone());
+            let mut tx = scope.begin_on(&pool).await?;
+            for line in &lines {
+                let (Some(line_id), Some(product), Some(quantity), Some(price)) = (
+                    line["id"].as_str(),
+                    line["product_id"].as_str(),
+                    line["quantity"].as_i64(),
+                    line["unit_price_minor"].as_i64(),
+                ) else {
+                    continue;
+                };
+                let tags = soat_catalog::product_tags(&mut tx, &scope, product).await?;
+                if price <= 0 || !tags.is_some_and(|t| t.iter().any(|t| t == GIFT_CARD_TAG)) {
+                    continue;
+                }
+                for unit in 1..=quantity.clamp(0, 100) {
+                    let code = new_code()?;
+                    let normalized = normalize(&code);
+                    let made: Option<(String,)> = sqlx::query_as(
+                        "INSERT INTO gift_cards (id, tenant_id, kind, code_hash, last_chars, \
+                         currency, initial_minor, balance_minor, order_id, order_line_id, \
+                         line_unit, recipient_email, unsent_code) \
+                         VALUES ($1, $2, 'gift_card', $3, $4, $5, $6, 0, $7, $8, $9, $10, $11) \
+                         ON CONFLICT (tenant_id, order_line_id, line_unit) \
+                         WHERE order_line_id IS NOT NULL DO NOTHING RETURNING id",
+                    )
+                    .bind(GiftCardId::new().as_str())
+                    .bind(&event.tenant_id)
+                    .bind(hash_token(&normalized))
+                    .bind(last_chars(&normalized))
+                    .bind(currency)
+                    .bind(price)
+                    .bind(order_id)
+                    .bind(line_id)
+                    .bind(i32::try_from(unit).unwrap_or(i32::MAX))
+                    .bind(email)
+                    .bind(&code)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+                    let Some((id,)) = made else {
+                        continue; // issued before: the event is a retry
+                    };
+                    let (card, _) = ledger(
+                        &mut tx,
+                        &scope,
+                        &id,
+                        "issued",
+                        price,
+                        Some(order_id),
+                        None,
+                        "",
+                    )
+                    .await?;
+                    scope.publish(&mut tx, "gift_card.issued", &card).await?;
+                }
+            }
+            tx.commit().await?;
+            Ok(())
+        })
+    }
 }
 
 /// Puts refunded gift card and store credit payments back on the card.
