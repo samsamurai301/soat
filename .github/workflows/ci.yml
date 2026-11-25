@@ -1,16 +1,29 @@
 name: CI
 
+# Actions minutes are shared with other projects, so CI runs only on pull
+# requests that are ready for review (and by hand). Run the same checks
+# locally before pushing: cargo fmt --check, cargo clippy --all-targets
+# -- -D warnings, cargo test.
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   test:
+    if: github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16

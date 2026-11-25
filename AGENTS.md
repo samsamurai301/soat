@@ -8,6 +8,10 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   `SOAT_TEST_DATABASE_URL` (default `postgres://postgres@localhost/postgres`);
   end-to-end tests use `tests/common::client()`, one fresh schema per test.
 - `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: CI runs both.
+- **GitHub Actions minutes are scarce** (shared with other projects). Run the
+  checks above locally and push once a piece of work is finished, never a
+  push-and-see loop. CI runs only on ready pull requests and by hand; builds
+  and releases are made locally, not in Actions.
 - `cargo run -p soat`: the server on :8080, OpenAPI docs at `/docs`.
 
 ## Rules
