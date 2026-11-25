@@ -239,4 +239,36 @@ async fn a_bought_gift_card_is_issued_and_emailed() {
     let list = staff("GET", "/api/gift-cards".into(), Value::Null, 200).await;
     assert_eq!(list["items"].as_array().unwrap().len(), 2);
     assert_eq!(sent(c, 0).await.len(), now);
+
+    // Refunding the whole order turns its cards off.
+    staff(
+        "POST",
+        format!("/api/payments/{pay}/refunds"),
+        json!({ "amount_minor": done["order"]["total_minor"] }),
+        201,
+    )
+    .await;
+    let mut active = 2;
+    for _ in 0..50 {
+        sent(c, 0).await;
+        let list = staff("GET", "/api/gift-cards".into(), Value::Null, 200).await;
+        let items = list["items"].as_array().unwrap().clone();
+        active = items.iter().filter(|i| i["active"] == true).count();
+        if active == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(active, 0);
+    call(
+        c,
+        "acme",
+        "POST",
+        "/api/storefront/gift-cards/balance",
+        None,
+        &[],
+        json!({ "code": codes[0] }),
+        404,
+    )
+    .await;
 }

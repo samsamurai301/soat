@@ -17,6 +17,7 @@
 //! When such an order is paid, one card per unit is issued for the line's
 //! unit price and `gift_card.issued` is published; the code is kept only
 //! until [`issued_mail`] hands it to the email that sends it to the buyer.
+//! Refunding the whole order turns its cards off.
 
 use std::sync::Arc;
 
@@ -764,12 +765,18 @@ impl Subscriber for SellCards {
     }
 
     fn wants(&self, kind: &str) -> bool {
-        kind == "order.paid"
+        kind == "order.paid" || kind == "order.updated"
     }
 
     fn handle<'a>(&'a self, event: &'a Event, res: &'a Resources) -> HandlerFuture<'a> {
         Box::pin(async move {
             let order = &event.payload;
+            if event.kind == "order.updated" {
+                if order["financial_status"] == "refunded" {
+                    return void_sold(event, res).await;
+                }
+                return Ok(());
+            }
             let (Some(order_id), Some(currency)) =
                 (order["id"].as_str(), order["currency"].as_str())
             else {
@@ -838,6 +845,29 @@ impl Subscriber for SellCards {
             Ok(())
         })
     }
+}
+
+/// Turns off the gift cards an order bought once it is fully refunded.
+async fn void_sold(event: &Event, res: &Resources) -> Result<()> {
+    let Some(order_id) = event.payload["id"].as_str() else {
+        return Ok(());
+    };
+    let pool: PgPool = res.require()?;
+    let scope = EventShop(event.tenant_id.clone());
+    let mut tx = scope.begin_on(&pool).await?;
+    let voided: Vec<GiftCard> = sqlx::query_as(&format!(
+        "UPDATE gift_cards SET active = FALSE, unsent_code = NULL \
+         WHERE tenant_id = $1 AND order_id = $2 AND active RETURNING {COLUMNS}"
+    ))
+    .bind(&event.tenant_id)
+    .bind(order_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    for card in &voided {
+        scope.publish(&mut tx, "gift_card.updated", card).await?;
+    }
+    tx.commit().await?;
+    Ok(())
 }
 
 /// Puts refunded gift card and store credit payments back on the card.
