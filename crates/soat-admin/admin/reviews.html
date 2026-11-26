@@ -1,0 +1,26 @@
+<div class="head">
+  <h1>Reviews</h1>
+  <nav class="tabs">
+    <a href="{{ base }}/reviews"{{#if status.pending }} aria-current="page"{{/if}}>Waiting</a>
+    <a href="{{ base }}/reviews?status=published"{{#if status.published }} aria-current="page"{{/if}}>Published</a>
+    <a href="{{ base }}/reviews?status=rejected"{{#if status.rejected }} aria-current="page"{{/if}}>Rejected</a>
+    <a href="{{ base }}/reviews?status=all"{{#if status.all }} aria-current="page"{{/if}}>All</a>
+  </nav>
+</div>
+{{#if reviews }}{{#each reviews }}
+<article class="card">
+  <p><strong>{{ stars }}</strong> {{ title }} <span class="muted">{{ author_name }} · {{ date }}{{#if verified }} · verified buyer{{/if}} · <a href="{{ base }}/products/{{ product_id }}">product</a></span></p>
+  {{#if body }}<p>{{ body }}</p>{{/if}}
+  <form method="post" action="{{ base }}/reviews/{{ id }}/reply" class="form">
+    <input type="hidden" name="back" value="{{ status.name }}">
+    <label>Public reply <textarea name="reply" rows="2" maxlength="5000">{{ reply }}</textarea></label>
+    <button class="button secondary">Save reply</button>
+  </form>
+  <div class="inline tight">
+    {{#if is_published }}{{else}}<form method="post" action="{{ base }}/reviews/{{ id }}/publish" class="inline tight"><input type="hidden" name="back" value="{{ status.name }}"><button class="button">Publish</button></form>{{/if}}
+    {{#if is_pending }}<form method="post" action="{{ base }}/reviews/{{ id }}/reject" class="inline tight"><input type="hidden" name="back" value="{{ status.name }}"><button class="button secondary">Reject</button></form>{{/if}}
+    {{#if is_published }}<form method="post" action="{{ base }}/reviews/{{ id }}/reject" class="inline tight"><input type="hidden" name="back" value="{{ status.name }}"><button class="button secondary">Unpublish</button></form>{{/if}}
+    <form method="post" action="{{ base }}/reviews/{{ id }}/delete" class="inline tight"><input type="hidden" name="back" value="{{ status.name }}"><button class="button danger">Delete</button></form>
+  </div>
+</article>
+{{/each}}{{else}}<p class="muted">No reviews here. Signed-in buyers review products on their product pages; new reviews wait here until you publish them.</p>{{/if}}

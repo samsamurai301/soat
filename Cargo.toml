@@ -34,6 +34,7 @@ soat-paypal = { path = "crates/soat-paypal" }
 soat-sendcloud = { path = "crates/soat-sendcloud" }
 soat-promotions = { path = "crates/soat-promotions" }
 soat-giftcards = { path = "crates/soat-giftcards" }
+soat-reviews = { path = "crates/soat-reviews" }
 soat-orders = { path = "crates/soat-orders" }
 soat-checkout = { path = "crates/soat-checkout" }
 soat-invoices = { path = "crates/soat-invoices" }

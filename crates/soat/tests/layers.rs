@@ -66,6 +66,7 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-analytics", 40),
     ("soat-marketing", 40),
     ("soat-subscriptions", 40),
+    ("soat-reviews", 40),
     ("soat-b2b", 40),
     ("soat-channels", 40),
     ("soat-compliance", 40),

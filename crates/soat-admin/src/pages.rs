@@ -30,6 +30,7 @@ const FILES: &[(&str, &str)] = &[
     ("app_directory", include_str!("../admin/app_directory.html")),
     ("app_authorize", include_str!("../admin/app_authorize.html")),
     ("giftcards", include_str!("../admin/giftcards.html")),
+    ("reviews", include_str!("../admin/reviews.html")),
     ("blog", include_str!("../admin/blog.html")),
     ("post", include_str!("../admin/post.html")),
     ("giftcard", include_str!("../admin/giftcard.html")),

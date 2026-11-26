@@ -305,22 +305,25 @@ async fn order_events_send_email() {
     .await;
     s.dispatch().await;
     let sent = s.sent().await;
-    let subjects: Vec<&str> = sent.iter().map(|e| e.subject.as_str()).collect();
+    // Payment and shipping are separate events, handled in either order.
+    let mut subjects: Vec<&str> = sent.iter().map(|e| e.subject.as_str()).collect();
+    subjects.sort_unstable();
     assert_eq!(
         subjects,
         [
-            "Order 1001 at acme",
             "New order 1001: 28.75 EUR",
-            "Payment received for order 1001",
+            "Order 1001 at acme",
             "Order 1001 is on its way",
+            "Payment received for order 1001",
             "Refund for order 1001",
         ],
         "{subjects:?}"
     );
-    let shipped = sent[3].text.as_deref().unwrap();
+    let mail = |subject: &str| sent.iter().find(|e| e.subject == subject).unwrap();
+    let shipped = mail("Order 1001 is on its way").text.as_deref().unwrap();
     assert!(shipped.contains("2 x Linen <Tee>"), "{shipped}");
     assert!(shipped.contains("Tracking number: 0034"), "{shipped}");
-    assert!(sent[4]
+    assert!(mail("Refund for order 1001")
         .text
         .as_deref()
         .unwrap()

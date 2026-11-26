@@ -17,6 +17,31 @@
       <button class="button" type="submit">{{ t.add_to_cart }}</button>
     </form>
     <div class="prose">{{ product.description | markdown }}</div>
+    {{#if reviews_on }}
+    <section id="reviews" class="reviews">
+      <h2>{{ t.reviews }}{{#if reviews.count }} <span class="stars" aria-hidden="true">{{ reviews.stars }}</span> <span class="muted">{{ reviews.average }} · {{ reviews.count }}</span>{{/if}}</h2>
+      {{#if reviewed }}<p class="notice">{{ t.review_thanks }}</p>{{/if}}
+      {{#each reviews.items }}
+      <article class="review">
+        <p><span class="stars" aria-label="{{ rating }}/5">{{ stars }}</span> <strong>{{ title }}</strong></p>
+        {{#if body }}<p>{{ body }}</p>{{/if}}
+        <p class="muted">{{ author_name }} · {{ date }}{{#if verified }} · {{ t.verified_buyer }}{{/if}}</p>
+        {{#if reply }}<blockquote>{{ reply }}</blockquote>{{/if}}
+      </article>
+      {{/each}}
+      {{#if reviews.count }}{{else}}<p class="muted">{{ t.no_reviews }}</p>{{/if}}
+      {{#if customer }}
+      <form class="review-form" method="post" action="{{ root }}/products/{{ product.handle }}/review">
+        <label>{{ t.rating }}
+          <select name="rating" required><option value="5">★★★★★</option><option value="4">★★★★</option><option value="3">★★★</option><option value="2">★★</option><option value="1">★</option></select>
+        </label>
+        <label>{{ t.review_title }} <input name="title" maxlength="120"></label>
+        <label>{{ t.review_body }} <textarea name="body" maxlength="5000" rows="4"></textarea></label>
+        <button class="button" type="submit">{{ t.write_review }}</button>
+      </form>
+      {{else}}<p><a href="{{ root }}/account/login">{{ t.sign_in_to_review }}</a></p>{{/if}}
+    </section>
+    {{/if}}
     {{#if app_blocks.product }}<div class="soat-app-blocks" data-product="{{ product.id }}">{{#each app_blocks.product }}<div class="soat-app-block" data-soat-app="{{ app }}" data-block="{{ handle }}"></div>{{/each}}</div>{{/if}}
   </div>
 </article>

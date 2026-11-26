@@ -95,3 +95,8 @@ main.wrap { padding-top: 24px; padding-bottom: 48px; min-height: 60vh; }
 .filters .choice { display: flex; gap: 8px; align-items: center; }
 .filters input:not([type=checkbox]) { padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; min-width: 0; width: 100%; }
 .filters .pair label { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
+.reviews { margin-top: 32px; }
+.reviews .stars { color: var(--accent); letter-spacing: 1px; }
+.review { border-top: 1px solid var(--soft); padding: 12px 0; }
+.review blockquote { margin: 8px 0 0; padding-left: 12px; border-left: 3px solid var(--soft); }
+.review-form { display: grid; gap: 8px; max-width: 480px; margin-top: 16px; }

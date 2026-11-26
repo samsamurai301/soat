@@ -243,6 +243,8 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
     // Apps before the storefront, which shows the blocks shops enable.
     #[cfg(feature = "apps")]
     let modules = modules.with(soat_apps::Apps);
+    #[cfg(feature = "reviews")]
+    let modules = modules.with(soat_reviews::Reviews);
     let modules = modules.with(Storefront);
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {

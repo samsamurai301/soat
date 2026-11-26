@@ -2260,6 +2260,7 @@ dependencies = [
  "soat-plugin-host",
  "soat-pricing",
  "soat-promotions",
+ "soat-reviews",
  "soat-sendcloud",
  "soat-shipping",
  "soat-storefront",
@@ -2714,6 +2715,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "soat-reviews"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-catalog",
+ "soat-core",
+ "soat-customers",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
 name = "soat-sendcloud"
 version = "0.0.1"
 dependencies = [
@@ -2757,6 +2773,7 @@ dependencies = [
  "soat-orders",
  "soat-payments",
  "soat-pricing",
+ "soat-reviews",
  "soat-shipping",
  "soat-tenancy",
  "soat-theme",
