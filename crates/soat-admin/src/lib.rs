@@ -29,6 +29,7 @@ macro_rules! page_or {
     };
 }
 
+mod analytics;
 mod api;
 mod apps;
 mod assistant;
@@ -181,6 +182,7 @@ impl Module for Admin {
             discounts::delete,
         ))
         .mount((reviews::list, reviews::act))
+        .mount((analytics::page,))
         .mount((
             customers::adjust_points,
             giftcards::list,

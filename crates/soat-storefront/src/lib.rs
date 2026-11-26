@@ -285,6 +285,9 @@ struct View {
     /// The signed-in customer's id.
     customer: Option<String>,
     lang: Lang,
+    /// The shop's id, for the page view count.
+    #[cfg(feature = "analytics")]
+    tenant: String,
 }
 
 impl View {
@@ -361,6 +364,8 @@ impl View {
             data,
             customer,
             lang,
+            #[cfg(feature = "analytics")]
+            tenant: shop.tenant_id().to_owned(),
         })
     }
 
@@ -393,6 +398,13 @@ impl View {
             header::CACHE_CONTROL,
             HeaderValue::from_static("private, no-cache"),
         );
+        #[cfg(feature = "analytics")]
+        if status == StatusCode::OK {
+            res.extensions_mut().insert(soat_analytics::PageView {
+                tenant_id: self.tenant.clone(),
+                page: page.to_owned(),
+            });
+        }
         Ok(res)
     }
 

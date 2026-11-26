@@ -16,6 +16,8 @@ reviews = ["dep:soat-reviews"]
 wishlists = ["dep:soat-wishlists"]
 # Loyalty points and referrals in the account.
 loyalty = ["dep:soat-loyalty"]
+# Counts the pages shown for storefront analytics.
+analytics = ["dep:soat-analytics"]
 
 [dependencies]
 soat-core.workspace = true
@@ -37,6 +39,7 @@ soat-apps = { workspace = true, optional = true }
 soat-reviews = { workspace = true, optional = true }
 soat-wishlists = { workspace = true, optional = true }
 soat-loyalty = { workspace = true, optional = true }
+soat-analytics = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true
