@@ -1,0 +1,42 @@
+{{#if account }}
+<p><a href="{{ root }}/account">← {{ t.your_account }}</a></p>
+<h1>{{ t.order }} #{{ order.number }}</h1>
+<p class="muted">{{ t.placed }} {{ placed }} · {{ status }}</p>
+{{else}}
+<h1>{{ t.thank_you }}</h1>
+<p>{{ t.order }} <strong>#{{ order.number }}</strong> {{ t.order_placed }} {{ order.email }}.</p>
+{{/if}}
+{{#if instructions }}
+<div class="notice"><h2>{{ t.how_to_pay }}</h2><p class="pre">{{ instructions }}</p></div>
+{{/if}}
+<div class="checkout">
+<section>
+  <table class="cart-lines">
+    <tbody>
+    {{#each lines }}<tr><td>{{ quantity }} × {{ title }}</td><td>{{ total }}</td></tr>{{/each}}
+    </tbody>
+  </table>
+  <dl class="totals">
+    <dt>{{ t.subtotal }}</dt><dd>{{ totals.subtotal }}</dd>
+    {{#if totals.shipping }}<dt>{{ t.shipping }}{{#if order.shipping_name }} ({{ order.shipping_name }}){{/if}}</dt><dd>{{ totals.shipping }}</dd>{{/if}}
+    {{#if totals.discount }}<dt>{{ t.discount }}</dt><dd>−{{ totals.discount }}</dd>{{/if}}
+    {{#if totals.tax }}<dt>{{#if order.prices_include_tax }}{{ t.including_vat }}{{else}}{{ t.vat }}{{/if}}</dt><dd>{{ totals.tax }}</dd>{{/if}}
+    <dt class="total">{{ t.total }}</dt><dd class="total">{{ totals.total }}</dd>
+  </dl>
+  <p class="muted">{{ t.payment }}: {{ payment_status }}</p>
+  {{#if downloads }}
+  <h2>{{ t.downloads }}</h2>
+  <ul class="downloads">
+    {{#each downloads }}<li><a href="{{ url }}" download>{{ title }}</a> <span class="muted">{{ file_name }}</span></li>{{/each}}
+  </ul>
+  <p class="muted">{{ t.downloads_note }}</p>
+  {{/if}}
+</section>
+{{#if order.shipping_address }}
+<aside class="summary">
+  <h2>{{ t.shipping_to }}</h2>
+  <address>{{ order.shipping_address.first_name }} {{ order.shipping_address.last_name }}<br>{{#if order.shipping_address.company }}{{ order.shipping_address.company }}<br>{{/if}}{{ order.shipping_address.line1 }}<br>{{#if order.shipping_address.line2 }}{{ order.shipping_address.line2 }}<br>{{/if}}{{ order.shipping_address.postal_code }} {{ order.shipping_address.city }}<br>{{ order.shipping_address.country }}</address>
+</aside>
+{{/if}}
+</div>
+{{#if account }}{{else}}<p><a class="button" href="{{ root }}/">{{ t.keep_shopping }}</a></p>{{/if}}

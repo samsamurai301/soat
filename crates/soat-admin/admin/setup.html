@@ -1,0 +1,10 @@
+<h1>Set up SOAT</h1>
+<p class="muted">Create the first administrator of this install. The setup token is the <code>SOAT_SETUP_TOKEN</code> the server was started with.</p>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="/admin/setup" class="form" hx-boost="false">
+  <label>Setup token <input type="password" name="setup_token" autocomplete="off" required autofocus></label>
+  <label>Your email <input type="email" name="email" value="{{ email }}" autocomplete="username" required></label>
+  <label>Choose a password <input type="password" name="password" autocomplete="new-password" minlength="12" required></label>
+  <button class="button">Create my account</button>
+</form>
+<p><a href="/admin/login">Sign in instead</a></p>

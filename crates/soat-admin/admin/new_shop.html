@@ -1,0 +1,9 @@
+<h1>New shop</h1>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="/admin" class="form">
+  <label>Shop name <input name="name" value="{{ name }}" maxlength="200" required autofocus></label>
+  <label>Address <span class="muted">(optional; made from the name, like <code>my-shop</code>)</span>
+    <input name="id" value="{{ id }}" pattern="[a-z][a-z0-9\-]{0,61}[a-z0-9]" maxlength="63"></label>
+  <button class="button">Create the shop</button>
+</form>
+<p><a href="/admin">Back to your shops</a></p>

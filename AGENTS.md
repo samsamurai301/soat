@@ -4,8 +4,14 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
 
 ## Commands
 
-- `cargo test`: all tests. Run it before every commit.
+- `cargo test`: all tests. Run it before every commit. Needs Postgres:
+  `SOAT_TEST_DATABASE_URL` (default `postgres://postgres@localhost/postgres`);
+  end-to-end tests use `tests/common::client()`, one fresh schema per test.
 - `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`: CI runs both.
+- **GitHub Actions minutes are scarce** (shared with other projects). Run the
+  checks above locally and push once a piece of work is finished, never a
+  push-and-see loop. CI runs only on ready pull requests and by hand; builds
+  and releases are made locally, not in Actions.
 - `cargo run -p soat`: the server on :8080, OpenAPI docs at `/docs`.
 
 ## Rules
@@ -14,13 +20,42 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
   `main` branch). If SOAT needs something generic (plugin host, tenancy helpers,
   a new extractor), add it to Zapline, not here. Zapline's guide:
   https://samsamurai301.github.io/zapline/ (`llms.txt` there for agents).
-- **Every tenant-owned table has `tenant_id`, and every query on it filters by
-  it.** Take the `Tenant` extractor and call `tenant.verify(&db)` first. A
-  foreign id must be a 404, never someone else's row. Add an isolation test for
-  every new tenant-owned resource.
+- **Every tenant-owned table has `tenant_id`, row-level security, and every
+  query on it filters by it.** Take the `Tenant` extractor, open
+  `tenant.begin_for(&db, &PERMISSION)` and run every query on that
+  transaction (`&mut *tx`), then commit. Lists use `TenantListing`. The table's migration enables and
+  forces RLS with the `tenant_isolation` policy (copy it from the catalog's
+  `..._products_row_level_security.up.sql`); a test fails for any `tenant_id`
+  table without it. A foreign id must be a 404, never someone else's row. Add
+  an API isolation test for every new tenant-owned resource.
+- **Every handler checks a permission.** Each module declares `resource:action`
+  permissions (`Module::permissions`, `Permission::new(..).for_staff()` when
+  the built-in staff role should have it). Roles, API keys and Claude's tools
+  are all scoped by these names, so a new endpoint without one is a hole.
+- **Changes publish events.** Every create, update or delete calls
+  `tenant.publish(&mut tx, "resource.verb", &resource)` in the same
+  transaction. It records who acted, so the event log is also the audit log
+  (`GET /api/events?actor=`). Never put secrets in a payload. Modules react to each other through `Subscriber`s
+  (at-least-once, so handlers must be idempotent), never by importing each
+  other. Webhooks, audit and Claude build on these events.
+- **Shared test helpers** live in `soat-testing` (fresh schema per test).
+- **Postgres only.** Integer columns that map to `i64` are `BIGINT`. Ids are
+  `TEXT` typed ids (`soat_core::Id`), generated in Rust.
 - **Money is integer minor units plus a `Currency`.** Never `f32`/`f64` for prices.
 - **Domain logic goes in `soat-core`** when it needs no HTTP or SQL, with unit tests.
-- **One module per file** in `crates/soat/src/routes/`, mounted in `routes::install`.
+- **One domain = one crate.** Each domain is `crates/soat-<name>`, exports one
+  value implementing `soat_module::Module` (name, `depends_on`, migrations in
+  its own `migrations/`, routes) and is listed in `soat::modules()`. The `soat`
+  crate holds no domain code. Create a crate when its milestone starts, never
+  as an empty placeholder.
+- **Dependencies point down.** A module may depend on foundation crates
+  (`soat-core`, `soat-module`, `soat-auth`, `soat-tenancy`) and on modules it names in
+  `depends_on`. It never imports a sibling in its own layer; siblings talk
+  through events. Anything a shop can live without goes behind a Cargo feature.
+  `crates/soat/tests/layers.rs` checks this; give a new crate its rank there.
+- **Migration versions are timestamps, unique across all crates**, because every
+  module shares one migrations table. `soat::modules().validate()` rejects
+  clashes.
 - **Migrations are reversible:** each `*.up.sql` has a `*.down.sql`. Never edit a
   migration that has shipped; add a new one.
 - Handlers carry a doc comment: it becomes the OpenAPI description.
@@ -29,6 +64,8 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
 ## Architecture
 
 The plan, competitor analysis and MVP scope live in the SOAT architecture doc.
+The module map and milestone list live in `docs/roadmap.md`: tick a milestone
+there in the PR that finishes it.
 In short: one binary (API, admin, storefront, jobs), Postgres as the only
 required service, WASM plugins with declared permissions, commerce and CMS in
 one model, multi-tenant from day one.

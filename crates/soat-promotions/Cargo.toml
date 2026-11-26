@@ -1,0 +1,18 @@
+[package]
+name = "soat-promotions"
+description = "Promotions: discount codes and automatic discounts, buy X get Y, with limits, dates and minimums, and their redemptions."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-catalog.workspace = true
+soat-core.workspace = true
+soat-module.workspace = true
+soat-tenancy.workspace = true
+zapline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true

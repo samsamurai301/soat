@@ -1,0 +1,30 @@
+{{> settings_tabs }}
+<form method="post" action="{{ base }}/settings/invoices/settings" class="form">
+  <label>Legal name <input name="legal_name" value="{{ invoice.legal_name }}" required></label>
+  <div class="row">
+    <label>Street <input name="line1" value="{{ invoice.address.line1 }}" required></label>
+    <label>Address line 2 <input name="line2" value="{{ invoice.address.line2 }}"></label>
+  </div>
+  <div class="row">
+    <label>Postal code <input name="postal_code" value="{{ invoice.address.postal_code }}"></label>
+    <label>City <input name="city" value="{{ invoice.address.city }}" required></label>
+    <label>Country <input name="country" value="{{ invoice.address.country }}" maxlength="2" required></label>
+  </div>
+  <div class="row">
+    <label>VAT number <input name="vat_number" value="{{ invoice.vat_number }}"></label>
+    <label>Tax number <input name="tax_number" value="{{ invoice.tax_number }}"></label>
+    <label>Email <input type="email" name="email" value="{{ invoice.email }}"></label>
+  </div>
+  <label>Bank details <textarea name="bank_details" rows="2">{{ invoice.bank_details }}</textarea></label>
+  <label>Footer <span class="muted">(e.g. the company register entry)</span> <textarea name="footer" rows="2">{{ invoice.footer }}</textarea></label>
+  <div class="row">
+    <label>Invoice numbers start with <input name="invoice_prefix" value="{{ invoice.invoice_prefix }}" placeholder="INV-"></label>
+    <label>Credit notes start with <input name="credit_note_prefix" value="{{ invoice.credit_note_prefix }}" placeholder="CN-"></label>
+    <label>Issue an invoice <select name="issue_on">
+      <option value="paid"{{#if issue_on.paid }} selected{{/if}}>when paid</option>
+      <option value="placed"{{#if issue_on.placed }} selected{{/if}}>when placed</option>
+      <option value="manual"{{#if issue_on.manual }} selected{{/if}}>by hand</option>
+    </select></label>
+  </div>
+  <button class="button">Save</button>
+</form>

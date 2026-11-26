@@ -1,0 +1,21 @@
+{
+  "key": "apparel",
+  "name": "Clothing",
+  "summary": "Tees, a hoodie and a cap in sizes and colors.",
+  "collection": { "title": "Essentials", "description": "Everyday basics in organic cotton." },
+  "products": [
+    { "sku": "TEE-ORG", "title": "Organic Tee", "price": "29.00", "weight_grams": 180,
+      "tags": ["tops", "organic"], "description": "Heavy organic cotton, made in Portugal.",
+      "option": { "name": "Size", "values": ["S", "M", "L", "XL"] } },
+    { "sku": "HOODIE", "title": "Everyday Hoodie", "price": "79.00", "weight_grams": 600,
+      "tags": ["tops"], "description": "Brushed fleece inside, a roomy hood.",
+      "option": { "name": "Size", "values": ["S", "M", "L", "XL"] } },
+    { "sku": "CAP", "title": "Canvas Cap", "price": "25.00", "weight_grams": 90,
+      "tags": ["accessories"], "description": "Adjustable strap, one size.",
+      "option": { "name": "Color", "values": ["Black", "Sand", "Olive"] } },
+    { "sku": "SOCKS-3", "title": "Socks, Pack of 3", "price": "18.00", "weight_grams": 120,
+      "tags": ["accessories"], "description": "Combed cotton with a reinforced heel." },
+    { "sku": "TOTE", "title": "Tote Bag", "price": "15.00", "weight_grams": 150,
+      "tags": ["accessories"], "description": "Sturdy canvas, long handles." }
+  ]
+}

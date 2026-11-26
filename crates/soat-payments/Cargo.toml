@@ -1,0 +1,18 @@
+[package]
+name = "soat-payments"
+description = "Payments: provider trait, payment methods per shop, payments and refunds, manual payment."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+soat-module.workspace = true
+soat-tenancy.workspace = true
+zapline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+soat-http.workspace = true

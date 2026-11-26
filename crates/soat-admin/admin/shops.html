@@ -1,0 +1,9 @@
+<h1>Your shops</h1>
+{{#if shops }}
+<ul class="cards">
+  {{#each shops }}<li><a href="/admin/{{ id }}"><strong>{{ name }}</strong> <span class="muted">{{ id }}{{#if role }} · {{ role }}{{/if}}</span></a></li>{{/each}}
+</ul>
+{{else}}<p>You do not work for any shop yet. Ask a shop's owner to add you.</p>
+{{/if}}
+{{#if can_create }}<p><a class="button" href="/admin/new">New shop</a></p>{{/if}}
+<form method="post" action="/admin/logout"><button class="link">Sign out</button></form>

@@ -1,0 +1,92 @@
+/// SOAT's plugin interfaces, v0. A plugin is a WebAssembly component that
+/// targets one of the worlds below. The records mirror `soat_core::hooks`.
+package soat:plugin@0.1.0;
+
+interface types {
+    /// A line of a cart.
+    record hook-line {
+        item-id: string,
+        sku: string,
+        title: string,
+        quantity: s64,
+        unit-price-minor: s64,
+        /// After SOAT's own discounts.
+        line-total-minor: s64,
+        tags: list<string>,
+    }
+
+    /// A cart. Amounts are integer minor units of `currency`.
+    record hook-cart {
+        currency: string,
+        country: option<string>,
+        customer-tags: list<string>,
+        lines: list<hook-line>,
+        subtotal-minor: s64,
+    }
+
+    /// An amount taken off a line (by index) or, with no line, the cart.
+    record adjustment {
+        line: option<u32>,
+        amount-minor: s64,
+        label: string,
+    }
+
+    record hook-shipping-option {
+        rate-id: string,
+        name: string,
+        price-minor: s64,
+    }
+
+    variant verdict {
+        allow,
+        /// Stops the order; the reason is shown to the buyer.
+        block(string),
+    }
+
+    /// An event; the payload is JSON text.
+    record hook-event {
+        name: string,
+        payload: string,
+    }
+
+    enum level { debug, info, warn, error }
+}
+
+/// What SOAT lends every plugin.
+interface host {
+    use types.{level};
+
+    /// Writes to the shop's plugin log.
+    log: func(level: level, message: string);
+
+    /// One of the plugin's settings, as the shop set it.
+    setting: func(key: string) -> option<string>;
+}
+
+/// Takes amounts off a cart. SOAT keeps them within the cart.
+world discounts {
+    use types.{hook-cart, adjustment};
+    import host;
+    export discount: func(cart: hook-cart) -> list<adjustment>;
+}
+
+/// Hides shipping options or lowers their price; never adds or raises.
+world shipping-filter {
+    use types.{hook-cart, hook-shipping-option};
+    import host;
+    export filter: func(cart: hook-cart, options: list<hook-shipping-option>) -> list<hook-shipping-option>;
+}
+
+/// Lets an order be placed, or blocks it.
+world checkout-validation {
+    use types.{hook-cart, verdict};
+    import host;
+    export validate: func(cart: hook-cart) -> verdict;
+}
+
+/// Reacts to events, at least once each.
+world events {
+    use types.{hook-event};
+    import host;
+    export on-event: func(event: hook-event) -> result<_, string>;
+}

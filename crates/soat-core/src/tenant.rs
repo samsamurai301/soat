@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 /// A tenant's id: a slug of 2 to 63 lowercase letters, digits and hyphens,
 /// starting with a letter and not ending with a hyphen (`acme`, `shop-42`).
-/// The same rules as a DNS label, so it can become a subdomain.
+/// The same rules as a DNS label, so it can become a subdomain. A few
+/// names are [`RESERVED`] for the admin's own pages and common hosts.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct TenantId(String);
@@ -20,13 +21,17 @@ impl fmt::Display for TenantIdError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "`{}` is not a valid tenant id (2-63 of a-z, 0-9 and -, starting with a letter)",
+            "`{}` is not a valid tenant id (2-63 of a-z, 0-9 and -, starting with a letter, and not a reserved name)",
             self.0
         )
     }
 }
 
 impl std::error::Error for TenantIdError {}
+
+/// Ids no shop can take: `/admin/{id}` would be an admin page, or the
+/// subdomain is a common host.
+pub const RESERVED: &[&str] = &["admin", "api", "login", "logout", "new", "setup", "www"];
 
 impl TenantId {
     pub fn parse(id: &str) -> Result<Self, TenantIdError> {
@@ -36,7 +41,8 @@ impl TenantId {
             && bytes[bytes.len() - 1] != b'-'
             && bytes
                 .iter()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-');
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'-')
+            && !RESERVED.contains(&id);
         if valid {
             Ok(Self(id.to_owned()))
         } else {
@@ -77,6 +83,14 @@ mod tests {
         for ok in ["acme", "shop-42", "a1"] {
             assert_eq!(TenantId::parse(ok).unwrap().as_str(), ok);
         }
+    }
+
+    #[test]
+    fn rejects_reserved_names() {
+        for id in RESERVED {
+            assert!(TenantId::parse(id).is_err(), "{id}");
+        }
+        assert!(TenantId::parse("new-shop").is_ok());
     }
 
     #[test]

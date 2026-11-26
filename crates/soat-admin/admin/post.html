@@ -1,0 +1,26 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/blog">All posts</a>
+</div>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/blog{{#if post.id }}/{{ post.id }}{{/if}}" class="form">
+  <label>Title <input name="title" value="{{ post.title }}" required maxlength="200"></label>
+  <label>Excerpt <span class="muted">(for lists and the feed)</span> <textarea name="excerpt" rows="2" maxlength="1000">{{ post.excerpt }}</textarea></label>
+  <label>Text <span class="muted">(Markdown)</span> <textarea name="body" rows="16">{{ post.body }}</textarea></label>
+  <label>Image address <input type="url" name="image_url" value="{{ post.image_url }}"></label>
+  <label>Author <input name="author" value="{{ post.author }}" maxlength="200"></label>
+  <label>Tags <span class="muted">(separated by commas)</span> <input name="tags" value="{{ tags }}"></label>
+  <label class="check"><input type="checkbox" name="published"{{#if post.published }} checked{{/if}}> Published</label>
+  <label>Publish at <span class="muted">(UTC; empty for now, ahead to schedule)</span> <input type="datetime-local" name="date" value="{{ date }}"></label>
+  <fieldset><legend>Search engines</legend>
+    <label>Handle <input name="handle" value="{{ post.handle }}" placeholder="from the title"></label>
+    <label>SEO title <input name="seo_title" value="{{ post.seo_title }}"></label>
+    <label>SEO description <textarea name="seo_description" rows="2">{{ post.seo_description }}</textarea></label>
+  </fieldset>
+  <button class="button">{{#if creating }}Create post{{else}}Save{{/if}}</button>
+</form>
+{{#if post.id }}
+<form method="post" action="{{ base }}/blog/{{ post.id }}/delete" class="danger" hx-confirm="Delete this post?">
+  <button class="link">Delete post</button>
+</form>
+{{/if}}

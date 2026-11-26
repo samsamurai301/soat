@@ -1,0 +1,32 @@
+<h1>Apps</h1>
+<p class="muted">Apps act for the shop with exactly the permissions you granted when you installed them. Uninstalling stops them at once. <a href="{{ base }}/apps/directory">Find apps</a></p>
+{{#if app_links }}
+<section class="panel">
+  <h2>Open</h2>
+  <ul>{{#each app_links }}<li><a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a> <span class="muted">{{ app_name }}</span></li>{{/each}}</ul>
+</section>
+{{/if}}
+<section class="panel">
+  {{#if apps }}
+  <table class="table">
+    <thead><tr><th>App</th><th>May</th><th>Installed</th><th></th></tr></thead>
+    <tbody>
+    {{#each apps }}
+    <tr>
+      <td>{{ app_name }}{{#if connected }}{{else}} <span class="muted">(not connected yet)</span>{{/if}}</td>
+      <td><code>{{#each permissions }}{{ this }} {{/each}}</code>{{#if blocks }}
+        <form method="post" action="{{ base }}/apps/{{ id }}/blocks">
+          <p class="muted">On the storefront:</p>
+          {{#each blocks }}<label><input type="checkbox" name="block" value="{{ handle }}"{{#if enabled }} checked{{/if}}> {{ name }} <span class="muted">({{ placement }})</span></label><br>{{/each}}
+          <button class="button">Save blocks</button>
+        </form>{{/if}}</td>
+      <td>{{ created_at }}</td>
+      <td><form method="post" action="{{ base }}/apps/{{ id }}/uninstall"><button class="button">Uninstall</button></form></td>
+    </tr>
+    {{/each}}
+    </tbody>
+  </table>
+  {{else}}
+  <p>No apps yet. <a href="{{ base }}/apps/directory">Find one in the directory</a>, or an app you want sends you here to install it.</p>
+  {{/if}}
+</section>

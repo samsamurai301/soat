@@ -1,0 +1,19 @@
+[package]
+name = "soat-apps"
+description = "Apps: developers register them, shops install them with consent, and they act with exactly the permissions granted."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+soat-module.workspace = true
+soat-auth.workspace = true
+soat-tenancy.workspace = true
+zapline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+serde_urlencoded.workspace = true

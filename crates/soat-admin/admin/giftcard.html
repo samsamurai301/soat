@@ -1,0 +1,30 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/gift-cards">All gift cards</a>
+</div>
+{{#if code }}<p class="notice" role="status">The code is <strong><code>{{ code }}</code></strong>. Copy it now: it is shown only this once.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<dl class="totals">
+  <dt>Balance</dt><dd>{{ card.balance }}</dd>
+  <dt>Issued with</dt><dd>{{ card.initial }}</dd>
+  {{#if customer }}<dt>Customer</dt><dd><a href="{{ base }}/customers/{{ customer.id }}">{{ customer.email }}</a></dd>{{/if}}
+  <dt>Status</dt><dd>{{#if card.active }}Active{{else}}Disabled{{/if}}</dd>
+</dl>
+<form method="post" action="{{ base }}/gift-cards/{{ card.id }}/adjust" class="form">
+  <fieldset><legend>Change the balance</legend>
+    <label>Amount in {{ card.currency }} <span class="muted">(a minus takes away)</span> <input name="amount" inputmode="decimal" required></label>
+    <label>Why <input name="note" maxlength="500"></label>
+    <button class="button">Adjust</button>
+  </fieldset>
+</form>
+<form method="post" action="{{ base }}/gift-cards/{{ card.id }}/save" class="form">
+  <label>Expires <input type="date" name="expires" value="{{ expires }}"></label>
+  <label>Note <input name="note" value="{{ card.note }}" maxlength="500"></label>
+  <button class="button">Save</button>
+</form>
+<form method="post" action="{{ base }}/gift-cards/{{ card.id }}/{{#if card.active }}disable{{else}}enable{{/if}}"><button class="link">{{#if card.active }}Disable this card{{else}}Enable this card{{/if}}</button></form>
+<h2>History</h2>
+<table class="table">
+  <thead><tr><th>When</th><th>What</th><th>Amount</th><th>Balance after</th><th>Note</th></tr></thead>
+  <tbody>{{#each card.transactions }}<tr><td>{{ created_at }}</td><td>{{ kind }}{{#if order_id }} · <a href="{{ base }}/orders/{{ order_id }}">order</a>{{/if}}</td><td>{{ amount }}</td><td>{{ after }}</td><td>{{ note }}</td></tr>{{/each}}</tbody>
+</table>

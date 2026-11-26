@@ -1,0 +1,15 @@
+<div class="head"><h1>Content</h1></div>
+{{> content_tabs }}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/redirects" class="inline panel">
+  <label>From <input name="from_path" value="{{ typed.from_path }}" placeholder="/old-page" required></label>
+  <label>To <input name="to_url" value="{{ typed.to_url }}" placeholder="/pages/new-page" required></label>
+  <button class="button">Add redirect</button>
+</form>
+{{#if redirects }}
+<table class="table">
+  <thead><tr><th>From</th><th>To</th><th></th></tr></thead>
+  <tbody>{{#each redirects }}<tr><td>{{ from_path }}</td><td>{{ to_url }}</td><td class="num"><form method="post" action="{{ base }}/redirects/{{ id }}/delete"><button class="link">Remove</button></form></td></tr>{{/each}}</tbody>
+</table>
+{{else}}<p class="muted">No redirects. Changing a product's or collection's address adds one by itself.</p>
+{{/if}}

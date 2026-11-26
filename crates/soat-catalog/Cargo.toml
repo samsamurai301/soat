@@ -1,0 +1,21 @@
+[package]
+name = "soat-catalog"
+description = "Catalog: the products of a shop."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+soat-module.workspace = true
+soat-tenancy.workspace = true
+soat-events.workspace = true
+soat-fields.workspace = true
+soat-files.workspace = true
+zapline = { workspace = true, features = ["storage"] }
+serde.workspace = true
+serde_json.workspace = true
+serde_urlencoded.workspace = true
+sqlx.workspace = true

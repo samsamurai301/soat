@@ -1,0 +1,37 @@
+{{> settings_tabs }}
+{{#if key }}
+<section class="panel">
+  <h2>Your Anthropic key</h2>
+  <p class="muted">With the shop's own key, SOAT can call Claude for you: the assistant panel and building a shop from a description. The key is stored encrypted and never shown again.</p>
+  {{#if key.set }}
+  <p>A key ending in <code>{{ key.last4 }}</code> is set, calling <code>{{ key.model }}</code>.</p>
+  <form method="post" action="{{ base }}/settings/assistant/remove-key"><button class="link">Remove the key</button></form>
+  {{/if}}
+  <form method="post" action="{{ base }}/settings/assistant/key" class="form">
+    <label>API key <input type="password" name="api_key" autocomplete="off" placeholder="sk-ant-…" required></label>
+    <label>Model <input name="model" value="{{ key.model }}" required> <span class="muted">The Claude model's name, as in Anthropic's documentation.</span></label>
+    <button class="button">{{#if key.set }}Replace the key{{else}}Save the key{{/if}}</button>
+  </form>
+</section>
+{{/if}}
+<section class="panel">
+  <h2>Claude's changes</h2>
+  <form method="post" action="{{ base }}/settings/assistant/approval" class="inline">
+    <label class="check"><input type="checkbox" name="review" value="1"{{#if review }} checked{{/if}}> A person approves every change Claude proposes</label>
+    <button class="button">Save</button>
+  </form>
+  <p class="muted">Connect Claude to <code>/mcp</code> with an API key or your session. It can do only what its key or you may do.</p>
+</section>
+<section class="panel">
+  <h2>Waiting for approval</h2>
+  {{#if proposals }}
+  {{#each proposals }}<div class="proposal">
+    <p><strong>{{ method }} {{ path }}</strong> <span class="muted">{{ created }}</span></p>
+    {{#if reason }}<p>{{ reason }}</p>{{/if}}
+    {{#if body }}<pre class="code">{{ body }}</pre>{{/if}}
+    <form method="post" action="{{ base }}/settings/assistant/approve/{{ id }}"><button class="button">Approve</button></form>
+    <form method="post" action="{{ base }}/settings/assistant/reject/{{ id }}"><button class="link">Reject</button></form>
+  </div>{{/each}}
+  {{else}}<p class="muted">Nothing waiting.</p>
+  {{/if}}
+</section>

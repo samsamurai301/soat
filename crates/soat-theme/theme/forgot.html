@@ -1,0 +1,16 @@
+<div class="auth">
+<section>
+  <h1>{{ t.forgot_password }}</h1>
+  {{#if sent }}
+  <p class="notice" role="status">{{ t.link_sent }}</p>
+  <p><a href="{{ root }}/account/access">{{ t.have_code }}</a></p>
+  {{else}}
+  <p>{{#if intro }}{{ intro }}{{else}}{{ t.forgot_intro }}{{/if}}</p>
+  <form class="fields" method="post" action="{{ root }}/account/forgot">
+    <label>{{ t.email }} <input type="email" name="email" value="{{ email }}" autocomplete="email" required></label>
+    <button class="button" type="submit">{{ t.send_link }}</button>
+  </form>
+  {{/if}}
+  <p><a href="{{ root }}/account/login">{{ t.sign_in }}</a></p>
+</section>
+</div>

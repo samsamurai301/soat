@@ -1,0 +1,34 @@
+<div class="head"><h1>Assistant</h1><p><a href="{{ base }}/build">Build your shop from a description</a> <a class="button" href="{{ base }}/assistant">New chat</a></p></div>
+<div class="assistant">
+  <nav class="chats" aria-label="Your chats">
+    {{#each chats }}<a href="{{ base }}/assistant/{{ id }}"{{#if current }} aria-current="page"{{/if}}>{{ title }}</a>{{/each}}
+  </nav>
+  <section class="chat">
+    {{#if chat }}
+    <ol class="entries">
+      {{#each entries }}
+      {{#if user }}<li class="entry user"><p>{{ text }}</p></li>{{/if}}
+      {{#if assistant }}<li class="entry claude"><p>{{ text }}</p></li>{{/if}}
+      {{#if tool }}<li class="entry tool">
+        <details><summary>{{#if error }}<span class="badge">Failed</span> {{/if}}{{ label }}{{#if state }} <span class="badge{{#if pending }} on{{/if}}">{{ state }}</span>{{/if}}</summary>
+          <pre class="code">{{ input_text }}</pre>
+          {{#if result }}<pre class="code">{{ result }}</pre>{{/if}}
+        </details>
+        {{#if pending }}<div class="proposal">
+          <form method="post" action="{{ base }}/assistant/{{ chat.id }}/approve"><input type="hidden" name="proposal" value="{{ proposal }}"><button class="button">Approve</button></form>
+          <form method="post" action="{{ base }}/assistant/{{ chat.id }}/reject"><input type="hidden" name="proposal" value="{{ proposal }}"><button class="link">Reject</button></form>
+        </div>{{/if}}
+      </li>{{/if}}
+      {{/each}}
+    </ol>
+    {{else}}
+    <p class="muted">Ask Claude about your shop or tell it what to change: "Which orders are waiting to ship?", "Put all summer tags on sale for 20 percent". It reads freely; changes wait for a person's approval unless your shop turned that off.</p>
+    {{/if}}
+    {{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+    <form method="post" action="{{ base }}/assistant{{#if chat }}/{{ chat.id }}{{/if}}" class="form ask" hx-disabled-elt="find button">
+      <label>Message <textarea name="message" rows="3" required maxlength="8000">{{ draft }}</textarea></label>
+      <p class="row tight"><button class="button">Send</button> <span class="working muted">Claude is working on it…</span></p>
+    </form>
+    {{#if chat }}<form method="post" action="{{ base }}/assistant/{{ chat.id }}/delete" class="danger"><button class="link">Delete this chat</button></form>{{/if}}
+  </section>
+</div>

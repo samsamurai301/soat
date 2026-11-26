@@ -1,0 +1,87 @@
+<div class="head">
+  <h1>{{ page_title }} <span class="muted">{{ order.placed }}</span></h1>
+  <a href="{{ base }}/orders">All orders</a>
+</div>
+{{#if done }}<p class="notice" role="status">{{ done }}</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<p><span class="badge">{{ order.status }}</span> <span class="badge">{{ order.financial }}</span> <span class="badge">{{ order.fulfillment }}</span>{{#if order.cancel_reason }} <span class="muted">{{ order.cancel_reason }}</span>{{/if}}</p>
+<div class="columns">
+  <section class="panel wide">
+    <h2>Items</h2>
+    <table class="table">
+      <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Shipped</th><th class="num">Price</th><th class="num">Total</th></tr></thead>
+      <tbody>{{#each lines }}<tr><td>{{ title }} <span class="muted">{{ sku }}</span></td><td class="num">{{ quantity }}</td><td class="num">{{ shipped }}</td><td class="num">{{ price }}</td><td class="num">{{ total }}</td></tr>{{/each}}</tbody>
+    </table>
+    <dl class="totals">
+      <dt>Subtotal</dt><dd>{{ order.subtotal }}</dd>
+      {{#if order.discount }}<dt>Discount{{#if order.discount_code }} ({{ order.discount_code }}){{/if}}</dt><dd>−{{ order.discount }}</dd>{{/if}}
+      <dt>Shipping{{#if order.shipping_name }} ({{ order.shipping_name }}){{/if}}</dt><dd>{{ order.shipping }}</dd>
+      <dt>Tax</dt><dd>{{ order.tax }}</dd>
+      <dt><strong>Total</strong></dt><dd><strong>{{ order.total }}</strong></dd>
+    </dl>
+  </section>
+  <section class="panel">
+    <h2>Customer</h2>
+    <p>{{ order.email }}</p>
+    {{#if order.shipping_address }}<h3>Ships to</h3><p>{{#each order.shipping_address }}{{ this }}<br>{{/each}}</p>{{/if}}
+    {{#if order.billing_address }}<h3>Bills to</h3><p>{{#each order.billing_address }}{{ this }}<br>{{/each}}</p>{{/if}}
+    {{#if order.vat_number }}<p>VAT number {{ order.vat_number }}{{#if order.reverse_charge }} (reverse charge){{/if}}</p>{{/if}}
+    {{#if order.note }}<h3>Note</h3><p>{{ order.note }}</p>{{/if}}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Payments</h2>
+  {{#if payments }}
+  <table class="table">
+    <tbody>{{#each payments }}<tr><td>{{ provider }}</td><td><span class="badge">{{ status }}</span></td><td class="num">{{ amount }}{{#if refunded }} <span class="muted">(refunded {{ refunded }})</span>{{/if}}</td><td class="num">
+      {{#if can_mark_paid }}<form method="post" action="{{ base }}/orders/{{ order.id }}/payments/{{ id }}/mark-paid"><button class="button">Mark paid</button></form>{{/if}}
+      {{#if can_capture }}<form method="post" action="{{ base }}/orders/{{ order.id }}/payments/{{ id }}/capture"><button class="button">Capture</button></form>{{/if}}
+    </td></tr>{{/each}}</tbody>
+  </table>
+  {{else}}<p class="muted">No payments yet.</p>
+  {{/if}}
+  {{#if order.can_refund }}
+  <form method="post" action="{{ base }}/orders/{{ order.id }}/refund" class="inline">
+    <label>Refund ({{ order.currency }}) <input name="amount" value="{{ order.refundable }}" inputmode="decimal" required></label>
+    <label>Reason <input name="reason" maxlength="500"></label>
+    <button class="button">Refund</button>
+  </form>
+  {{/if}}
+</section>
+
+<section class="panel">
+  <h2>Shipping</h2>
+  {{#if shipments }}
+  <table class="table">
+    <tbody>{{#each shipments }}<tr><td>{{ date }}</td><td><span class="badge">{{ status }}</span></td><td>{{ units }} units</td><td>{{ carrier }} {{#if tracking_url }}<a href="{{ tracking_url }}" rel="noopener noreferrer" target="_blank">{{ tracking_number }}</a>{{else}}{{ tracking_number }}{{/if}}</td><td class="num">
+      {{#each labels }}<a href="{{ url }}" target="_blank" rel="noopener noreferrer">Label ({{ carrier }})</a> {{/each}}
+      {{#if open }}{{#if carrier_accounts }}<form method="post" action="{{ base }}/orders/{{ order.id }}/shipments/{{ id }}/label" class="row tight">
+        <select name="carrier_account_id" aria-label="Carrier account">{{#each carrier_accounts }}<option value="{{ id }}">{{ name }}</option>{{/each}}</select><button class="link">Print label</button></form>{{/if}}
+      <form method="post" action="{{ base }}/orders/{{ order.id }}/shipments/{{ id }}/delivered"><button class="link">Delivered</button></form>
+      <form method="post" action="{{ base }}/orders/{{ order.id }}/shipments/{{ id }}/cancel" hx-confirm="Cancel this shipment and restock its units?"><button class="link">Cancel</button></form>{{/if}}
+    </td></tr>{{/each}}</tbody>
+  </table>
+  {{/if}}
+  {{#if order.can_ship }}
+  <form method="post" action="{{ base }}/orders/{{ order.id }}/ship" class="inline">
+    <label>Carrier <input name="carrier" maxlength="100" placeholder="DHL"></label>
+    <label>Tracking number <input name="tracking_number" maxlength="200"></label>
+    <label>Tracking link <input name="tracking_url" type="url" placeholder="https://"></label>
+    <button class="button">Ship what is left</button>
+  </form>
+  {{/if}}
+</section>
+
+{{#if order.can_cancel }}
+<form method="post" action="{{ base }}/orders/{{ order.id }}/cancel" class="danger inline" hx-confirm="Cancel this order? Payments are not refunded by this.">
+  <label>Reason <input name="reason" maxlength="500"></label>
+  <button class="link">Cancel order</button>
+</form>
+{{/if}}
+{{#if app_links }}
+<section class="panel">
+  <h2>Apps</h2>
+  <ul>{{#each app_links }}<li><a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a> <span class="muted">{{ app_name }}</span></li>{{/each}}</ul>
+</section>
+{{/if}}

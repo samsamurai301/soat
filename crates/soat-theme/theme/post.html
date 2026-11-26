@@ -1,0 +1,8 @@
+<article class="post">
+  <p><a href="{{ blog_url }}">{{ t.blog }}</a></p>
+  <h1>{{ post.title }}</h1>
+  <p class="muted"><time datetime="{{ post.published_at }}">{{ post.date }}</time>{{#if post.author }} · {{ post.author }}{{/if}}</p>
+  {{#if post.image_url }}<img src="{{ post.image_url }}" alt="">{{/if}}
+  <div class="prose">{{ post.body | markdown }}</div>
+  {{#if post.tag_links }}<p class="tags">{{#each post.tag_links }}<a href="{{ url }}">{{ name }}</a> {{/each}}</p>{{/if}}
+</article>

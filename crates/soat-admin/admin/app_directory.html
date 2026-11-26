@@ -1,0 +1,28 @@
+<h1>App directory</h1>
+<p class="muted">Apps made for SOAT shops. Installing one takes you to the app, which brings you back here to consent to what it asks for.</p>
+<form method="get" class="toolbar">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search apps" aria-label="Search apps">
+  <select name="category" aria-label="Category">
+    <option value="">All categories</option>
+    {{#each categories }}<option value="{{ name }}"{{#if selected }} selected{{/if}}>{{ name }}</option>{{/each}}
+  </select>
+  <button class="button">Search</button>
+</form>
+<section class="panel">
+  {{#if apps }}
+  <table class="table">
+    <thead><tr><th>App</th><th>Asks to</th><th></th></tr></thead>
+    <tbody>
+    {{#each apps }}
+    <tr>
+      <td><strong>{{ name }}</strong>{{#if category }} <span class="muted">{{ category }}</span>{{/if}}<br>{{ tagline }}{{#if description }}<details><summary>More</summary><p>{{ description }}</p></details>{{/if}}</td>
+      <td><code>{{#each permissions }}{{ this }} {{/each}}</code></td>
+      <td>{{#if installed }}<a href="{{ base }}/apps">Installed</a>{{else}}<a class="button" href="{{ install_url }}" rel="noopener">Install</a>{{/if}}</td>
+    </tr>
+    {{/each}}
+    </tbody>
+  </table>
+  {{else}}
+  <p>No apps match.</p>
+  {{/if}}
+</section>

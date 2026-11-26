@@ -1,0 +1,113 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/products">All products</a>
+</div>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+{{#if suggested }}<p class="notice" role="status">Claude's suggestion is in the form below, not saved yet. Review it, then save.</p>{{/if}}
+{{#if translated }}<p class="notice" role="status">Translated into {{ translated }} and saved as the product's translation.</p>{{/if}}
+<form method="post" action="{{ base }}/products{{#if product.id }}/{{ product.id }}{{/if}}" class="form">
+  <label>Title <input name="title" value="{{ product.title }}" required maxlength="500"></label>
+  <div class="row">
+    <label>SKU <input name="sku" value="{{ product.sku }}" required maxlength="100"></label>
+    <label>Price ({{ product.currency }}) <input name="price" value="{{ product.price }}" inputmode="decimal" required></label>
+    {{#if creating }}<label>Currency <input name="currency" value="{{ product.currency }}" maxlength="3" required></label>{{/if}}
+    <label>Status <select name="status">
+      <option value="draft"{{#if state.draft }} selected{{/if}}>Draft</option>
+      <option value="active"{{#if state.active }} selected{{/if}}>Active</option>
+      <option value="archived"{{#if state.archived }} selected{{/if}}>Archived</option>
+    </select></label>
+  </div>
+  <label>Description <span class="muted">(Markdown)</span> <textarea name="description" rows="8">{{ product.description }}</textarea></label>
+  <label>Tags <span class="muted">(comma-separated)</span> <input name="tags" value="{{ product.tags }}"></label>
+  <label class="choice"><input type="checkbox" name="digital"{{#if product.digital }} checked{{/if}}> Digital product <span class="muted">(nothing ships; buyers download its files once paid)</span></label>
+  <fieldset><legend>Search engines</legend>
+    <label>Handle <input name="handle" value="{{ product.handle }}" placeholder="from the title"></label>
+    <label>SEO title <input name="seo_title" value="{{ product.seo_title }}"></label>
+    <label>SEO description <textarea name="seo_description" rows="2">{{ product.seo_description }}</textarea></label>
+  </fieldset>
+  <button class="button">{{#if creating }}Create product{{else}}Save{{/if}}</button>
+</form>
+{{#if product.id }}
+<section class="panel" id="variants">
+  <h2>Options and variants</h2>
+  <form method="post" action="{{ base }}/products/{{ product.id }}/options" class="form plain">
+    <label>Options <span class="muted">(up to three, one per line: Size: S, M, L)</span>
+      <textarea name="options" rows="3" placeholder="Size: S, M, L&#10;Color: Red, Blue">{{ options_text }}</textarea></label>
+    <p><button class="button">Save options</button></p>
+  </form>
+  {{#if has_options }}
+  {{#if variants }}<table class="table">
+    <thead><tr><th>Variant</th><th>SKU</th><th>Price ({{ product.currency }})</th><th></th></tr></thead>
+    <tbody>{{#each variants }}<tr>
+      <td>{{ title }}</td>
+      <td colspan="2"><form method="post" action="{{ base }}/products/{{ product.id }}/variants/{{ id }}/save" class="row tight">
+        <input name="sku" value="{{ sku }}" aria-label="SKU" required maxlength="100">
+        <input name="price" value="{{ price }}" aria-label="Price" inputmode="decimal" required size="8">
+        <button class="link">Save</button></form></td>
+      <td><form method="post" action="{{ base }}/products/{{ product.id }}/variants/{{ id }}/delete"><button class="link">Delete</button></form></td>
+    </tr>{{/each}}</tbody>
+  </table>{{else}}<p class="muted">No variants yet: the product sells as one item until it has some.</p>{{/if}}
+  {{#if missing }}<form method="post" action="{{ base }}/products/{{ product.id }}/variants/all" class="inline">
+    <button class="button">Add the {{ missing }} missing variants</button> <span class="muted">at the product's price, with SKUs from the product's</span>
+  </form>{{/if}}
+  <form method="post" action="{{ base }}/products/{{ product.id }}/variants" class="inline">
+    {{#each option_fields }}<label>{{ name }} <input name="{{ field }}" required></label>{{/each}}
+    <label>SKU <input name="sku" placeholder="from the product's"></label>
+    <label>Price <input name="price" inputmode="decimal" placeholder="the product's" size="8"></label>
+    <button class="button">Add variant</button>
+  </form>
+  {{/if}}
+</section>
+{{#if product.digital }}
+<section class="panel" id="downloads">
+  <h2>Downloads</h2>
+  {{#if downloads }}<ul>{{#each downloads }}<li>{{ file_name }} <span class="muted">{{ content_type }}</span>
+    <form method="post" action="{{ base }}/products/{{ product.id }}/downloads/{{ id }}/remove" class="inline"><button class="link">Remove</button></form></li>{{/each}}</ul>
+  {{else}}<p class="muted">No files yet. Buyers get links to these once their order is paid.</p>{{/if}}
+  <form method="post" action="{{ base }}/products/{{ product.id }}/downloads" enctype="multipart/form-data" class="inline" hx-boost="false">
+    <label>File <input type="file" name="file" accept=".pdf,.epub,.zip,.mp3,.mp4,image/*" required></label>
+    <button class="button">Upload</button>
+  </form>
+</section>
+{{/if}}
+<section class="panel" id="media">
+  <h2>Images and video</h2>
+  {{#if media }}<ul class="media">{{#each media }}<li>
+    {{#if image }}<img src="{{ url }}" alt="{{ alt }}" loading="lazy">{{else}}<span class="badge">{{ content_type }}</span>{{/if}}
+    {{#if first }}<span class="badge on">Main</span>{{/if}}
+    <form method="post" action="{{ base }}/products/{{ product.id }}/media/{{ id }}/alt" class="row tight">
+      <input name="alt" value="{{ alt }}" placeholder="Describe the image" aria-label="Alt text" maxlength="1000"><button class="link">Save</button></form>
+    <div class="row tight">
+      <form method="post" action="{{ base }}/products/{{ product.id }}/media/{{ id }}/up"><button class="link">Earlier</button></form>
+      <form method="post" action="{{ base }}/products/{{ product.id }}/media/{{ id }}/down"><button class="link">Later</button></form>
+      <form method="post" action="{{ base }}/products/{{ product.id }}/media/{{ id }}/remove"><button class="link">Remove</button></form>
+    </div>
+  </li>{{/each}}</ul>{{else}}<p class="muted">No images yet. The first one is the product's main image.</p>{{/if}}
+  <form method="post" action="{{ base }}/products/{{ product.id }}/media" enctype="multipart/form-data" class="inline" hx-boost="false">
+    <label>Image or video <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,image/avif,video/mp4,video/webm" required></label>
+    <label>Alt text <input name="alt" maxlength="1000" placeholder="What the image shows"></label>
+    <button class="button">Upload</button>
+  </form>
+</section>
+<section class="panel">
+  <h2>Write with Claude</h2>
+  <form method="post" action="{{ base }}/products/{{ product.id }}/write" class="inline ask" hx-disabled-elt="find button">
+    <label>Notes for Claude <input name="notes" maxlength="1000" placeholder="A warmer tone; mention the gift box"></label>
+    <button class="button">Suggest a description and SEO</button> <span class="working muted">Claude is writing…</span>
+  </form>
+  {{#if languages }}<form method="post" action="{{ base }}/products/{{ product.id }}/translate" class="inline ask" hx-disabled-elt="find button">
+    <label>Language <select name="language">{{#each languages }}<option value="{{ code }}">{{ code }}</option>{{/each}}</select></label>
+    <button class="button">Translate and save</button> <span class="working muted">Claude is translating…</span>
+  </form>{{/if}}
+</section>
+<form method="post" action="{{ base }}/products/{{ product.id }}/delete" class="danger" hx-confirm="Delete this product? This cannot be undone.">
+  <button class="link">Delete product</button>
+</form>
+{{/if}}
+{{#if app_links }}
+<section class="panel">
+  <h2>Apps</h2>
+  <ul>{{#each app_links }}<li><a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a> <span class="muted">{{ app_name }}</span></li>{{/each}}</ul>
+</section>
+{{/if}}

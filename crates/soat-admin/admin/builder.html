@@ -1,0 +1,26 @@
+<h1>Build your shop</h1>
+<p class="muted">Describe your shop and Claude drafts its products, collections and pages, priced in your currency. You review the draft before anything is made; products start without stock, pages as drafts.</p>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/build" class="form ask" hx-disabled-elt="find button">
+  <label>Your shop <textarea name="description" rows="5" required minlength="10" maxlength="4000" placeholder="A small tea shop in Vienna: loose-leaf green and black teas, teapots and gift boxes, for people who brew at home.">{{ description }}</textarea></label>
+  <p class="row tight"><button class="button">{{#if plan }}Draft again{{else}}Draft my shop{{/if}}</button> <span class="working muted">Claude is drafting your shop. This can take a minute…</span></p>
+</form>
+{{#if plan }}
+<section class="panel">
+  <h2>The draft</h2>
+  <p>{{ plan.summary }}</p>
+  <h3>Products</h3>
+  <table class="table">
+    <thead><tr><th>Product</th><th>SKU</th><th>Variants</th><th class="num">Price</th></tr></thead>
+    <tbody>{{#each plan.products }}<tr><td><strong>{{ title }}</strong><br><span class="muted small">{{ description }}</span></td><td>{{ sku }}</td><td>{{ variants }}</td><td class="num">{{ shown_price }}</td></tr>{{/each}}</tbody>
+  </table>
+  <h3>Collections</h3>
+  <ul>{{#each plan.collections }}<li><strong>{{ title }}</strong> <span class="muted">{{ description }}</span></li>{{/each}}</ul>
+  <h3>Pages</h3>
+  {{#each plan.pages }}<details><summary>{{ title }}</summary><pre class="code secret">{{ body }}</pre></details>{{/each}}
+  <form method="post" action="{{ base }}/build/apply" class="inline">
+    <input type="hidden" name="plan" value="{{ plan_json }}">
+    <button class="button">Build it</button>
+  </form>
+</section>
+{{/if}}

@@ -1,0 +1,17 @@
+<div class="head"><h1>Theme</h1></div>
+{{#if saved }}<p class="notice" role="status">Saved.</p>{{/if}}
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/theme" class="form">
+  <div class="row">
+    <label>Accent colour <input name="accent_color" value="{{ settings.accent_color }}" placeholder="#2f5bea"></label>
+    <label>Language <input name="language" value="{{ settings.language }}" placeholder="en"></label>
+  </div>
+  <label>Announcement <input name="announcement" value="{{ settings.announcement }}" maxlength="200" placeholder="Free shipping over €50"></label>
+  <button class="button">Save</button>
+</form>
+<section class="panel">
+  <h2>Files</h2>
+  <table class="table">
+    <tbody>{{#each files }}<tr><td><a href="{{ base }}/theme/files/{{ name }}">{{ name }}</a></td><td>{{ kind }}</td><td>{{#if customized }}<span class="badge on">Changed</span>{{/if}}</td></tr>{{/each}}</tbody>
+  </table>
+</section>

@@ -1,0 +1,8 @@
+<div class="head">
+  <h1>Gift cards</h1>
+  <a class="button" href="{{ base }}/gift-cards/new">Issue gift card</a> <a href="{{ base }}/discounts">Discounts</a>
+</div>
+{{#if cards }}<table class="table">
+  <thead><tr><th>Card</th><th>Balance</th><th>Issued with</th><th>Note</th><th>Status</th></tr></thead>
+  <tbody>{{#each cards }}<tr><td><a href="{{ base }}/gift-cards/{{ id }}">{{#if store_credit }}Store credit{{else}}•••• {{ last_chars }}{{/if}}</a></td><td>{{ balance }}</td><td>{{ initial }}</td><td>{{ note }}</td><td>{{#if active }}<span class="badge on">Active</span>{{else}}Disabled{{/if}}</td></tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No gift cards yet. Issue one to give away or sell, or give a customer store credit they spend when signed in.</p>{{/if}}

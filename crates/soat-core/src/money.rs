@@ -43,6 +43,62 @@ impl Currency {
         // Only ASCII uppercase letters get in through `parse`.
         std::str::from_utf8(&self.0).expect("currency codes are ASCII")
     }
+
+    /// Digits after the decimal point (ISO 4217): 0 for `JPY`, 3 for
+    /// `KWD`, 2 for most.
+    pub fn decimals(&self) -> u32 {
+        match self.as_str() {
+            "BIF" | "CLP" | "DJF" | "GNF" | "ISK" | "JPY" | "KMF" | "KRW" | "PYG" | "RWF"
+            | "UGX" | "UYI" | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
+            "BHD" | "IQD" | "JOD" | "KWD" | "LYD" | "OMR" | "TND" => 3,
+            _ => 2,
+        }
+    }
+
+    /// `amount_minor` written out with a decimal point and the code, e.g.
+    /// `1999` EUR as `19.99 EUR`, `-500` JPY as `-500 JPY`.
+    pub fn format(&self, amount_minor: i64) -> String {
+        format!("{} {}", self.decimal(amount_minor), self.as_str())
+    }
+
+    /// `amount_minor` as a decimal string, as payment APIs take it:
+    /// `1999` EUR as `19.99`, `500` JPY as `500`.
+    pub fn decimal(&self, amount_minor: i64) -> String {
+        let decimals = self.decimals();
+        let sign = if amount_minor < 0 { "-" } else { "" };
+        let abs = amount_minor.unsigned_abs();
+        if decimals == 0 {
+            return format!("{sign}{abs}");
+        }
+        let unit = 10u64.pow(decimals);
+        format!(
+            "{sign}{}.{:0width$}",
+            abs / unit,
+            abs % unit,
+            width = decimals as usize
+        )
+    }
+
+    /// The minor units of a decimal string like `19.99` (or `19.9`, `19`);
+    /// `None` for more decimals than the currency has, or not a number.
+    pub fn parse_decimal(&self, text: &str) -> Option<i64> {
+        let decimals = self.decimals() as usize;
+        let (negative, text) = match text.strip_prefix('-') {
+            Some(rest) => (true, rest),
+            None => (false, text),
+        };
+        let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+        if whole.is_empty()
+            || fraction.len() > decimals
+            || !whole.bytes().all(|b| b.is_ascii_digit())
+            || !fraction.bytes().all(|b| b.is_ascii_digit())
+        {
+            return None;
+        }
+        let padded = format!("{whole}{fraction:0<decimals$}");
+        let value: i64 = padded.parse().ok()?;
+        Some(if negative { -value } else { value })
+    }
 }
 
 impl TryFrom<String> for Currency {
@@ -128,6 +184,63 @@ impl Money {
     }
 }
 
+/// How a converted price is rounded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rounding {
+    /// To the nearest minor unit (cent), halves up.
+    Exact,
+    /// Up to a whole unit: `12.34` becomes `13.00`.
+    Whole,
+    /// Up to the next price ending in `.99`: `12.34` and `12.00` become
+    /// `12.99`. Free stays free; a currency without cents rounds exactly.
+    Charm,
+}
+
+impl Rounding {
+    /// `exact`, `whole` or `charm`.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "exact" => Some(Self::Exact),
+            "whole" => Some(Self::Whole),
+            "charm" => Some(Self::Charm),
+            _ => None,
+        }
+    }
+}
+
+/// Parts per million in an exchange rate: a rate of `1_080_000` turns one
+/// unit into 1.08 units.
+pub const RATE_SCALE: i64 = 1_000_000;
+
+/// `minor` units of `from` in `to`, at `rate_ppm` units of `to` per unit of
+/// `from` (in millionths), rounded. `None` for a negative amount, a rate
+/// that is not positive, or a result too large to hold.
+pub fn convert(
+    minor: i64,
+    from: Currency,
+    to: Currency,
+    rate_ppm: i64,
+    rounding: Rounding,
+) -> Option<i64> {
+    if minor < 0 || rate_ppm <= 0 {
+        return None;
+    }
+    let (fd, td) = (from.decimals(), to.decimals());
+    // minor * rate / 1e6 * 10^(td - fd), in integers, halves up.
+    let mut num = i128::from(minor) * i128::from(rate_ppm) * 10i128.pow(td);
+    let den = i128::from(RATE_SCALE) * 10i128.pow(fd);
+    num += den / 2;
+    let exact = num / den;
+    let unit = 10i128.pow(td);
+    let rounded = match rounding {
+        Rounding::Exact => exact,
+        Rounding::Whole => (exact + unit - 1) / unit * unit,
+        Rounding::Charm if unit == 1 || exact == 0 => exact,
+        Rounding::Charm => (exact + unit) / unit * unit - 1,
+    };
+    i64::try_from(rounded).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +284,79 @@ mod tests {
             Money::new(i64::MAX, eur()).checked_mul(2),
             Err(MoneyError::Overflow)
         );
+    }
+
+    #[test]
+    fn formats_amounts() {
+        let eur = Currency::parse("EUR").unwrap();
+        assert_eq!(eur.format(1999), "19.99 EUR");
+        assert_eq!(eur.format(5), "0.05 EUR");
+        assert_eq!(eur.format(-250), "-2.50 EUR");
+        assert_eq!(eur.format(i64::MIN), "-92233720368547758.08 EUR");
+        assert_eq!(Currency::parse("JPY").unwrap().format(500), "500 JPY");
+        assert_eq!(Currency::parse("KWD").unwrap().format(1234), "1.234 KWD");
+    }
+
+    #[test]
+    fn decimals_round_trip() {
+        let eur = Currency::parse("EUR").unwrap();
+        assert_eq!(eur.decimal(1999), "19.99");
+        assert_eq!(eur.parse_decimal("19.99"), Some(1999));
+        assert_eq!(eur.parse_decimal("19.9"), Some(1990));
+        assert_eq!(eur.parse_decimal("19"), Some(1900));
+        assert_eq!(eur.parse_decimal("-0.05"), Some(-5));
+        assert_eq!(eur.parse_decimal("1.999"), None);
+        assert_eq!(eur.parse_decimal("1e3"), None);
+        assert_eq!(eur.parse_decimal(".5"), None);
+        let jpy = Currency::parse("JPY").unwrap();
+        assert_eq!(jpy.decimal(500), "500");
+        assert_eq!(jpy.parse_decimal("500"), Some(500));
+        assert_eq!(jpy.parse_decimal("500.0"), None);
+    }
+
+    #[test]
+    fn prices_convert_and_round() {
+        let (eur, chf, jpy) = (
+            eur(),
+            Currency::parse("CHF").unwrap(),
+            Currency::parse("JPY").unwrap(),
+        );
+        // 12.99 EUR at 0.95 is 12.3405 CHF.
+        assert_eq!(
+            convert(1299, eur, chf, 950_000, Rounding::Exact),
+            Some(1234)
+        );
+        assert_eq!(
+            convert(1299, eur, chf, 950_000, Rounding::Whole),
+            Some(1300)
+        );
+        assert_eq!(
+            convert(1299, eur, chf, 950_000, Rounding::Charm),
+            Some(1299)
+        );
+        // A whole amount stays; charm prices end in .99 below the next unit.
+        assert_eq!(
+            convert(1000, eur, chf, 1_000_000, Rounding::Whole),
+            Some(1000)
+        );
+        assert_eq!(
+            convert(1000, eur, chf, 1_000_000, Rounding::Charm),
+            Some(1099)
+        );
+        assert_eq!(
+            convert(1099, eur, chf, 1_000_000, Rounding::Charm),
+            Some(1099)
+        );
+        // Currencies without cents: 12.99 EUR at 160 is 2078.4 JPY.
+        assert_eq!(
+            convert(1299, eur, jpy, 160_000_000, Rounding::Exact),
+            Some(2078)
+        );
+        assert_eq!(convert(2078, jpy, eur, 6_250, Rounding::Exact), Some(1299));
+        assert_eq!(convert(0, eur, chf, 950_000, Rounding::Charm), Some(0));
+        assert_eq!(convert(-1, eur, chf, 950_000, Rounding::Exact), None);
+        assert_eq!(convert(1, eur, chf, 0, Rounding::Exact), None);
+        assert_eq!(Rounding::parse("charm"), Some(Rounding::Charm));
+        assert_eq!(Rounding::parse("up"), None);
     }
 }

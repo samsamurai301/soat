@@ -1,0 +1,19 @@
+{{> settings_tabs }}
+<section class="panel">
+  <h2>Languages</h2>
+  <form method="post" action="{{ base }}/settings/general/languages" class="inline">
+    <label>Default <input name="default_language" value="{{ languages.default }}" placeholder="en" required size="6"></label>
+    <label>Also in <input name="languages" value="{{ languages.others }}" placeholder="de, fr"></label>
+    <button class="button">Save</button>
+  </form>
+  <p class="muted">Other languages live under their prefix, like /de/…; translate texts through the API or with Claude.</p>
+</section>
+<section class="panel">
+  <h2>Domains</h2>
+  {{#if domains }}<table class="table"><tbody>{{#each domains }}<tr><td>{{ domain }}</td><td class="num"><form method="post" action="{{ base }}/settings/general/remove-domain/{{ domain }}" hx-confirm="Remove {{ domain }}?"><button class="link">Remove</button></form></td></tr>{{/each}}</tbody></table>
+  {{else}}<p class="muted">No domains yet. Point a domain's DNS at this server, then add it here.</p>{{/if}}
+  <form method="post" action="{{ base }}/settings/general/domains" class="inline">
+    <label>Domain <input name="domain" placeholder="shop.example.com" required></label>
+    <button class="button">Add domain</button>
+  </form>
+</section>

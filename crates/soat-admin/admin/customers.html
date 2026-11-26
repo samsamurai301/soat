@@ -1,0 +1,21 @@
+<div class="head">
+  <h1>Customers <span class="muted">{{ total }}</span></h1>
+  <a class="button" href="{{ base }}/customers/new">Add customer</a> <a href="{{ base }}/transfer">Import or export</a>
+</div>
+<form class="filters" method="get" action="{{ base }}/customers" hx-get="{{ base }}/customers" hx-trigger="input changed delay:300ms from:input" hx-target="#results" hx-select="#results" hx-push-url="true">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search email or name" aria-label="Search">
+  <input name="tag" value="{{ tag }}" placeholder="Tag" aria-label="Tag" class="short">
+  <noscript><button class="button">Filter</button></noscript>
+</form>
+<div id="results">
+{{#if customers }}
+<table class="table">
+  <thead><tr><th>Name</th><th>Email</th><th>Tags</th><th>Account</th><th>News</th></tr></thead>
+  <tbody>
+  {{#each customers }}<tr><td><a href="{{ base }}/customers/{{ id }}">{{#if name }}{{ name }}{{else}}—{{/if}}</a></td><td>{{ email }}</td><td>{{#each tags }}<span class="badge">{{ this }}</span> {{/each}}</td><td>{{#if account }}Yes{{else}}<span class="muted">Guest</span>{{/if}}</td><td>{{#if marketing }}Yes{{else}}<span class="muted">No</span>{{/if}}</td></tr>{{/each}}
+  </tbody>
+</table>
+{{else}}<p class="muted">No customers here{{#if q }} for “{{ q }}”{{/if}}.</p>
+{{/if}}
+<nav class="pager">{{#if prev_url }}<a href="{{ prev_url }}">← Newer</a>{{/if}} {{#if next_url }}<a href="{{ next_url }}">Older →</a>{{/if}}</nav>
+</div>

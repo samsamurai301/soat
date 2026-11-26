@@ -1,0 +1,26 @@
+{{> settings_tabs }}
+<p><a href="{{ base }}/apps">Installed apps</a>: apps act with exactly the permissions you granted them.</p>
+<section class="panel">
+  <h2>API keys</h2>
+  {{#if keys }}<table class="table"><tbody>{{#each keys }}<tr{{#if revoked }} class="muted"{{/if}}><td>{{ name }}</td><td class="small">{{#each permissions }}<code>{{ this }}</code> {{/each}}</td><td class="num">{{#if revoked }}Revoked{{else}}<form method="post" action="{{ base }}/settings/developers/revoke-key/{{ id }}" hx-confirm="Revoke this key? Apps using it stop working."><button class="link">Revoke</button></form>{{/if}}</td></tr>{{/each}}</tbody></table>
+  {{else}}<p class="muted">No keys yet.</p>{{/if}}
+  <details><summary>Create a key</summary>
+  <form method="post" action="{{ base }}/settings/developers/keys" class="form">
+    <label>Name <input name="name" placeholder="ERP sync" required maxlength="100"></label>
+    <fieldset><legend>What it may do</legend>
+      <div class="checks">{{#each permissions }}<label class="check"><input type="checkbox" name="permissions" value="{{ name }}"> <code>{{ name }}</code> <span class="muted">{{ description }}</span></label>{{/each}}</div>
+    </fieldset>
+    <button class="button">Create key</button>
+  </form>
+  </details>
+</section>
+<section class="panel">
+  <h2>Webhooks</h2>
+  {{#if webhooks }}<table class="table"><tbody>{{#each webhooks }}<tr><td>{{ url }}</td><td class="small">{{#each events }}<code>{{ this }}</code> {{/each}}</td><td class="num"><form method="post" action="{{ base }}/settings/developers/remove-webhook/{{ id }}" hx-confirm="Remove this webhook?"><button class="link">Remove</button></form></td></tr>{{/each}}</tbody></table>
+  {{else}}<p class="muted">No webhooks yet.</p>{{/if}}
+  <form method="post" action="{{ base }}/settings/developers/webhooks" class="inline">
+    <label>Address <input type="url" name="url" placeholder="https://example.com/hooks" required></label>
+    <label>Events <input name="events" placeholder="order.created, product.updated (empty: all)"></label>
+    <button class="button">Add webhook</button>
+  </form>
+</section>
