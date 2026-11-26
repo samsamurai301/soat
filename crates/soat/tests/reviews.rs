@@ -162,7 +162,7 @@ async fn buyers_review_and_staff_publish() {
         c,
         "acme",
         "GET",
-        "/api/customers?search=bob",
+        "/api/customers?q=bob",
         a,
         Value::Null,
         200,

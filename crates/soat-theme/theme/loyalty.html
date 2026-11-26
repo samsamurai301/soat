@@ -1,0 +1,44 @@
+<h1>{{ t.points }}</h1>
+{{#if notice }}<p class="notice" role="status">{{ notice }}</p>{{/if}}
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#if loyalty.on }}
+<div class="checkout">
+<section>
+  <p class="points-balance"><strong>{{ loyalty.balance }} {{ t.points_unit }}</strong>{{#if loyalty.worth }} ({{ t.points_worth }} {{ loyalty.worth }}){{/if}}</p>
+  <p>{{ t.points_earn_hint }}</p>
+  {{#if loyalty.can_redeem }}
+  <form class="fields" method="post" action="{{ root }}/account/loyalty/redeem">
+    <label>{{ t.points_to_redeem }} <input type="number" name="points" min="{{ loyalty.min_redeem }}" max="{{ loyalty.balance }}" value="{{ loyalty.balance }}" required></label>
+    <button class="button" type="submit">{{ t.points_redeem }}</button>
+  </form>
+  {{else}}
+  <p>{{ t.points_min }} {{ loyalty.min_redeem }} {{ t.points_unit }}.</p>
+  {{/if}}
+  <h2>{{ t.points_history }}</h2>
+  {{#if loyalty.entries }}
+  <table class="cart-lines">
+    <tbody>
+    {{#each loyalty.entries }}<tr><td>{{ date }}</td><td>{{ kind }}{{#if note }}: {{ note }}{{/if}}</td><td>{{ points }}</td></tr>{{/each}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">{{ t.points_none }}</p>
+  {{/if}}
+</section>
+<aside class="summary">
+  <h2>{{ t.referral }}</h2>
+  <p>{{ t.referral_hint }} {{ loyalty.referrer_points }} {{ t.points_unit }}, {{ t.referral_friend_gets }} {{ loyalty.referee_points }}.</p>
+  <p><a href="{{ root }}/account/register?ref={{ loyalty.referral_code }}">{{ root }}/account/register?ref={{ loyalty.referral_code }}</a></p>
+  <p>{{ t.referral_your_code }} <strong>{{ loyalty.referral_code }}</strong></p>
+  {{#if loyalty.can_enter_referral }}
+  <form class="fields" method="post" action="{{ root }}/account/loyalty/referral">
+    <label>{{ t.referral_enter }} <input name="code" autocomplete="off" required></label>
+    <button class="button" type="submit">{{ t.referral_enter_button }}</button>
+  </form>
+  {{/if}}
+</aside>
+</div>
+{{else}}
+<p class="empty">{{ t.points_off }}</p>
+{{/if}}
+<p><a href="{{ root }}/account">{{ t.account }}</a></p>

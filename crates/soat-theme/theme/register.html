@@ -9,6 +9,7 @@
     </div>
     <label>{{ t.email }} <input type="email" name="email" value="{{ email }}" autocomplete="email" required></label>
     <label>{{ t.password_hint }} <input type="password" name="password" minlength="10" autocomplete="new-password" required></label>
+    {{#if features.loyalty }}<label>{{ t.referral_code }} <input name="referral_code" value="{{ referral_code }}" autocomplete="off"></label>{{/if}}
     <label class="choice"><input type="checkbox" name="accepts_marketing" value="true"> {{ t.news_opt_in }}</label>
     <button class="button" type="submit">{{ t.create_account_button }}</button>
   </form>

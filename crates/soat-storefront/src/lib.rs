@@ -42,6 +42,9 @@ mod seo;
 #[cfg(feature = "wishlists")]
 mod wishlist;
 
+#[cfg(feature = "loyalty")]
+mod loyalty;
+
 use i18n::{root_of, Lang};
 
 /// The cookie holding the buyer's cart: `<cart id>.<token>`.
@@ -82,6 +85,8 @@ impl Module for Storefront {
         let app = app.mount((reviews::review_form,));
         #[cfg(feature = "wishlists")]
         let app = app.mount((wishlist::toggle, wishlist::page));
+        #[cfg(feature = "loyalty")]
+        let app = app.mount((loyalty::page, loyalty::redeem, loyalty::referral));
         app.mount((
             home,
             product_page,
@@ -236,6 +241,8 @@ const NOINDEX: &[&str] = &[
     "login",
     "register",
     "account",
+    "wishlist",
+    "loyalty",
     "forgot",
     "access",
     "search",
@@ -328,7 +335,11 @@ impl View {
         data.insert("cart".to_owned(), json!({ "count": count }));
         data.insert(
             "features".to_owned(),
-            json!({ "wishlists": cfg!(feature = "wishlists"), "reviews": cfg!(feature = "reviews") }),
+            json!({
+                "wishlists": cfg!(feature = "wishlists"),
+                "reviews": cfg!(feature = "reviews"),
+                "loyalty": cfg!(feature = "loyalty"),
+            }),
         );
         #[cfg(feature = "apps")]
         app_blocks(&mut tx, &mut data).await?;

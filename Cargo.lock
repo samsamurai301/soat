@@ -2250,6 +2250,7 @@ dependencies = [
  "soat-import",
  "soat-inventory",
  "soat-invoices",
+ "soat-loyalty",
  "soat-mcp",
  "soat-module",
  "soat-mollie",
@@ -2556,6 +2557,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "soat-loyalty"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-customers",
+ "soat-giftcards",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
 name = "soat-mcp"
 version = "0.0.1"
 dependencies = [
@@ -2770,6 +2786,7 @@ dependencies = [
  "soat-customers",
  "soat-files",
  "soat-i18n",
+ "soat-loyalty",
  "soat-module",
  "soat-orders",
  "soat-payments",
