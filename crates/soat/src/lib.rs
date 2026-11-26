@@ -245,6 +245,8 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
     let modules = modules.with(soat_apps::Apps);
     #[cfg(feature = "reviews")]
     let modules = modules.with(soat_reviews::Reviews);
+    #[cfg(feature = "wishlists")]
+    let modules = modules.with(soat_wishlists::Wishlists);
     let modules = modules.with(Storefront);
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {

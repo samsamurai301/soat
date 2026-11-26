@@ -39,6 +39,8 @@ mod i18n;
 #[cfg(feature = "reviews")]
 mod reviews;
 mod seo;
+#[cfg(feature = "wishlists")]
+mod wishlist;
 
 use i18n::{root_of, Lang};
 
@@ -78,6 +80,8 @@ impl Module for Storefront {
     fn mount(&self, app: App) -> App {
         #[cfg(feature = "reviews")]
         let app = app.mount((reviews::review_form,));
+        #[cfg(feature = "wishlists")]
+        let app = app.mount((wishlist::toggle, wishlist::page));
         app.mount((
             home,
             product_page,
@@ -322,6 +326,10 @@ impl View {
         data.insert("here".to_owned(), json!(path));
         data.insert("menus".to_owned(), Value::Object(menus));
         data.insert("cart".to_owned(), json!({ "count": count }));
+        data.insert(
+            "features".to_owned(),
+            json!({ "wishlists": cfg!(feature = "wishlists"), "reviews": cfg!(feature = "reviews") }),
+        );
         #[cfg(feature = "apps")]
         app_blocks(&mut tx, &mut data).await?;
         let mut customer = None;
@@ -557,6 +565,8 @@ async fn product_page(
         v.set("reviews", r);
         v.set("reviews_on", json!(true));
     }
+    #[cfg(feature = "wishlists")]
+    wishlist::on_product(&mut v, &shop, &p.id).await?;
     v.set("reviewed", json!(q.reviewed.is_some()));
     v.set("product_ld", ld);
     v.set("product", product);

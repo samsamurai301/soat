@@ -2270,6 +2270,7 @@ dependencies = [
  "soat-testing",
  "soat-theme",
  "soat-webhooks",
+ "soat-wishlists",
  "tokio",
  "zapline",
 ]
@@ -2777,6 +2778,7 @@ dependencies = [
  "soat-shipping",
  "soat-tenancy",
  "soat-theme",
+ "soat-wishlists",
  "sqlx",
  "zapline",
 ]
@@ -2875,6 +2877,20 @@ dependencies = [
  "soat-testing",
  "sqlx",
  "tokio",
+ "zapline",
+]
+
+[[package]]
+name = "soat-wishlists"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-customers",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
  "zapline",
 ]
 

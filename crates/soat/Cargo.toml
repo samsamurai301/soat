@@ -45,10 +45,11 @@ soat-import = { workspace = true, optional = true }
 soat-apps = { workspace = true, optional = true }
 soat-plugin-host = { workspace = true, optional = true }
 soat-reviews = { workspace = true, optional = true }
+soat-wishlists = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage", "mail"] }
 
 [features]
-default = ["stripe", "mollie", "paypal", "sendcloud", "shopify-sync", "apps", "plugins", "reviews"]
+default = ["stripe", "mollie", "paypal", "sendcloud", "shopify-sync", "apps", "plugins", "reviews", "wishlists"]
 # Stripe payments (PaymentIntents, Connect, webhooks).
 stripe = ["dep:soat-stripe"]
 # Mollie payments: iDEAL, Bancontact, cards, Klarna and more.
@@ -65,6 +66,8 @@ apps = ["dep:soat-apps", "soat-storefront/apps"]
 plugins = ["dep:soat-plugin-host"]
 # Product reviews from signed-in buyers, moderated by staff.
 reviews = ["dep:soat-reviews", "soat-storefront/reviews"]
+# Wishlists: signed-in buyers save products for later.
+wishlists = ["dep:soat-wishlists", "soat-storefront/wishlists"]
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
