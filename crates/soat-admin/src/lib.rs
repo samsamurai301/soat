@@ -46,6 +46,7 @@ mod orders;
 mod pages;
 mod palette;
 mod products;
+mod reviews;
 mod samples;
 mod settings;
 mod theme;
@@ -179,6 +180,7 @@ impl Module for Admin {
             discounts::update,
             discounts::delete,
         ))
+        .mount((reviews::list, reviews::act))
         .mount((
             giftcards::list,
             giftcards::new_page,

@@ -36,6 +36,8 @@ mod account;
 mod blog;
 mod headless;
 mod i18n;
+#[cfg(feature = "reviews")]
+mod reviews;
 mod seo;
 
 use i18n::{root_of, Lang};
@@ -74,6 +76,8 @@ impl Module for Storefront {
     }
 
     fn mount(&self, app: App) -> App {
+        #[cfg(feature = "reviews")]
+        let app = app.mount((reviews::review_form,));
         app.mount((
             home,
             product_page,
@@ -491,6 +495,13 @@ async fn home(db: Db, shop: Shop, storage: Storage, headers: HeaderMap) -> Resul
     v.render("index", StatusCode::OK).await
 }
 
+/// The query of a product page.
+#[model]
+pub struct ProductQuery {
+    /// Set after the buyer sent a review.
+    pub reviewed: Option<String>,
+}
+
 /// A product page.
 #[get("/products/{handle}", tag = "storefront")]
 async fn product_page(
@@ -499,6 +510,7 @@ async fn product_page(
     storage: Storage,
     headers: HeaderMap,
     Path(handle): Path<String>,
+    Query(q): Query<ProductQuery>,
 ) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
     let Some(mut p) = catalog::product_by_handle(&mut v.tx, &shop, &storage, &handle).await? else {
@@ -530,7 +542,23 @@ async fn product_page(
         v.set("og_image", json!(first));
     }
     let url = v.lang.url(&path);
-    v.set("product_ld", product_ld(&p, &origin, &url, images));
+    #[allow(unused_mut)]
+    let mut ld = product_ld(&p, &origin, &url, images);
+    #[cfg(feature = "reviews")]
+    {
+        let r = reviews::for_page(&mut v, &shop, &p.id).await?;
+        if r["count"].as_i64().unwrap_or(0) > 0 {
+            ld["aggregateRating"] = json!({
+                "@type": "AggregateRating",
+                "ratingValue": r["average"],
+                "reviewCount": r["count"],
+            });
+        }
+        v.set("reviews", r);
+        v.set("reviews_on", json!(true));
+    }
+    v.set("reviewed", json!(q.reviewed.is_some()));
+    v.set("product_ld", ld);
     v.set("product", product);
     v.render("product", StatusCode::OK).await
 }

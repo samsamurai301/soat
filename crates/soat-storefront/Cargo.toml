@@ -10,6 +10,8 @@ publish.workspace = true
 [features]
 # Blocks from installed apps on the storefront.
 apps = ["dep:soat-apps"]
+# Product reviews on product pages.
+reviews = ["dep:soat-reviews"]
 
 [dependencies]
 soat-core.workspace = true
@@ -28,6 +30,7 @@ soat-theme.workspace = true
 soat-i18n.workspace = true
 soat-pricing.workspace = true
 soat-apps = { workspace = true, optional = true }
+soat-reviews = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true

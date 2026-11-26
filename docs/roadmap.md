@@ -145,8 +145,9 @@ layer.
 ## I. Growth (after alpha)
 
 - [x] I2 Abandoned cart emails: a shop turns them on with a delay (15 minutes to 7 days, `PUT /api/cart-recovery`, or admin Settings, Email); a scan every 5 minutes finds open carts with an email and lines left that long (and under a week) and publishes `cart.abandoned`, once per cart; the buyer gets one `cart_recovery` email with a link (`/cart/recover?token=`, or `POST /api/storefront/carts/recover`) that brings the cart back under a new token; the link is in no event and the email's body is not kept
+- [x] I3 Product reviews (feature `reviews`): a signed-in customer rates a product 1 to 5 with a title and text (`PUT /api/storefront/products/{id}/review`, or the product page's form), once per product, marked verified when they bought it in a paid order; staff publish, reject, reply and delete (`/api/reviews`, `reviews:read` and `reviews:manage`, admin Reviews); the product page shows published reviews with the average rating and `aggregateRating` in its structured data (`GET /api/storefront/products/{id}/reviews`)
 
-I1 analytics · I3 reviews · I4 wishlists · I5 loyalty and
+I1 analytics · I4 wishlists · I5 loyalty and
 referrals · I6 email campaigns · I7 subscriptions · I8 B2B · I9 Google and Meta
 feeds · I10 marketplaces · I11 POS
 

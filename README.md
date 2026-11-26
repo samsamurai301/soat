@@ -97,6 +97,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-import` | Moving from Shopify without a gap: its store synced by the Admin API until cutover (feature `shopify-sync`) |
 | `crates/soat-promotions` | Discount codes and automatic discounts: percentage, fixed amount, free shipping, buy X get Y, per collection, with dates, minimums and limits |
 | `crates/soat-giftcards` | Gift cards and store credit: balances with a ledger, spent at checkout as payments, sold as products |
+| `crates/soat-reviews` | Product reviews: buyers rate and review, staff moderate, the storefront shows them (feature `reviews`) |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |
