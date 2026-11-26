@@ -134,6 +134,25 @@ pub const BUILTINS: &[Builtin] = &[
             "<p>It works once, for {{access.minutes}} minutes. If you did not ask, ignore this email.</p><p>{{shop.name}}</p>"
         ),
     },    Builtin {
+        key: "cart_recovery",
+        description: "To a buyer who left a cart with their email, once, when the shop has abandoned cart emails on. Not kept once sent.",
+        subject: "You left something in your cart at {{shop.name}}",
+        text: concat!(
+            "Hello,\n\n",
+            "You left these in your cart at {{shop.name}}:\n\n",
+            "{{#each cart.lines}}{{quantity}} x {{title}}\n{{/each}}\n",
+            "{{#if cart.link}}Pick up where you left off:\n{{cart.link}}\n\n{{/if}}",
+            "Prices and stock are checked again when you come back.\n\n{{shop.name}}\n"
+        ),
+        html: concat!(
+            "<p>Hello,</p>",
+            "<p>You left these in your cart at {{shop.name}}:</p>",
+            "<ul>{{#each cart.lines}}<li>{{quantity}} &times; {{title}}</li>{{/each}}</ul>",
+            "{{#if cart.link}}<p><a href=\"{{cart.link}}\">Pick up where you left off</a></p>{{/if}}",
+            "<p>Prices and stock are checked again when you come back.</p><p>{{shop.name}}</p>"
+        ),
+    },
+    Builtin {
         key: "gift_card_issued",
         description: "To the buyer of a gift card, with its code, once the order is paid. Not kept once sent.",
         subject: "Your {{gift_card.amount}} gift card from {{shop.name}}",

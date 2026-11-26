@@ -218,8 +218,10 @@ async fn page(mut cx: Ctx, area: &str, error: Option<String>, status: StatusCode
         "email" => {
             let settings = page_or!(cx.get("/api/notifications/settings").await);
             let templates = page_or!(cx.get("/api/notifications/templates").await);
+            let recovery = page_or!(cx.get("/api/cart-recovery").await);
             cx.set("email", settings);
             cx.set("templates", templates);
+            cx.set("recovery", recovery);
         }
         "invoices" => {
             let (status, settings) = cx.call(Method::GET, "/api/invoices/settings", None).await;
@@ -484,6 +486,14 @@ async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Field
         ("taxes", "remove-zone", Some(z)) => {
             Call::Plain(Method::DELETE, format!("/api/tax/zones/{z}"), None)
         }
+        ("email", "cart-recovery", None) => Call::Plain(
+            Method::PUT,
+            "/api/cart-recovery".into(),
+            Some(json!({
+                "enabled": f.get("enabled") == "on",
+                "delay_minutes": f.get("delay_minutes").trim().parse::<i64>().ok(),
+            })),
+        ),
         ("email", "settings", None) => {
             // Unticked templates are turned off.
             let templates = page_or!(cx.get("/api/notifications/templates").await);

@@ -82,6 +82,7 @@ impl Module for Storefront {
             search_page,
             cart_page,
             cart_add,
+            cart_recover,
             cart_line,
             checkout_page,
             checkout_update,
@@ -968,6 +969,30 @@ async fn cart_add(
         if let Some(c) = cookie {
             set_cookie(&mut res, &c, conn.secure);
         }
+    }
+    Ok(res)
+}
+
+/// The query of a recovery link.
+#[model]
+pub struct RecoverQuery {
+    pub token: String,
+}
+
+/// The link in an abandoned cart email: puts the cart back in this
+/// browser and shows it. A link that no longer works shows the cart this
+/// browser has.
+#[get("/cart/recover", tag = "storefront")]
+async fn cart_recover(
+    db: Db,
+    shop: Shop,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Query(q): Query<RecoverQuery>,
+) -> Result<Response> {
+    let mut res = Redirect::to(&format!("{}/cart", root_of(&headers))).into_response();
+    if let Ok((token, cart)) = soat_cart::recovery::recover(&db, &shop, &q.token).await {
+        set_cookie(&mut res, &format!("{}.{token}", cart.id), conn.secure);
     }
     Ok(res)
 }

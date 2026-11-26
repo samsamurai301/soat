@@ -174,7 +174,7 @@ async fn labels_print_through_sendcloud() {
         "POST",
         "/api/carrier-accounts",
         json!({ "provider": "sendcloud", "name": "Sendcloud DHL",
-                "credentials": { "public_key": "pk", "secret_key": "sk" },
+                "credentials": { "public_key": "pk", "secret_key": "sendcloud-secret" },
                 "settings": { "shipping_method_id": 8 } }),
         201,
     )
@@ -192,7 +192,7 @@ async fn labels_print_through_sendcloud() {
     )
     .await;
     assert_eq!(listed[0]["name"], "Sendcloud DHL");
-    assert!(!listed.to_string().contains("sk"));
+    assert!(!listed.to_string().contains("sendcloud-secret"));
 
     let (_, ship) = shipment(&client, &t, "acme", "10115").await;
     let label = send(
@@ -217,7 +217,10 @@ async fn labels_print_through_sendcloud() {
     assert_eq!(parcel["parcel"]["weight"], "1.000");
     assert_eq!(parcel["parcel"]["order_number"], "1001");
     assert_eq!(parcel["parcel"]["shipment"]["id"], 8);
-    assert_eq!(sent[0].header("authorization"), Some("Basic cGs6c2s="));
+    assert_eq!(
+        sent[0].header("authorization"),
+        Some("Basic cGs6c2VuZGNsb3VkLXNlY3JldA==")
+    );
 
     // The shipment carries the tracking now.
     let labels = send(

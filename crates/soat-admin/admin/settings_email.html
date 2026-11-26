@@ -10,3 +10,10 @@
   </fieldset>
   <button class="button">Save</button>
 </form>
+<form method="post" action="{{ base }}/settings/email/cart-recovery" class="form">
+  <fieldset><legend>Abandoned carts</legend>
+    <label class="check"><input type="checkbox" name="enabled"{{#if recovery.enabled }} checked{{/if}}> Email buyers who leave a cart with their email, once, with a link back to it</label>
+    <label>After (minutes) <input type="number" name="delay_minutes" min="15" max="10080" value="{{ recovery.delay_minutes }}" required></label>
+  </fieldset>
+  <button class="button">Save</button>
+</form>

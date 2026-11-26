@@ -628,7 +628,14 @@ const ACCESS_TEMPLATES: &[&str] = &["password_reset", "account_activation"];
 const GIFT_CARD_ISSUED: &str = "gift_card.issued";
 /// The emails that carry a secret (an access link, a gift card code):
 /// their bodies are not kept once sent, and they cannot be resent.
-const SECRET_TEMPLATES: &[&str] = &["password_reset", "account_activation", "gift_card_issued"];
+const SECRET_TEMPLATES: &[&str] = &[
+    "password_reset",
+    "account_activation",
+    "gift_card_issued",
+    "cart_recovery",
+];
+/// A buyer left a cart.
+const CART_ABANDONED: &str = "cart.abandoned";
 
 /// Which emails an event sends: `(template, what it is about)`.
 fn templates_for(kind: &str) -> &'static [&'static str] {
@@ -640,6 +647,7 @@ fn templates_for(kind: &str) -> &'static [&'static str] {
         "payment.refunded" => &["refund_issued"],
         ACCESS_REQUESTED => ACCESS_TEMPLATES,
         GIFT_CARD_ISSUED => &["gift_card_issued"],
+        CART_ABANDONED => &["cart_recovery"],
         _ => &[],
     }
 }
@@ -704,6 +712,18 @@ impl Subscriber for Mailings {
             } else if event.kind == GIFT_CARD_ISSUED {
                 // The buyer's only copy of what they paid for: always sent.
                 gift_card_emails(&mut tx, &scope, event, &shop).await?
+            } else if event.kind == CART_ABANDONED {
+                if s.disabled.iter().any(|k| k == "cart_recovery") {
+                    soat_cart::recovery::recovery_mail(
+                        &mut tx,
+                        &scope,
+                        event.payload["id"].as_str().unwrap_or_default(),
+                    )
+                    .await?;
+                    tx.commit().await?;
+                    return Ok(());
+                }
+                cart_emails(&mut tx, &scope, event, &shop).await?
             } else {
                 let Some(order) = Self::order(&mut tx, &scope, event).await? else {
                     return Ok(());
@@ -878,6 +898,53 @@ async fn gift_card_emails(
     .collect())
 }
 
+/// Writes down the email about a cart its buyer left. The link's token is
+/// read once; a retried event finds the email already written.
+async fn cart_emails(
+    tx: &mut PgConnection,
+    scope: &EventScope,
+    event: &Event,
+    shop: &str,
+) -> Result<Vec<String>> {
+    let Some(cart) = event.payload["id"].as_str() else {
+        return Ok(Vec::new());
+    };
+    let Some(mail) = soat_cart::recovery::recovery_mail(tx, scope, cart).await? else {
+        let unsent: Vec<(String,)> = sqlx::query_as(
+            "SELECT id FROM email_messages WHERE tenant_id = $1 AND event_id = $2 \
+             AND status <> 'sent'",
+        )
+        .bind(&event.tenant_id)
+        .bind(&event.id)
+        .fetch_all(&mut *tx)
+        .await?;
+        return Ok(unsent.into_iter().map(|(id,)| id).collect());
+    };
+    let domain: Option<(String,)> = sqlx::query_as(
+        "SELECT domain FROM tenant_domains WHERE tenant_id = $1 ORDER BY domain LIMIT 1",
+    )
+    .bind(&event.tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let link = domain.map(|(d,)| format!("https://{d}/cart/recover?token={}", mail.token));
+    let lines: Vec<Value> = mail
+        .cart
+        .lines
+        .iter()
+        .map(|l| json!({ "title": l.title.as_deref().unwrap_or(&l.item_id), "quantity": l.quantity }))
+        .collect();
+    let data = json!({
+        "shop": { "name": shop },
+        "cart": { "link": link, "token": mail.token, "lines": lines },
+    });
+    let key = "cart_recovery";
+    let r = rendered(tx, scope, key, &data).await?;
+    Ok(write_message(tx, event, key, None, &mail.email, &r)
+        .await?
+        .into_iter()
+        .collect())
+}
+
 /// Template `key` in the shop's wording (the built-in one if the shop's
 /// does not render).
 async fn rendered(
@@ -938,6 +1005,8 @@ async fn redact(
 ) -> Result<()> {
     let note = if template == "gift_card_issued" {
         "This email held a gift card code; it is not kept."
+    } else if template == "cart_recovery" {
+        "This email held a link to the buyer's cart; it is not kept."
     } else {
         "This email held a link to set a password; it is not kept."
     };
