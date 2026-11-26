@@ -6,3 +6,16 @@
   <thead><tr><th>Card</th><th>Balance</th><th>Issued with</th><th>Note</th><th>Status</th></tr></thead>
   <tbody>{{#each cards }}<tr><td><a href="{{ base }}/gift-cards/{{ id }}">{{#if store_credit }}Store credit{{else}}•••• {{ last_chars }}{{/if}}</a></td><td>{{ balance }}</td><td>{{ initial }}</td><td>{{ note }}</td><td>{{#if active }}<span class="badge on">Active</span>{{else}}Disabled{{/if}}</td></tr>{{/each}}</tbody>
 </table>{{else}}<p class="muted">No gift cards yet. Issue one to give away or sell, or give a customer store credit they spend when signed in.</p>{{/if}}
+{{#if loyalty }}
+<form method="post" action="{{ base }}/loyalty" class="form">
+  <fieldset><legend>Loyalty points</legend>
+    <label class="check"><input type="checkbox" name="enabled"{{#if loyalty.enabled }} checked{{/if}}> Customers earn points on paid orders and turn them into store credit</label>
+    <label>Points per unit spent <input type="number" name="points_per_unit" min="0" max="1000" value="{{ loyalty.points_per_unit }}" required></label>
+    <label>Points for one unit of store credit <input type="number" name="points_per_credit" min="1" value="{{ loyalty.points_per_credit }}" required></label>
+    <label>Fewest points turned in at once <input type="number" name="min_redeem" min="1" value="{{ loyalty.min_redeem }}" required></label>
+    <label>Points for referring a friend <input type="number" name="referrer_points" min="0" value="{{ loyalty.referrer_points }}" required></label>
+    <label>Points for the friend <input type="number" name="referee_points" min="0" value="{{ loyalty.referee_points }}" required></label>
+  </fieldset>
+  <button class="button">Save</button>
+</form>
+{{/if}}

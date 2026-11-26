@@ -99,6 +99,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-giftcards` | Gift cards and store credit: balances with a ledger, spent at checkout as payments, sold as products |
 | `crates/soat-reviews` | Product reviews: buyers rate and review, staff moderate, the storefront shows them (feature `reviews`) |
 | `crates/soat-wishlists` | Wishlists: customers save products for later, staff see the most saved (feature `wishlists`) |
+| `crates/soat-loyalty` | Loyalty points and referrals, turned into store credit (feature `loyalty`) |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |

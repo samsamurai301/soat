@@ -14,6 +14,8 @@ apps = ["dep:soat-apps"]
 reviews = ["dep:soat-reviews"]
 # Wishlists on product and account pages.
 wishlists = ["dep:soat-wishlists"]
+# Loyalty points and referrals in the account.
+loyalty = ["dep:soat-loyalty"]
 
 [dependencies]
 soat-core.workspace = true
@@ -34,6 +36,7 @@ soat-pricing.workspace = true
 soat-apps = { workspace = true, optional = true }
 soat-reviews = { workspace = true, optional = true }
 soat-wishlists = { workspace = true, optional = true }
+soat-loyalty = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true

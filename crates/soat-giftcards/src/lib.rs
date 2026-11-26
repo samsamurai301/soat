@@ -672,6 +672,60 @@ pub async fn store_credit(
     .await?)
 }
 
+/// Adds `amount` (more than zero) to customer `customer_id`'s store credit
+/// in `currency`, opening it when they have none, in the caller's
+/// transaction. `note` says why, e.g. `Loyalty points`. Publishes
+/// `gift_card.created` for new credit and `gift_card.adjusted`.
+///
+/// # Errors
+///
+/// 422 for an amount of zero or less; database errors.
+pub async fn add_store_credit(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    customer_id: &str,
+    currency: &str,
+    amount: i64,
+    note: &str,
+) -> Result<GiftCard> {
+    if amount <= 0 {
+        return Err(invalid("store credit is added in amounts above zero"));
+    }
+    let made: Option<GiftCard> = sqlx::query_as(&format!(
+        "INSERT INTO gift_cards (id, tenant_id, kind, last_chars, currency, initial_minor, \
+         balance_minor, customer_id, note) VALUES ($1, $2, 'store_credit', '', $3, 0, 0, $4, '') \
+         ON CONFLICT (tenant_id, customer_id, currency) WHERE kind = 'store_credit' \
+         DO NOTHING RETURNING {COLUMNS}"
+    ))
+    .bind(GiftCardId::new().as_str())
+    .bind(scope.tenant_id())
+    .bind(currency)
+    .bind(customer_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if let Some(card) = &made {
+        scope.publish(tx, "gift_card.created", card).await?;
+    }
+    let (id,): (String,) = sqlx::query_as(
+        "SELECT id FROM gift_cards WHERE tenant_id = $1 AND customer_id = $2 \
+         AND currency = $3 AND kind = 'store_credit' FOR UPDATE",
+    )
+    .bind(scope.tenant_id())
+    .bind(customer_id)
+    .bind(currency)
+    .fetch_one(&mut **tx)
+    .await?;
+    let (card, _) = ledger(tx, scope, &id, "adjusted", amount, None, None, note).await?;
+    scope
+        .publish(
+            tx,
+            "gift_card.adjusted",
+            &json!({ "id": card.id, "amount_minor": amount, "balance_minor": card.balance_minor, "note": note }),
+        )
+        .await?;
+    Ok(card)
+}
+
 /// Spends `amount` of card `id` on order `order_id`, in the order's
 /// transaction: takes it off the balance and records it as a paid
 /// payment of the order. A card that changed meanwhile (spent, disabled,

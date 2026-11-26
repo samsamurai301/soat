@@ -50,7 +50,41 @@ pub(crate) async fn list(
         .collect();
     cx.set("cards", Value::Array(items));
     cx.set("page_title", json!("Gift cards"));
+    // The loyalty program, when the shop has the module.
+    let (status, program) = cx.call(Method::GET, "/api/loyalty", None).await;
+    if status == 200 {
+        cx.set("loyalty", program);
+    }
     Ok(cx.render("giftcards", StatusCode::OK))
+}
+
+/// Turn the loyalty program on or off and set its terms (a form post).
+#[post("/admin/{shop}/loyalty", tag = "admin")]
+pub(crate) async fn loyalty(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path(shop): Path<String>,
+    raw: Bytes,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "discounts").await);
+    let f = Fields::parse(&raw);
+    let n = |k: &str| f.get(k).trim().parse::<i64>().ok();
+    let body = json!({
+        "enabled": f.get("enabled") == "on",
+        "points_per_unit": n("points_per_unit"),
+        "points_per_credit": n("points_per_credit"),
+        "min_redeem": n("min_redeem"),
+        "referrer_points": n("referrer_points"),
+        "referee_points": n("referee_points"),
+    });
+    let (status, out) = cx.call(Method::PUT, "/api/loyalty", Some(&body)).await;
+    Ok(match status {
+        200 => Redirect::to(&format!("/admin/{shop}/gift-cards")).into_response(),
+        401 => crate::to_login(),
+        _ => cx.failed(status, &out),
+    })
 }
 
 async fn new_form(

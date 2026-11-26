@@ -30,6 +30,16 @@
     {{else}}<p class="muted">None saved.</p>{{/if}}
     <p class="muted">{{#if customer.has_account }}Has an account.{{else}}Guest: no account.{{/if}}</p>
   </section>
+  {{#if points }}<section class="panel">
+    <h2>Loyalty points</h2>
+    <p><strong>{{ points.balance }}</strong> points · referral code {{ points.referral_code }}</p>
+    {{#if points.entries }}<table class="table"><tbody>{{#each points.entries }}<tr><td>{{ created_at }}</td><td>{{ kind }}{{#if note }}: {{ note }}{{/if}}</td><td class="num">{{ points }}</td></tr>{{/each}}</tbody></table>{{/if}}
+    <form method="post" action="{{ base }}/customers/{{ customer.id }}/points" class="form">
+      <label>Points to add (a minus takes away) <input type="number" name="points" required></label>
+      <label>Note <input name="note" maxlength="500"></label>
+      <button class="button">Adjust</button>
+    </form>
+  </section>{{/if}}
 </div>
 {{/if}}
 </div>

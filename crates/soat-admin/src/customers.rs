@@ -204,6 +204,16 @@ async fn show_form(
             .collect();
         cx.set("orders", Value::Array(orders));
         cx.set("addresses", Value::Array(addresses));
+        // Loyalty points, when the shop has the module and a program.
+        let (_, program) = cx.call(Method::GET, "/api/loyalty", None).await;
+        if program["enabled"] == true {
+            let (status, points) = cx
+                .call(Method::GET, &format!("/api/loyalty/customers/{id}"), None)
+                .await;
+            if status == 200 {
+                cx.set("points", points);
+            }
+        }
     }
     let name = format!(
         "{} {}",
@@ -309,6 +319,50 @@ pub(crate) async fn update(
         }
         _ => cx.failed(status, &out),
     })
+}
+
+/// The points form's fields.
+#[model]
+pub struct PointsForm {
+    pub points: String,
+    pub note: Option<String>,
+}
+
+/// Add loyalty points to a customer or take them away (a form post).
+#[post("/admin/{shop}/customers/{id}/points", tag = "admin")]
+pub(crate) async fn adjust_points(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, id)): Path<(String, String)>,
+    Form(f): Form<PointsForm>,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "customers").await);
+    let Ok(points) = f.points.trim().parse::<i64>() else {
+        return Ok(points_refused(cx, &id, "Give a whole number of points.".into()).await);
+    };
+    let body = json!({ "points": points, "note": f.note });
+    let path = format!("/api/loyalty/customers/{}/adjustments", encode(&id));
+    let (status, out) = cx.call(Method::POST, &path, Some(&body)).await;
+    Ok(match status {
+        200 => Redirect::to(&format!("/admin/{shop}/customers/{}?saved=1", encode(&id)))
+            .into_response(),
+        401 => Redirect::to("/admin/login").into_response(),
+        409 | 422 => points_refused(cx, &id, message(&out)).await,
+        _ => cx.failed(status, &out),
+    })
+}
+
+async fn points_refused(cx: Ctx, id: &str, error: String) -> Response {
+    let c = page_or!(cx.get(&format!("/api/customers/{}", encode(id))).await);
+    show_form(
+        cx,
+        CustomerForm::of(&c),
+        Some(error),
+        StatusCode::UNPROCESSABLE_ENTITY,
+    )
+    .await
 }
 
 /// Delete a customer (a form post); their orders stay.

@@ -107,15 +107,29 @@ pub(crate) async fn login(
     }
 }
 
-/// The registration form.
+/// The query of the registration form.
+#[model]
+pub struct RegisterQuery {
+    /// A friend's referral code, from their link (`?ref=`).
+    #[serde(rename = "ref")]
+    pub referral: Option<String>,
+}
+
+/// The registration form; `?ref=` fills in a friend's referral code.
 #[get("/account/register", tag = "storefront")]
-pub(crate) async fn register_page(db: Db, shop: Shop, headers: HeaderMap) -> Result<Response> {
+pub(crate) async fn register_page(
+    db: Db,
+    shop: Shop,
+    headers: HeaderMap,
+    Query(q): Query<RegisterQuery>,
+) -> Result<Response> {
     let mut v = View::open(&db, &shop, &headers).await?;
     if v.customer.is_some() {
         v.tx.commit().await?;
         return Ok(Redirect::to(&format!("{}/account", v.lang.root)).into_response());
     }
     v.set("page_title", json!(v.t("create_account")));
+    v.set("referral_code", json!(q.referral));
     v.render("register", StatusCode::OK).await
 }
 
@@ -128,6 +142,8 @@ pub struct RegisterForm {
     pub last_name: Option<String>,
     /// Present when the box is ticked.
     pub accepts_marketing: Option<String>,
+    /// A friend's referral code (feature `loyalty`).
+    pub referral_code: Option<String>,
 }
 
 /// Create an account (a form post) and sign in. Problems show the form
@@ -158,7 +174,13 @@ pub(crate) async fn register(
         Err(e) => Err(Error::unprocessable(first_error(&e)).with_code("validation_error")),
     };
     let e = match outcome {
-        Ok(s) => return signed_in(&db, &shop, &headers, conn.secure, s).await,
+        Ok(s) => {
+            #[cfg(feature = "loyalty")]
+            if let Some(code) = trim(&f.referral_code) {
+                crate::loyalty::after_register(&db, &shop, &s.token, &code).await;
+            }
+            return signed_in(&db, &shop, &headers, conn.secure, s).await;
+        }
         Err(e) => e,
     };
     let msg = match e.code() {
@@ -178,6 +200,7 @@ pub(crate) async fn register(
     v.set("email", json!(f.email));
     v.set("first_name", json!(f.first_name));
     v.set("last_name", json!(f.last_name));
+    v.set("referral_code", json!(f.referral_code));
     v.set("error", json!(upper_first(&msg)));
     v.render("register", StatusCode::UNPROCESSABLE_ENTITY).await
 }

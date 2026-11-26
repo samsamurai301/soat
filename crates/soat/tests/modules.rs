@@ -36,6 +36,8 @@ fn module_list_is_valid_and_ordered() {
     expected.push("reviews");
     #[cfg(feature = "wishlists")]
     expected.push("wishlists");
+    #[cfg(feature = "loyalty")]
+    expected.push("loyalty");
     expected.push("storefront");
     #[cfg(feature = "shopify-sync")]
     expected.push("import");

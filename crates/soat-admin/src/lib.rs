@@ -182,7 +182,9 @@ impl Module for Admin {
         ))
         .mount((reviews::list, reviews::act))
         .mount((
+            customers::adjust_points,
             giftcards::list,
+            giftcards::loyalty,
             giftcards::new_page,
             giftcards::create,
             giftcards::edit_page,
