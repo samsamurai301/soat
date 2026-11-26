@@ -1,0 +1,11 @@
+# Wraps the loyalty plugin's core module as a component. Not a workspace crate.
+[package]
+name = "componentize"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+wit-component = "0.263"
+
+[workspace]

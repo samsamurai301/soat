@@ -1,0 +1,17 @@
+<div class="auth">
+<section>
+  <h1>{{ t.create_account }}</h1>
+  {{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+  <form class="fields" method="post" action="{{ root }}/account/register">
+    <div class="pair">
+      <label>{{ t.first_name }} <input name="first_name" value="{{ first_name }}" autocomplete="given-name"></label>
+      <label>{{ t.last_name }} <input name="last_name" value="{{ last_name }}" autocomplete="family-name"></label>
+    </div>
+    <label>{{ t.email }} <input type="email" name="email" value="{{ email }}" autocomplete="email" required></label>
+    <label>{{ t.password_hint }} <input type="password" name="password" minlength="10" autocomplete="new-password" required></label>
+    <label class="choice"><input type="checkbox" name="accepts_marketing" value="true"> {{ t.news_opt_in }}</label>
+    <button class="button" type="submit">{{ t.create_account_button }}</button>
+  </form>
+  <p>{{ t.have_account }} <a href="{{ root }}/account/login">{{ t.sign_in }}</a></p>
+</section>
+</div>

@@ -1,0 +1,5 @@
+<a class="card" href="{{ root }}/products/{{ handle }}">
+  <div class="card-image">{{#if image }}<img src="{{ image.url }}"{{#if image.srcset }} srcset="{{ image.srcset }}" sizes="(max-width: 640px) 50vw, 320px"{{/if}}{{#if image.width }} width="{{ image.width }}" height="{{ image.height }}"{{/if}} alt="{{ image.alt }}" loading="lazy">{{else}}<span class="no-image"></span>{{/if}}</div>
+  <h3>{{ title }}</h3>
+  <p class="price">{{ price }}</p>
+</a>

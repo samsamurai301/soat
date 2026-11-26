@@ -1,0 +1,48 @@
+<div class="head">
+  <h1>{{ page_title }}</h1>
+  <a href="{{ base }}/collections">All collections</a>
+</div>
+{{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/collections{{#if collection.id }}/{{ collection.id }}{{/if}}" class="form">
+  <label>Title <input name="title" value="{{ collection.title }}" required maxlength="200"></label>
+  <label>Description <span class="muted">(Markdown)</span> <textarea name="description" rows="4">{{ collection.description }}</textarea></label>
+  <fieldset><legend>Products</legend>
+    <label class="check"><input type="radio" name="kind" value="manual"{{#if smart }}{{else}} checked{{/if}}> Picked by hand</label>
+    <label class="check"><input type="radio" name="kind" value="smart"{{#if smart }} checked{{/if}}> Picked by rules, kept up to date as products change</label>
+    <div class="rules">
+      <p class="row tight">Products must meet
+        <select name="match" aria-label="Which rules"><option value="all"{{#if any }}{{else}} selected{{/if}}>every rule</option><option value="any"{{#if any }} selected{{/if}}>any rule</option></select></p>
+      {{#each rows }}<p class="row tight">
+        <select name="field{{ i }}" aria-label="Field">{{#each fields }}<option value="{{ key }}"{{#if selected }} selected{{/if}}>{{ label }}</option>{{/each}}</select>
+        <select name="op{{ i }}" aria-label="Comparison">{{#each ops }}<option value="{{ key }}"{{#if selected }} selected{{/if}}>{{ label }}</option>{{/each}}</select>
+        <input name="value{{ i }}" value="{{ value }}" aria-label="Value">
+      </p>{{/each}}
+      <p class="muted small">Prices in {{ currency }}. Text compares ignoring case. Empty rows are left out.</p>
+    </div>
+  </fieldset>
+  <fieldset><legend>Search engines</legend>
+    <label>Handle <input name="handle" value="{{ collection.handle }}" placeholder="from the title"></label>
+    <label>SEO title <input name="seo_title" value="{{ collection.seo_title }}"></label>
+    <label>SEO description <textarea name="seo_description" rows="2">{{ collection.seo_description }}</textarea></label>
+  </fieldset>
+  <button class="button">{{#if creating }}Create collection{{else}}Save{{/if}}</button>
+</form>
+{{#if collection.id }}
+<section class="panel" id="products">
+  <h2>Products <span class="muted">{{ count }}</span></h2>
+  {{#if products }}<table class="table"><tbody>{{#each products }}<tr>
+    <td><a href="{{ base }}/products/{{ id }}">{{ title }}</a> <span class="muted">{{ sku }}</span></td>
+    {{#if smart }}{{else}}<td class="num"><div class="row tight">
+      <form method="post" action="{{ base }}/collections/{{ collection.id }}/up"><input type="hidden" name="product" value="{{ id }}"><button class="link">Earlier</button></form>
+      <form method="post" action="{{ base }}/collections/{{ collection.id }}/down"><input type="hidden" name="product" value="{{ id }}"><button class="link">Later</button></form>
+      <form method="post" action="{{ base }}/collections/{{ collection.id }}/remove"><input type="hidden" name="product" value="{{ id }}"><button class="link">Remove</button></form>
+    </div></td>{{/if}}
+  </tr>{{/each}}</tbody></table>{{else}}<p class="muted">No products in it yet.</p>{{/if}}
+  {{#if smart }}{{else}}<form method="post" action="{{ base }}/collections/{{ collection.id }}/add" class="inline">
+    <label>Add by SKU <input name="sku" required></label><button class="button">Add</button>
+  </form>{{/if}}
+</section>
+<form method="post" action="{{ base }}/collections/{{ collection.id }}/delete" class="danger" hx-confirm="Delete this collection? Its products stay.">
+  <button class="link">Delete collection</button>
+</form>
+{{/if}}

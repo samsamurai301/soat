@@ -1,0 +1,13 @@
+<div class="auth">
+<section>
+  <h1>{{ t.set_password }}</h1>
+  {{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+  <form class="fields" method="post" action="{{ root }}/account/access">
+    {{#if token }}<input type="hidden" name="token" value="{{ token }}">{{else}}
+    <label>{{ t.email_code }} <input name="token" autocomplete="one-time-code" required></label>{{/if}}
+    <label>{{ t.password_hint }} <input type="password" name="password" minlength="10" autocomplete="new-password" required></label>
+    <button class="button" type="submit">{{ t.set_password }}</button>
+  </form>
+  <p><a href="{{ root }}/account/forgot">{{ t.send_link }}</a></p>
+</section>
+</div>

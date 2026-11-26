@@ -1,0 +1,21 @@
+# A test plugin for the plugin host: built to WebAssembly by ../build.sh,
+# which commits its component as ../loyalty.wasm. Not a workspace crate.
+[package]
+name = "loyalty"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { version = "0.63", default-features = false, features = ["macros", "realloc"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+panic = "abort"
+
+[workspace]

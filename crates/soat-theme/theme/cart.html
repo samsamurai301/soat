@@ -1,0 +1,27 @@
+<h1>{{ t.your_cart }}</h1>
+<div id="cart">
+{{#if cart.lines }}
+<table class="cart-lines">
+  <thead><tr><th>{{ t.item }}</th><th>{{ t.quantity }}</th><th>{{ t.price }}</th><th></th></tr></thead>
+  <tbody>
+  {{#each cart.lines }}
+  <tr>
+    <td>{{ title }}{{#if variant_title }} · {{ variant_title }}{{/if}}</td>
+    <td>
+      <form method="post" action="{{ root }}/cart/lines/{{ id }}" hx-post="{{ root }}/cart/lines/{{ id }}" hx-target="#cart" hx-select="#cart" hx-swap="outerHTML">
+        <input type="number" name="quantity" value="{{ quantity }}" min="0" max="99" aria-label="{{ t.quantity }}">
+        <button type="submit">{{ t.update }}</button>
+      </form>
+    </td>
+    <td>{{ total }}</td>
+    <td><form method="post" action="{{ root }}/cart/lines/{{ id }}" hx-post="{{ root }}/cart/lines/{{ id }}" hx-target="#cart" hx-select="#cart" hx-swap="outerHTML"><input type="hidden" name="quantity" value="0"><button type="submit">{{ t.remove }}</button></form></td>
+  </tr>
+  {{/each}}
+  </tbody>
+</table>
+<p class="subtotal">{{ t.subtotal }}: <strong>{{ cart.subtotal }}</strong></p>
+<p><a class="button" href="{{ root }}/checkout">{{ t.check_out }}</a></p>
+{{else}}
+<p class="empty">{{ t.cart_empty }} <a href="{{ root }}/search">{{ t.keep_shopping }}</a></p>
+{{/if}}
+</div>

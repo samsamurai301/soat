@@ -1,0 +1,13 @@
+<div class="auth">
+<section>
+  <h1>{{ t.sign_in }}</h1>
+  {{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+  <form class="fields" method="post" action="{{ root }}/account/login">
+    <label>{{ t.email }} <input type="email" name="email" value="{{ email }}" autocomplete="email" required></label>
+    <label>{{ t.password }} <input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="button" type="submit">{{ t.sign_in }}</button>
+  </form>
+  <p><a href="{{ root }}/account/forgot">{{ t.forgot_password }}</a></p>
+  <p>{{ t.new_here }} <a href="{{ root }}/account/register">{{ t.create_account }}</a></p>
+</section>
+</div>

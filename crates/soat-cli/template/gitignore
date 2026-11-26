@@ -1,0 +1,4 @@
+.env
+.soat/
+keys.json
+node_modules/

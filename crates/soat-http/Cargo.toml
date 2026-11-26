@@ -1,0 +1,19 @@
+[package]
+name = "soat-http"
+description = "An outbound HTTPS client for the adapters to outside services (payments, carriers)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+zapline.workspace = true
+serde_json.workspace = true
+bytes = "1"
+http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "ring", "webpki-roots"] }
+tokio = { version = "1", features = ["time"] }

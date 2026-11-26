@@ -1,0 +1,22 @@
+<h1>Install {{ consent.name }}</h1>
+{{#if consent.installed }}<p class="muted">It is installed already; installing again renews its access.</p>{{/if}}
+<section class="panel">
+  <p><strong>{{ consent.name }}</strong> asks to:</p>
+  <ul>
+    {{#each consent.permissions }}
+    <li>{{ description }} <code>{{ name }}</code>{{#if held }}{{else}} <span class="error">(you do not hold this)</span>{{/if}}</li>
+    {{/each}}
+  </ul>
+  {{#if lacking }}
+  <p class="error" role="alert">You can only grant what you may do yourself: ask the shop’s owner to install it.</p>
+  {{else}}
+  <form method="post" action="{{ base }}/apps/authorize" class="form">
+    <input type="hidden" name="client_id" value="{{ consent.client_id }}">
+    <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+    <input type="hidden" name="state" value="{{ state }}">
+    <button class="button">Install</button>
+    <a href="{{ base }}">Cancel</a>
+  </form>
+  <p class="muted">You will go back to the app at {{ redirect_uri }}.</p>
+  {{/if}}
+</section>

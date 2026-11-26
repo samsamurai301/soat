@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="{{ shop.language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page_title }}{{#if shop.name }} · {{ shop.name }}{{/if}}</title>
+{{#if meta_description }}<meta name="description" content="{{ meta_description }}">{{/if}}
+{{#if canonical }}<link rel="canonical" href="{{ shop.url }}{{ canonical }}">{{/if}}
+{{#each alternates }}<link rel="alternate" hreflang="{{ hreflang }}" href="{{ href }}">
+{{/each}}{{#if noindex }}<meta name="robots" content="noindex">{{/if}}
+<meta property="og:site_name" content="{{ shop.name }}">
+<meta property="og:title" content="{{ page_title }}">
+{{#if meta_description }}<meta property="og:description" content="{{ meta_description }}">{{/if}}
+<meta property="og:type" content="{{#if og_type }}{{ og_type }}{{else}}website{{/if}}">
+{{#if canonical }}<meta property="og:url" content="{{ shop.url }}{{ canonical }}">{{/if}}
+{{#if og_image }}<meta property="og:image" content="{{ og_image }}">{{/if}}
+<meta name="twitter:card" content="{{#if og_image }}summary_large_image{{else}}summary{{/if}}">
+<link rel="stylesheet" href="/theme.css">
+{{#if theme.accent_color }}<style>:root { --accent: {{ theme.accent_color }}; }</style>{{/if}}
+<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" defer></script>
+</head>
+<body>
+{{#if theme.announcement }}<div class="announcement">{{ theme.announcement }}</div>{{/if}}
+{{> header }}
+<main class="wrap">
+{{> content }}
+</main>
+{{> footer }}
+{{#each app_blocks.body }}<div class="soat-app-block" data-soat-app="{{ app }}" data-block="{{ handle }}"></div>
+{{/each}}{{#each app_scripts }}<script src="{{ this }}" defer></script>
+{{/each}}</body>
+</html>

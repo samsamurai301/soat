@@ -1,0 +1,85 @@
+<h1>{{ t.checkout }}</h1>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+<div class="checkout">
+<section>
+<form class="fields" method="post" action="{{ root }}/checkout">
+  <fieldset>
+    <legend>{{ t.contact }}</legend>
+    <label>{{ t.email }} <input type="email" name="email" value="{{ checkout.email }}" autocomplete="email" required></label>
+  </fieldset>
+  <fieldset>
+    <legend>{{#if checkout.requires_shipping }}{{ t.shipping_address }}{{else}}{{ t.billing_address }}{{/if}}</legend>
+    <div class="pair">
+      <label>{{ t.first_name }} <input name="first_name" value="{{ address.first_name }}" autocomplete="given-name"></label>
+      <label>{{ t.last_name }} <input name="last_name" value="{{ address.last_name }}" autocomplete="family-name"></label>
+    </div>
+    <label>{{ t.company }} <input name="company" value="{{ address.company }}" autocomplete="organization"></label>
+    <label>{{ t.street }} <input name="line1" value="{{ address.line1 }}" autocomplete="address-line1" required></label>
+    <label>{{ t.address_line2 }} <input name="line2" value="{{ address.line2 }}" autocomplete="address-line2"></label>
+    <div class="pair">
+      <label>{{ t.postal_code }} <input name="postal_code" value="{{ address.postal_code }}" autocomplete="postal-code"></label>
+      <label>{{ t.city }} <input name="city" value="{{ address.city }}" autocomplete="address-level2" required></label>
+    </div>
+    <label>{{ t.country }}
+      <select name="country" autocomplete="country">{{#each countries }}<option value="{{ code }}"{{#if selected }} selected{{/if}}>{{ name }}</option>{{/each}}</select>
+    </label>
+    <label>{{ t.phone }} <input type="tel" name="phone" value="{{ address.phone }}" autocomplete="tel"></label>
+    <label>{{ t.vat_number }} <input name="vat_number" value="{{ checkout.vat_number }}"></label>
+  </fieldset>
+  {{#if shipping_options }}
+  <fieldset>
+    <legend>{{ t.shipping }}</legend>
+    {{#each shipping_options }}
+    <label class="choice"><input type="radio" name="shipping_rate_id" value="{{ rate_id }}"{{#if selected }} checked{{/if}}> {{ name }} · {{ price }}{{#if days }} <span class="muted">({{ days }})</span>{{/if}}</label>
+    {{/each}}
+  </fieldset>
+  {{else}}{{#if checkout.requires_shipping }}{{#if address.line1 }}<p class="notice">{{ t.no_shipping }}</p>{{/if}}{{/if}}{{/if}}
+  <fieldset>
+    <legend>{{ t.discount_code }}</legend>
+    <label>{{ t.code }} <input name="discount_code" value="{{ discount_code }}"></label>
+    {{#if checkout.discount_issue }}<p class="notice">{{ checkout.discount_issue }}</p>{{/if}}
+  </fieldset>
+  <fieldset>
+    <legend>{{ t.gift_card }}</legend>
+    {{#if checkout.gift_card }}<p>{{ t.gift_card_ending }} {{ checkout.gift_card.last_chars }}</p>
+    <label class="choice"><input type="checkbox" name="remove_gift_card"> {{ t.remove }}</label>
+    {{else}}<label>{{ t.code }} <input name="gift_card_code" autocomplete="off"></label>{{/if}}
+    {{#if checkout.gift_card_issue }}<p class="notice">{{ checkout.gift_card_issue }}</p>{{/if}}
+    {{#if checkout.store_credit }}<input type="hidden" name="store_credit_shown" value="1">
+    <label class="choice"><input type="checkbox" name="use_store_credit"{{#if checkout.use_store_credit }} checked{{/if}}> {{ t.use_store_credit }} ({{ store_credit_balance }})</label>{{/if}}
+  </fieldset>
+  <button class="button" type="submit">{{#if ready }}{{ t.update }}{{else}}{{ t.continue }}{{/if}}</button>
+</form>
+{{#if ready }}
+<form class="fields" method="post" action="{{ root }}/checkout/complete">
+  {{#if due }}<fieldset>
+    <legend>{{ t.payment }}</legend>
+    {{#each payment_methods }}
+    <label class="choice"><input type="radio" name="payment_method_id" value="{{ id }}"{{#if checked }} checked{{/if}} required> {{ name }}</label>
+    {{/each}}
+  </fieldset>
+  {{#if payment_methods }}<button class="button" type="submit">{{ t.place_order }} · {{ totals.due }}</button>{{else}}<p class="notice">{{ t.no_payment }}</p>{{/if}}
+  {{else}}<button class="button" type="submit">{{ t.place_order }}</button>{{/if}}
+</form>
+{{/if}}
+</section>
+<aside class="summary">
+  <h2>{{ t.your_order }}</h2>
+  <table class="cart-lines">
+    <tbody>
+    {{#each lines }}<tr><td>{{ quantity }} × {{ title }}</td><td>{{ total }}</td></tr>{{/each}}
+    </tbody>
+  </table>
+  <dl class="totals">
+    <dt>{{ t.subtotal }}</dt><dd>{{ totals.subtotal }}</dd>
+    {{#if totals.shipping }}<dt>{{ t.shipping }}</dt><dd>{{ totals.shipping }}</dd>{{/if}}
+    {{#if totals.discount }}<dt>{{ t.discount }}{{#if checkout.automatic_discount }} ({{ checkout.automatic_discount.title }}{{#if checkout.discount.code }}, {{ checkout.discount.code }}{{/if}}){{else}}{{#if checkout.discount.code }} ({{ checkout.discount.code }}){{/if}}{{/if}}</dt><dd>−{{ totals.discount }}</dd>{{/if}}
+    {{#if totals.tax }}<dt>{{#if checkout.prices_include_tax }}{{ t.including_vat }}{{else}}{{ t.vat }}{{/if}}</dt><dd>{{ totals.tax }}</dd>{{/if}}
+    <dt class="total">{{ t.total }}</dt><dd class="total">{{ totals.total }}</dd>
+    {{#if totals.gift_card }}<dt>{{ t.gift_card }}</dt><dd>−{{ totals.gift_card }}</dd>{{/if}}
+    {{#if totals.store_credit }}<dt>{{ t.store_credit }}</dt><dd>−{{ totals.store_credit }}</dd>{{/if}}
+    {{#if totals.paid_by_balance }}<dt class="total">{{ t.to_pay }}</dt><dd class="total">{{ totals.due }}</dd>{{/if}}
+  </dl>
+  <p><a href="{{ root }}/cart">{{ t.change_cart }}</a></p>
+</aside>
+</div>

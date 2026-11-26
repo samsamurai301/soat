@@ -1,0 +1,45 @@
+name: CI
+
+# Actions minutes are shared with other projects, so CI runs only on pull
+# requests that are ready for review (and by hand). Run the same checks
+# locally before pushing: cargo fmt --check, cargo clippy --all-targets
+# -- -D warnings, cargo test.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    if: github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SOAT_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test

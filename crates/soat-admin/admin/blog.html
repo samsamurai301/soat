@@ -1,0 +1,13 @@
+<div class="head">
+  <h1>Content</h1>
+  <a class="button" href="{{ base }}/blog/new">Write post</a>
+</div>
+{{> content_tabs }}
+{{#if posts }}
+<table class="table">
+  <thead><tr><th>Title</th><th>Address</th><th>Status</th><th>Date</th><th>Author</th></tr></thead>
+  <tbody>{{#each posts }}<tr><td><a href="{{ base }}/blog/{{ id }}">{{ title }}</a></td><td>/blog/{{ handle }}</td><td><span class="badge{{#if published }} on{{/if}}">{{#if published }}Published{{else}}Draft{{/if}}</span></td><td>{{ date }}</td><td>{{ author }}</td></tr>{{/each}}</tbody>
+</table>
+<p class="muted">Published posts show at <code>/blog</code>, newest first, with a feed at <code>/blog/feed.xml</code>. A date ahead schedules a post.</p>
+{{else}}<p class="muted">No posts yet. Write news, guides or recipes; they show at <code>/blog</code>.</p>
+{{/if}}

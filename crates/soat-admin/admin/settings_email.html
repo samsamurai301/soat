@@ -1,0 +1,12 @@
+{{> settings_tabs }}
+<form method="post" action="{{ base }}/settings/email/settings" class="form">
+  <div class="row">
+    <label>Sender name <input name="sender_name" value="{{ email.sender_name }}" required></label>
+    <label>Reply to <input type="email" name="reply_to" value="{{ email.reply_to }}"></label>
+    <label>Staff notices to <input type="email" name="staff_email" value="{{ email.staff_email }}"></label>
+  </div>
+  <fieldset><legend>Emails sent</legend>
+    {{#each templates }}<label class="check"><input type="checkbox" name="enabled" value="{{ key }}"{{#if enabled }} checked{{/if}}> <a href="{{ base }}/emails/{{ key }}">{{ key }}</a> <span class="muted">{{ description }}{{#if customized }} · reworded{{/if}}</span></label>{{/each}}
+  </fieldset>
+  <button class="button">Save</button>
+</form>

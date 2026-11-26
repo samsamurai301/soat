@@ -1,0 +1,3 @@
+{{#if results }}<ul class="palette-list" role="listbox">
+{{#each results }}<li role="option"><a href="{{ href }}"><span class="badge">{{ kind }}</span> {{ label }}{{#if hint }} <span class="muted">{{ hint }}</span>{{/if}}</a></li>{{/each}}
+</ul>{{else}}<p class="muted">Nothing matches.</p>{{/if}}

@@ -1,0 +1,8 @@
+<div class="head">
+  <h1>Collections</h1>
+  <a class="button" href="{{ base }}/collections/new">Add collection</a> <a href="{{ base }}/products">Products</a>
+</div>
+{{#if collections }}<table class="table">
+  <thead><tr><th>Collection</th><th>Handle</th><th>Kind</th></tr></thead>
+  <tbody>{{#each collections }}<tr><td><a href="{{ base }}/collections/{{ id }}">{{ title }}</a></td><td>{{ handle }}</td><td>{{#if smart }}<span class="badge on">Smart</span>{{else}}By hand{{/if}}</td></tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No collections yet. Group products by hand, or let rules pick them: every product tagged “summer” under 50.00, for instance.</p>{{/if}}

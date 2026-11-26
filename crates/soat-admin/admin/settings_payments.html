@@ -1,0 +1,19 @@
+{{> settings_tabs }}
+<section class="panel">
+  <h2>Payment methods</h2>
+  {{#if methods }}<table class="table"><tbody>{{#each methods }}<tr{{#if active }}{{else}} class="muted"{{/if}}><td><strong>{{ name }}</strong> <span class="muted">{{ provider }}</span></td><td>{{#if active }}<span class="badge on">On</span>{{else}}<span class="badge">Off</span>{{/if}}</td><td class="num">
+    {{#if active }}<form method="post" action="{{ base }}/settings/payments/disable/{{ id }}"><button class="link">Turn off</button></form>{{else}}<form method="post" action="{{ base }}/settings/payments/enable/{{ id }}"><button class="link">Turn on</button></form>{{/if}}
+    <form method="post" action="{{ base }}/settings/payments/remove/{{ id }}" hx-confirm="Remove this payment method?"><button class="link">Remove</button></form>
+  </td></tr>{{/each}}</tbody></table>
+  {{else}}<p class="muted">No payment methods yet: buyers cannot pay.</p>{{/if}}
+  <h3>Add a method</h3>
+  <form method="post" action="{{ base }}/settings/payments/add" class="form">
+    <div class="row">
+      <label>Provider <select name="provider">{{#each providers }}<option value="{{ name }}">{{ label }}</option>{{/each}}</select></label>
+      <label>Name buyers see <input name="name" placeholder="Bank transfer" required></label>
+    </div>
+    <label>Instructions <span class="muted">(manual payments: how to pay)</span> <textarea name="instructions" rows="3" placeholder="Transfer the total to IBAN … within 14 days."></textarea></label>
+    <label>Settings <span class="muted">(other providers, JSON, e.g. {"account_id": "acct_…"})</span> <input name="settings" class="code"></label>
+    <button class="button">Add method</button>
+  </form>
+</section>

@@ -1,0 +1,19 @@
+{
+  "key": "home",
+  "name": "Home goods",
+  "summary": "Candles, ceramics and textiles.",
+  "collection": { "title": "Living", "description": "Small things that make a home." },
+  "products": [
+    { "sku": "CANDLE-FIG", "title": "Fig Candle", "price": "32.00", "weight_grams": 350,
+      "tags": ["candles"], "description": "Soy wax, about 45 hours of burning." },
+    { "sku": "MUG-STONE", "title": "Stoneware Mug", "price": "19.00", "weight_grams": 380,
+      "tags": ["ceramics"], "description": "Hand-glazed, holds 300 ml.",
+      "option": { "name": "Glaze", "values": ["Chalk", "Moss", "Ink"] } },
+    { "sku": "VASE-BUD", "title": "Bud Vase", "price": "28.00", "weight_grams": 300,
+      "tags": ["ceramics"], "description": "For a single stem or a few dried flowers." },
+    { "sku": "THROW-WOOL", "title": "Wool Throw", "price": "120.00", "weight_grams": 1200,
+      "tags": ["textiles"], "description": "Merino and lambswool, 130 × 180 cm." },
+    { "sku": "LINEN-NAPKINS", "title": "Linen Napkins, Set of 4", "price": "36.00", "weight_grams": 260,
+      "tags": ["textiles"], "description": "Stonewashed linen that softens with every wash." }
+  ]
+}

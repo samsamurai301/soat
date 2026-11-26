@@ -1,0 +1,16 @@
+{
+  "name": "{{name}}",
+  "tagline": "",
+  "description": "",
+  "category": "",
+  "redirect_uris": ["http://localhost:3000/cb"],
+  "permissions": ["products:read"],
+  "app_url": "http://localhost:3000/install",
+  "admin_links": [
+    { "target": "product", "label": "Open in {{name}}", "url": "http://localhost:3000/admin" }
+  ],
+  "storefront_blocks": [
+    { "handle": "stars", "name": "Star rating", "placement": "product",
+      "script_url": "http://localhost:3000/blocks/stars.js" }
+  ]
+}

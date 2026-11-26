@@ -1,0 +1,29 @@
+[package]
+name = "soat-checkout"
+description = "Checkout: from a cart to a placed order, with shipping, tax, held stock and a payment."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+soat-module.workspace = true
+soat-tenancy.workspace = true
+soat-catalog.workspace = true
+soat-customers.workspace = true
+soat-inventory.workspace = true
+soat-pricing.workspace = true
+soat-cart.workspace = true
+soat-tax.workspace = true
+soat-shipping.workspace = true
+soat-payments.workspace = true
+soat-promotions.workspace = true
+soat-giftcards.workspace = true
+soat-orders.workspace = true
+zapline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio = { version = "1", features = ["rt"] }

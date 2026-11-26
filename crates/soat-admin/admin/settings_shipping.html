@@ -1,0 +1,27 @@
+{{> settings_tabs }}
+{{#each zones }}
+<section class="panel">
+  <div class="head"><h2>{{ name }} <span class="muted">{{#each countries }}{{ this }} {{/each}}</span></h2>
+  <form method="post" action="{{ base }}/settings/shipping/remove-zone/{{ id }}" hx-confirm="Remove this zone and its rates?"><button class="link">Remove zone</button></form></div>
+  {{#if rates }}<table class="table"><tbody>{{#each rates }}<tr><td>{{ name }}{{#if carrier }} <span class="muted">{{ carrier }}</span>{{/if}}</td><td>{{ price }}{{#if free_from }} <span class="muted">from {{ free_from }}</span>{{/if}}</td><td>{{ days }}</td><td class="num"><form method="post" action="{{ base }}/settings/shipping/remove-rate/{{ id }}"><button class="link">Remove</button></form></td></tr>{{/each}}</tbody></table>
+  {{else}}<p class="muted">No rates: nothing ships here yet.</p>{{/if}}
+  <form method="post" action="{{ base }}/settings/shipping/add-rate/{{ id }}" class="inline">
+    <label>Rate <input name="name" placeholder="Standard" required size="12"></label>
+    <label>Carrier <input name="carrier" placeholder="DHL" size="8"></label>
+    <label>Currency <input name="currency" value="EUR" size="4" maxlength="3" required></label>
+    <label>Price <input name="price" placeholder="4.95" inputmode="decimal" required size="7"></label>
+    <label>Free from <input name="free_from" placeholder="50.00" inputmode="decimal" size="7"></label>
+    <label>Days <span class="row tight"><input name="min_days" size="2" inputmode="numeric" aria-label="From"> – <input name="max_days" size="2" inputmode="numeric" aria-label="To"></span></label>
+    <button class="button">Add rate</button>
+  </form>
+</section>
+{{/each}}
+{{#if zones }}{{else}}<p class="muted">No shipping zones yet: nothing ships.</p>{{/if}}
+<section class="panel">
+  <h2>Add a zone</h2>
+  <form method="post" action="{{ base }}/settings/shipping/add-zone" class="inline">
+    <label>Name <input name="name" placeholder="Germany" required></label>
+    <label>Countries <input name="countries" placeholder="DE, AT" required></label>
+    <button class="button">Add zone</button>
+  </form>
+</section>
