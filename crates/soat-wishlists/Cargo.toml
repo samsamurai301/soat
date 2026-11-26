@@ -1,0 +1,18 @@
+[package]
+name = "soat-wishlists"
+description = "Wishlists: signed-in buyers save products for later; staff see which products are saved most."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+soat-module.workspace = true
+soat-tenancy.workspace = true
+soat-customers.workspace = true
+zapline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true

@@ -12,6 +12,8 @@ publish.workspace = true
 apps = ["dep:soat-apps"]
 # Product reviews on product pages.
 reviews = ["dep:soat-reviews"]
+# Wishlists on product and account pages.
+wishlists = ["dep:soat-wishlists"]
 
 [dependencies]
 soat-core.workspace = true
@@ -31,6 +33,7 @@ soat-i18n.workspace = true
 soat-pricing.workspace = true
 soat-apps = { workspace = true, optional = true }
 soat-reviews = { workspace = true, optional = true }
+soat-wishlists = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true

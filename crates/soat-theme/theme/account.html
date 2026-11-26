@@ -1,4 +1,5 @@
 <h1>{{ t.hello }}{{#if customer.first_name }}, {{ customer.first_name }}{{/if}}</h1>
+{{#if features.wishlists }}<p><a href="{{ root }}/account/wishlist">{{ t.wishlist }}</a></p>{{/if}}
 {{#if saved }}<p class="notice" role="status">{{ t.saved }}</p>{{/if}}
 <div class="checkout">
 <section>

@@ -1,0 +1,11 @@
+<h1>{{ t.wishlist }}</h1>
+{{#if items }}
+<table class="cart-lines">
+  <tbody>
+  {{#each items }}<tr><td><a href="{{ root }}/products/{{ handle }}">{{ title }}</a></td><td>{{ price }}</td><td><form method="post" action="{{ root }}/products/{{ handle }}/wishlist"><button class="link" type="submit">{{ t.remove }}</button></form></td></tr>{{/each}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">{{ t.wishlist_empty }} <a href="{{ root }}/search">{{ t.start_shopping }}</a></p>
+{{/if}}
+<p><a href="{{ root }}/account">{{ t.account }}</a></p>

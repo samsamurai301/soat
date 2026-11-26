@@ -16,6 +16,7 @@
       <label>{{ t.quantity }} <input type="number" name="quantity" value="1" min="1" max="99"></label>
       <button class="button" type="submit">{{ t.add_to_cart }}</button>
     </form>
+    {{#if wishlist.on }}<form class="wishlist" method="post" action="{{ root }}/products/{{ product.handle }}/wishlist"><button class="link" type="submit" aria-pressed="{{#if wishlist.saved }}true{{else}}false{{/if}}">{{#if wishlist.saved }}♥ {{ t.saved_for_later }}{{else}}♡ {{ t.save_for_later }}{{/if}}</button></form>{{/if}}
     <div class="prose">{{ product.description | markdown }}</div>
     {{#if reviews_on }}
     <section id="reviews" class="reviews">
