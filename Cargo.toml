@@ -37,6 +37,7 @@ soat-giftcards = { path = "crates/soat-giftcards" }
 soat-reviews = { path = "crates/soat-reviews" }
 soat-wishlists = { path = "crates/soat-wishlists" }
 soat-loyalty = { path = "crates/soat-loyalty" }
+soat-analytics = { path = "crates/soat-analytics" }
 soat-orders = { path = "crates/soat-orders" }
 soat-checkout = { path = "crates/soat-checkout" }
 soat-invoices = { path = "crates/soat-invoices" }

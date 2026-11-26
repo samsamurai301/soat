@@ -1,0 +1,44 @@
+<div class="heading">
+  <h1>Analytics</h1>
+  <nav class="tabs" aria-label="Period">
+    {{#each periods}}<a href="{{ base }}/analytics?days={{ days }}"{{#if current}} aria-current="page"{{/if}}>{{ days }} days</a>{{/each}}
+  </nav>
+</div>
+{{#if missing}}<p class="muted">Analytics is not part of this build of SOAT.</p>{{/if}}
+{{#if report}}
+<div class="cards">
+  <div class="card"><strong class="figure">{{ report.visitors }}</strong> visitors</div>
+  <div class="card"><strong class="figure">{{ report.views }}</strong> page views</div>
+  <div class="card"><strong class="figure">{{ report.funnel.conversion }}</strong> of visitors ordered</div>
+</div>
+{{#if report.has_views}}
+<figure class="panel chart">
+  <svg viewBox="0 0 {{ report.chart.width }} {{ report.chart.height }}" preserveAspectRatio="none" role="img" aria-label="Visitors per day, best day {{ report.chart.best }}">
+    {{#each report.chart.bars}}<rect x="{{ x }}" y="{{ y }}" width="8" height="{{ height }}"><title>{{ label }}</title></rect>{{/each}}
+  </svg>
+  <figcaption class="muted">Visitors per day since {{ report.from }}. Best day: {{ report.chart.best }}.</figcaption>
+</figure>
+{{else}}<p class="muted">No visits counted yet. Visits to the storefront show up here, counted without cookies.</p>{{/if}}
+<section class="panel">
+  <h2>From visit to payment</h2>
+  <table class="table"><tbody>
+    <tr><td>Visitors</td><td class="num">{{ report.funnel.visitors }}</td><td></td></tr>
+    <tr><td>Started a cart</td><td class="num">{{ report.funnel.carts.count }}</td><td class="num muted">{{ report.funnel.carts.share }}</td></tr>
+    <tr><td>Placed an order</td><td class="num">{{ report.funnel.orders.count }}</td><td class="num muted">{{ report.funnel.orders.share }}</td></tr>
+    <tr><td>Paid</td><td class="num">{{ report.funnel.paid.count }}</td><td class="num muted">{{ report.funnel.paid.share }}</td></tr>
+  </tbody></table>
+  <p class="muted">{{ report.buyers.first_orders }} first orders, {{ report.buyers.repeat_orders }} from buyers who ordered before.</p>
+</section>
+<div class="cards">
+<section class="panel">
+  <h2>Pages</h2>
+  {{#if report.pages}}<table class="table"><thead><tr><th>Page</th><th class="num">Views</th><th class="num">Visitors</th></tr></thead><tbody>{{#each report.pages}}<tr><td>{{ path }}</td><td class="num">{{ views }}</td><td class="num">{{ visitors }}</td></tr>{{/each}}</tbody></table>{{else}}<p class="muted">None yet.</p>{{/if}}
+</section>
+<section class="panel">
+  <h2>Sources</h2>
+  {{#if report.sources}}<table class="table"><tbody>{{#each report.sources}}<tr><td>{{ name }}</td><td class="num">{{ visitors }}</td></tr>{{/each}}</tbody></table>{{else}}<p class="muted">None yet.</p>{{/if}}
+  <h2>Devices</h2>
+  {{#if report.devices}}<table class="table"><tbody>{{#each report.devices}}<tr><td>{{ name }}</td><td class="num">{{ visitors }}</td></tr>{{/each}}</tbody></table>{{else}}<p class="muted">None yet.</p>{{/if}}
+</section>
+</div>
+{{/if}}

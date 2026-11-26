@@ -135,7 +135,7 @@ fn view(r: &Value, days: i64) -> Value {
 }
 
 /// Days since 1970-01-01 of a `YYYY-MM-DD` date.
-fn day_number(date: &str) -> Option<i64> {
+pub(crate) fn day_number(date: &str) -> Option<i64> {
     let mut parts = date.splitn(3, '-').map(str::parse::<i64>);
     let (y, m, d) = (
         parts.next()?.ok()?,
@@ -155,7 +155,7 @@ fn day_number(date: &str) -> Option<i64> {
 }
 
 /// The `YYYY-MM-DD` date of a day number.
-fn date_of(n: i64) -> String {
+pub(crate) fn date_of(n: i64) -> String {
     let z = n + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;

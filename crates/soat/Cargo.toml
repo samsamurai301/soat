@@ -47,10 +47,11 @@ soat-plugin-host = { workspace = true, optional = true }
 soat-reviews = { workspace = true, optional = true }
 soat-wishlists = { workspace = true, optional = true }
 soat-loyalty = { workspace = true, optional = true }
+soat-analytics = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage", "mail"] }
 
 [features]
-default = ["stripe", "mollie", "paypal", "sendcloud", "shopify-sync", "apps", "plugins", "reviews", "wishlists", "loyalty"]
+default = ["stripe", "mollie", "paypal", "sendcloud", "shopify-sync", "apps", "plugins", "reviews", "wishlists", "loyalty", "analytics"]
 # Stripe payments (PaymentIntents, Connect, webhooks).
 stripe = ["dep:soat-stripe"]
 # Mollie payments: iDEAL, Bancontact, cards, Klarna and more.
@@ -71,6 +72,8 @@ reviews = ["dep:soat-reviews", "soat-storefront/reviews"]
 wishlists = ["dep:soat-wishlists", "soat-storefront/wishlists"]
 # Loyalty points and referrals, turned into store credit.
 loyalty = ["dep:soat-loyalty", "soat-storefront/loyalty"]
+# Storefront analytics without cookies.
+analytics = ["dep:soat-analytics", "soat-storefront/analytics"]
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
