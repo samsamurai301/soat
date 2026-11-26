@@ -144,7 +144,9 @@ layer.
 
 ## I. Growth (after alpha)
 
-I1 analytics · I2 abandoned cart · I3 reviews · I4 wishlists · I5 loyalty and
+- [x] I2 Abandoned cart emails: a shop turns them on with a delay (15 minutes to 7 days, `PUT /api/cart-recovery`, or admin Settings, Email); a scan every 5 minutes finds open carts with an email and lines left that long (and under a week) and publishes `cart.abandoned`, once per cart; the buyer gets one `cart_recovery` email with a link (`/cart/recover?token=`, or `POST /api/storefront/carts/recover`) that brings the cart back under a new token; the link is in no event and the email's body is not kept
+
+I1 analytics · I3 reviews · I4 wishlists · I5 loyalty and
 referrals · I6 email campaigns · I7 subscriptions · I8 B2B · I9 Google and Meta
 feeds · I10 marketplaces · I11 POS
 

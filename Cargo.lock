@@ -2603,6 +2603,7 @@ version = "0.0.1"
 dependencies = [
  "serde",
  "serde_json",
+ "soat-cart",
  "soat-core",
  "soat-customers",
  "soat-giftcards",

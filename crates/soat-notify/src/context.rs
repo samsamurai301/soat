@@ -121,6 +121,10 @@ pub fn sample(shop: &str) -> Value {
             "code": "sample",
             "minutes": 60,
         },
+        "cart": {
+            "link": "https://shop.example.com/cart/recover?token=sample",
+            "lines": [ { "title": "Linen shirt", "quantity": 2 } ],
+        },
         "gift_card": { "code": "ABCD-EFGH-JKLM-NPQR", "amount": "50.00 EUR", "expires_at": null },
         "order": {
             "id": "ord_sample",

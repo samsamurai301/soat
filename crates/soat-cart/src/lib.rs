@@ -8,8 +8,10 @@
 //! can no longer be bought. Stock is only reserved at checkout (C9).
 //!
 //! Shoppers use the [`storefront`] endpoints, holding the cart by its
-//! token; staff see carts (for abandoned-cart follow-up) here.
+//! token; staff see carts here, and [`recovery`] emails buyers about the
+//! carts they left.
 
+pub mod recovery;
 pub mod storefront;
 
 use soat_catalog::stock_item;
@@ -61,11 +63,13 @@ impl Module for Carts {
     }
 
     fn permissions(&self) -> &'static [Permission] {
-        &[CARTS_READ]
+        &[CARTS_READ, recovery::CARTS_MANAGE]
     }
 
     fn mount(&self, app: App) -> App {
-        app.mount((list_carts, get_cart)).plugin(storefront::mount)
+        app.mount((list_carts, get_cart))
+            .plugin(storefront::mount)
+            .plugin(recovery::mount)
     }
 }
 
