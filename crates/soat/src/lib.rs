@@ -4,6 +4,7 @@
 //! a `Module`; [`modules`] lists the ones this build includes, in dependency
 //! order, and [`app`] wires them into one Zapline app.
 
+pub mod csp;
 pub mod guard;
 pub mod ops;
 
@@ -311,8 +312,10 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
 /// name or migration version). That is a build mistake, caught by tests.
 pub fn app(db: Database, settings: Settings) -> App {
     let metrics_token = settings.metrics_token.clone();
-    let app = guard::wrap(ops::first(App::new()).wrap(SecurityHeaders::default()))
-        .openapi(OpenApi::new("SOAT", env!("CARGO_PKG_VERSION")));
+    let app = guard::wrap(csp::wrap(
+        ops::first(App::new()).wrap(SecurityHeaders::default()),
+    ))
+    .openapi(OpenApi::new("SOAT", env!("CARGO_PKG_VERSION")));
     ops::last(modules(settings).build(app, db), metrics_token)
 }
 

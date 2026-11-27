@@ -150,7 +150,7 @@ pub async fn page(conn: &mut PgConnection, scope: &impl Scope, inv: &Invoice) ->
         "bank_details": s.as_ref().map(|s| s.bank_details.clone()),
         "footer": s.as_ref().map(|s| s.footer.clone()),
     });
-    render(PAGE, &data, true).map_err(|e| Error::internal(e.to_string()))
+    render(&soat_core::csp::tag(PAGE), &data, true).map_err(|e| Error::internal(e.to_string()))
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-<div class="head"><h1>Receipt #{{ receipt.order.number }}</h1> <a href="{{ base }}/orders/{{ receipt.order.id }}">The order</a> <button type="button" class="link" onclick="print()">Print</button></div>
+<div class="head"><h1>Receipt #{{ receipt.order.number }}</h1> <a href="{{ base }}/orders/{{ receipt.order.id }}">The order</a> <button type="button" class="link" data-print>Print</button></div>
 <section class="card receipt">
   <p><strong>{{ shop.name }}</strong><br>{{ receipt.location_name }} · {{ receipt.register_name }}<br>{{ receipt.sold_at }}</p>
   <table class="table">

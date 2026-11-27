@@ -809,7 +809,7 @@ async fn shops_turn_on_storefront_blocks_from_apps() {
     assert_eq!(res.status(), 303, "{}", res.text());
     let html = product("acme").await;
     assert!(
-        html.contains("<script src=\"https://cdn.reviews.example.com/stars.js\" defer></script>")
+        html.contains(" src=\"https://cdn.reviews.example.com/stars.js\" defer></script>")
             && html.contains(&format!(
                 "data-soat-app=\"{client_id}\" data-block=\"stars\""
             ))

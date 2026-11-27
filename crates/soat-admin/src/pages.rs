@@ -119,7 +119,7 @@ impl Pages {
             FILES
                 .iter()
                 .map(|(name, source)| {
-                    let t = Template::parse(source)
+                    let t = Template::parse(&soat_core::csp::tag(source))
                         .unwrap_or_else(|e| panic!("admin template {name}: {}", e.0));
                     (*name, t)
                 })

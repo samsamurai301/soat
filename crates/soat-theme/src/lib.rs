@@ -248,7 +248,7 @@ impl Theme {
         let mut css = default_source("theme.css").unwrap_or_default().to_owned();
         for (name, kind, source) in DEFAULT_FILES {
             if *kind != Kind::Style {
-                if let Ok(t) = Template::parse(source) {
+                if let Ok(t) = Template::parse(&soat_core::csp::tag(source)) {
                     templates.insert((*name).to_owned(), t);
                 }
             }
@@ -259,7 +259,9 @@ impl Theme {
                 Some(_) => {
                     // Saved files were checked; a file that no longer parses
                     // (a newer template language) keeps the default.
-                    if let Ok(t) = Template::parse(&source) {
+                    // Scripts and styles get the CSP nonce, those in a
+                    // shop's own files too.
+                    if let Ok(t) = Template::parse(&soat_core::csp::tag(&source)) {
                         templates.insert(name, t);
                     }
                 }

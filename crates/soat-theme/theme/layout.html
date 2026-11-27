@@ -15,6 +15,7 @@
 {{#if canonical }}<meta property="og:url" content="{{ shop.url }}{{ canonical }}">{{/if}}
 {{#if og_image }}<meta property="og:image" content="{{ og_image }}">{{/if}}
 <meta name="twitter:card" content="{{#if og_image }}summary_large_image{{else}}summary{{/if}}">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
 <link rel="stylesheet" href="/theme.css">
 {{#if theme.accent_color }}<style>:root { --accent: {{ theme.accent_color }}; }</style>{{/if}}
 <script src="/assets/htmx-1.9.12.min.js" defer></script>
