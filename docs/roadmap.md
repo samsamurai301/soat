@@ -167,3 +167,18 @@ layer.
 - [x] J4 Data retention (feature `privacy`, guide `docs/privacy.md`): modules declare how long their old rows are kept (`Module::retention`: carts never checked out 90 days, expired sign-ins 30, sent emails 730, cookie choices 1095, the event log and closed privacy requests kept by default), shops change the days within each rule's minimum or keep the data (`/api/retention`, admin Privacy), and can erase customers with no order or sign-in for a time like by hand; an hourly task sweeps each shop once a day, and staff see what is due and sweep now; orders and invoices are never removed
 
 - [x] J5 Accessibility checks (guide `docs/accessibility.md`): `soat_testing::a11y` checks rendered HTML against the WCAG 2.1 criteria markup alone can break (image alt, field labels, link and button names, heading order, duplicate ids, lang, title, positive tabindex, zoom-blocking viewport, frame titles); a test crawls every admin, storefront, account, cart and checkout page reachable from a sample shop and fails on any issue, in `cargo test` and so in CI
+
+## K. Ready for the alpha
+
+Hardening for the public alpha (week of 2027-01-04), using what Zapline
+already has before adding to it.
+
+- [x] K1 Request guards (guide `docs/security.md`): other sites cannot post the admin's or the storefront's forms (Zapline `SameOrigin`, `/api/` exempt as it takes no cookies); 20 tries a minute per client and endpoint where passwords, codes and links are checked (sign-in, sign-up, setup, sign-in links, gift card balance, cart recovery, app tokens, unsubscribe), with `TRUSTED_PROXIES` for reverse proxies **alpha**
+- [ ] K2 Operations: Prometheus metrics behind a token (`SOAT_METRICS_TOKEN`), the outbox and job backlog in health, structured logs with request ids **alpha**
+- [ ] K3 Content Security Policy for the admin and the storefront, with nonces for the theme's and tracking scripts **alpha**
+- [ ] K4 Backups and upgrades: a documented backup and restore of Postgres and files, and an upgrade check that refuses to start on a database newer than the binary **alpha**
+- [ ] K5 Load baseline: a local script that drives the storefront, cart and checkout, with p95 budgets to keep
+- [ ] K6 Release builds made locally: binaries and checksums for Linux and macOS, and a container image, without Actions minutes
+- [ ] K7 ZUGFeRD / Factur-X as PDF/A-3 with the XML inside
+- [ ] K8 Peppol sending through an access point adapter
+- [ ] K9 Plugin host on `zapline-wasm` (once Zapline PR #23 merges)
