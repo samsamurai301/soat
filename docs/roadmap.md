@@ -128,7 +128,7 @@ layer.
 - [x] G2 Sample data and store templates **alpha**
 - [x] G3 Launch checklist
 - [x] G4 CSV import and export **alpha**
-- [x] G5 Shopify importer **alpha** (from Shopify's product and customer CSV exports; images not yet)
+- [x] G5 Shopify importer **alpha** (from Shopify's product and customer CSV exports; images since L1)
 - [x] G6 Shopify delta sync and cutover: a shop connects its store (`*.myshopify.com` and an Admin API token, sealed) at `/api/imports/shopify`; each sync pulls the products and customers changed since the last one as SOAT's import file and the admin imports them through the API; the last sync cuts over and later pulls are refused (crate `soat-import`, feature `shopify-sync`)
 - [x] G7 WooCommerce and Shopware importers: WooCommerce's product export (simple and variable products, variations as variants) and Shopware 6's product and customer exports (default profiles; variants under one `Variant` option) import as they are on the admin's import screen, prices and weights normalized; images not yet
 
@@ -182,3 +182,9 @@ already has before adding to it.
 - [x] K7 ZUGFeRD / Factur-X as PDF/A-3 with the XML inside (guide `docs/e-invoices.md`): `?format=pdf` on the staff, buyer and admin e-invoice downloads answers a PDF/A-3b laid out for people with the EN 16931 CII attached as `factur-x.xml`; own PDF writer in `soat_core::pdf` (embedded, subset fonts, sRGB output intent, XMP), layout in `soat_core::facturx`
 - [x] K8 Peppol sending through an access point adapter (feature `peppol`, crate `soat-peppol`, guide `docs/e-invoices.md`): a shop chooses an access point (`PUT /api/peppol/access-point`, `peppol:manage`, credentials sealed) and its Peppol id; staff send an issued invoice or credit note to the buyer's Peppol id (`POST /api/invoices/{id}/peppol`, `peppol:send`, also from the admin order page) as Peppol BIS Billing 3.0 with both ids as electronic addresses, checked first; every try is kept with the access point's reference or why it failed, once per buyer; Peppol ids are checked by scheme in `soat_core::peppol` (Belgian enterprise numbers, GLN, Norwegian organisation numbers, VAT numbers); the built-in `http` adapter posts sender, receiver, document type, process and UBL, signed like webhooks
 - [ ] K9 Plugin host on `zapline-wasm` (once Zapline PR #23 merges)
+
+## L. After the alpha hardening
+
+What moving shops and the first alpha users need next.
+
+- [x] L1 Product images come along in imports (Shopify's export and Admin API sync, WooCommerce's export, SOAT's own `images` column): `POST /api/products/{id}/media/import` fetches up to 20 links into the product's media, in order, each link once per product (a re-import skips it, also after staff removed its image), reporting links that fail while the rest go in; fetching goes through `soat_http::fetch`: `https://` to public addresses only, checked when the connection is made (names that resolve to private addresses cannot reach the server's network) and on each of up to three redirects, at most 20 MB, only file types SOAT stores; `SOAT_ALLOW_PRIVATE_URLS=1` lifts this for local development (webhooks too)

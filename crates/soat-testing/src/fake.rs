@@ -91,23 +91,54 @@ where
                 };
                 let (status, reply) = answer(&request);
                 seen.lock().unwrap_or_else(|e| e.into_inner()).push(request);
-                // `{"raw": "...", "content_type": "..."}` answers bytes.
-                let (kind, reply) = match reply["raw"].as_str() {
-                    Some(raw) => (
+                // `{"raw": "...", "content_type": "..."}` answers text,
+                // `{"raw_hex": "..."}` any bytes; `"location"` adds that
+                // header (for redirects).
+                let raw_hex = reply["raw_hex"].as_str().map(|h| {
+                    (0..h.len() / 2)
+                        .filter_map(|i| u8::from_str_radix(&h[i * 2..i * 2 + 2], 16).ok())
+                        .collect::<Vec<u8>>()
+                });
+                let (kind, reply) = match (reply["raw"].as_str(), raw_hex) {
+                    (_, Some(bytes)) => (
                         reply["content_type"]
                             .as_str()
                             .unwrap_or("application/octet-stream")
                             .to_owned(),
-                        raw.to_owned(),
+                        (bytes, reply["location"].as_str().map(str::to_owned)),
                     ),
-                    None if reply.is_null() => ("application/json".to_owned(), String::new()),
-                    None => ("application/json".to_owned(), reply.to_string()),
+                    (Some(raw), None) => (
+                        reply["content_type"]
+                            .as_str()
+                            .unwrap_or("application/octet-stream")
+                            .to_owned(),
+                        (
+                            raw.as_bytes().to_vec(),
+                            reply["location"].as_str().map(str::to_owned),
+                        ),
+                    ),
+                    (None, None) if reply.is_null() => {
+                        ("application/json".to_owned(), (Vec::new(), None))
+                    }
+                    (None, None) => (
+                        "application/json".to_owned(),
+                        (
+                            reply.to_string().into_bytes(),
+                            reply["location"].as_str().map(str::to_owned),
+                        ),
+                    ),
                 };
-                let out = format!(
-                    "HTTP/1.1 {status} X\r\ncontent-type: {kind}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
-                    reply.len()
-                );
-                let _ = socket.write_all(out.as_bytes()).await;
+                let (body, location) = reply;
+                let location = location
+                    .map(|l| format!("location: {l}\r\n"))
+                    .unwrap_or_default();
+                let mut out = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: {kind}\r\ncontent-length: {}\r\n{location}connection: close\r\n\r\n",
+                    body.len()
+                )
+                .into_bytes();
+                out.extend_from_slice(&body);
+                let _ = socket.write_all(&out).await;
             });
         }
     });

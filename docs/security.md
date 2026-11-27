@@ -75,3 +75,15 @@ e.g. `10.0.0.0/8,127.0.0.1`), so SOAT reads the client from
 
 Staff and customer passwords are stored as Argon2id hashes, and API keys,
 sessions and links as SHA-256 hashes, never in plain text.
+
+## Links shops give the server
+
+Webhooks and image imports make SOAT call addresses a shop chose, so
+they could otherwise point it at its own network (cloud metadata, the
+database). Only `https://` to public addresses is allowed. Image imports
+(`soat_http::fetch`) check the address the connection is made to, so a
+name that resolves to a private address is refused even if it changed
+since it was checked. Each of up to three redirects is checked again, and
+at most 20 MB of a type SOAT stores is kept. Webhooks check the resolved
+addresses before each send. `SOAT_ALLOW_PRIVATE_URLS=1` lifts all of this
+for local development; never set it on a server.

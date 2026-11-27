@@ -2251,6 +2251,7 @@ dependencies = [
  "soat-fields",
  "soat-files",
  "soat-giftcards",
+ "soat-http",
  "soat-i18n",
  "soat-import",
  "soat-inventory",
@@ -2384,6 +2385,7 @@ dependencies = [
  "soat-events",
  "soat-fields",
  "soat-files",
+ "soat-http",
  "soat-module",
  "soat-tenancy",
  "sqlx",
@@ -2569,7 +2571,9 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "serde_json",
+ "soat-webhooks",
  "tokio",
+ "tower-service",
  "zapline",
 ]
 

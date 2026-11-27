@@ -292,6 +292,10 @@ pub(crate) struct Outcome {
     pub(crate) created: usize,
     pub(crate) updated: usize,
     pub(crate) problems: Vec<Value>,
+    /// Images added from the file's links.
+    pub(crate) images: usize,
+    /// Links that could not be imported; their products were.
+    pub(crate) image_problems: Vec<Value>,
 }
 
 impl Outcome {
@@ -304,6 +308,7 @@ impl Outcome {
         json!({
             "kind": kind, "created": self.created, "updated": self.updated,
             "problems": self.problems, "failed": !self.problems.is_empty(),
+            "images": self.images, "image_problems": self.image_problems,
         })
     }
 }
@@ -395,7 +400,7 @@ async fn read(
     Ok(table)
 }
 
-/// One product from its rows: `Ok(true)` when created.
+/// One product from its rows: whether it was created, and its id.
 async fn import_product(
     cx: &Ctx,
     t: &Table,
@@ -403,7 +408,7 @@ async fn import_product(
     rows: &[usize],
     profile: &Value,
     location: &mut Option<String>,
-) -> std::result::Result<bool, Fail> {
+) -> std::result::Result<(bool, String), Fail> {
     let first = rows[0];
     let cell = |r: usize, c: &str| t.get(r, c).to_owned();
     let q = serde_urlencoded::to_string([("q", handle), ("limit", "200")]).unwrap_or_default();
@@ -655,7 +660,28 @@ async fn import_product(
             return Err((status, reason(&out)));
         }
     }
-    Ok(created)
+    Ok((created, id))
+}
+
+/// Adds the images the product's `images` cell links to; the API skips
+/// links imported before. Problems are the links' own.
+async fn import_images(cx: &Ctx, product: &str, cell: &str, line: usize, out: &mut Outcome) {
+    let urls = soat_core::import::image_urls(cell);
+    for chunk in urls.chunks(20) {
+        let body = json!({ "urls": chunk });
+        let path = format!("/api/products/{}/media/import", encode(product));
+        let (status, got) = cx.call(Method::POST, &path, Some(&body)).await;
+        if status != 200 {
+            out.image_problems
+                .push(json!({ "line": line, "message": reason(&got) }));
+            continue;
+        }
+        out.images += got["imported"].as_u64().unwrap_or(0) as usize;
+        for p in got["problems"].as_array().into_iter().flatten() {
+            out.image_problems
+                .push(json!({ "line": line, "message": text(&p["message"]) }));
+        }
+    }
 }
 
 fn yes(s: &str) -> Option<bool> {
@@ -852,8 +878,17 @@ pub(crate) async fn import_product_rows(
     for (handle, rows) in groups {
         let line = line_of(table, rows[0]);
         match import_product(cx, table, &handle, &rows, &profile, &mut location).await {
-            Ok(true) => out.created += 1,
-            Ok(false) => out.updated += 1,
+            Ok((created, id)) => {
+                if created {
+                    out.created += 1;
+                } else {
+                    out.updated += 1;
+                }
+                let images = table.get(rows[0], "images");
+                if !images.is_empty() {
+                    import_images(cx, &id, images, line, &mut out).await;
+                }
+            }
             Err((401, _)) => return Err(Stop::Login),
             Err((403, e)) => return Err(Stop::Forbidden(json!({ "error": e }))),
             Err((_, e)) => out.problem(line, format!("{handle}: {e}")),

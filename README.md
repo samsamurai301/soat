@@ -3,7 +3,7 @@
 A commerce engine that runs as one Rust binary: catalog, checkout, CMS and
 admin behind a typed API, built on [Zapline](https://github.com/samsamurai301/zapline).
 
-Status: foundation phase, aiming at a public alpha in the week of 4 January 2027.
+Status: alpha hardening done, aiming at a public alpha in the week of 4 January 2027.
 
 ## Run it
 
@@ -31,6 +31,8 @@ from `MAIL_FROM`, shown with each shop's name. Without `SMTP_URL` a debug build
 keeps mail in a dev inbox at `/_dev/mail`; a release build refuses to start.
 Set `SOAT_SECRET_KEY` (32 characters or more, the same on every restart) so
 shops can store their own Anthropic key; it is kept encrypted with it.
+Webhooks and imported images only reach public `https://` addresses;
+`SOAT_ALLOW_PRIVATE_URLS=1` lifts that for local development.
 Set `SOAT_METRICS_TOKEN` for Prometheus to scrape `/metrics`; logs, metrics
 and health checks are described in [docs/operations.md](docs/operations.md).
 Backups, restores and upgrades: [docs/backups.md](docs/backups.md).
