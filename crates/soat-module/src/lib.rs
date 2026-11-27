@@ -29,6 +29,7 @@ pub mod backlog;
 pub mod events;
 mod migrations;
 pub mod privacy;
+pub mod upgrade;
 
 use std::collections::HashSet;
 use std::fmt;
@@ -294,7 +295,8 @@ impl Modules {
     }
 
     /// Validates the set, runs its merged migrations on `db` and mounts
-    /// every module on `app`.
+    /// every module on `app`. A database with migrations the set does not
+    /// have stops startup ([`upgrade::migrate`]).
     ///
     /// # Panics
     ///
@@ -305,7 +307,12 @@ impl Modules {
         let migrations = self
             .migrations()
             .unwrap_or_else(|e| panic!("invalid module list: {e}"));
-        self.install(app.database(db.migrations(migrations)))
+        // Zapline would migrate first; SOAT checks the database is not
+        // newer than this build, then migrates, before any module starts.
+        let app = app
+            .database(db.migrations(migrations.clone()).migrate(false))
+            .on_startup(move |res: zapline::Resources| upgrade::migrate(res, migrations.clone()));
+        self.install(app)
     }
 
     /// Every module's event subscribers, in module order.

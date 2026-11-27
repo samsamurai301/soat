@@ -33,6 +33,7 @@ Set `SOAT_SECRET_KEY` (32 characters or more, the same on every restart) so
 shops can store their own Anthropic key; it is kept encrypted with it.
 Set `SOAT_METRICS_TOKEN` for Prometheus to scrape `/metrics`; logs, metrics
 and health checks are described in [docs/operations.md](docs/operations.md).
+Backups, restores and upgrades: [docs/backups.md](docs/backups.md).
 
 ```sh
 TOKEN=$(curl -s -X POST localhost:8080/api/setup -H 'content-type: application/json' \
