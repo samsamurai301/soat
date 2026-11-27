@@ -281,6 +281,9 @@ async fn detail(mut cx: Ctx, id: &str, error: Option<String>, status: StatusCode
         )
         .await;
     let mut invoices = Vec::new();
+    // Peppol, when the install has it and the shop chose an access point.
+    let (ap, _) = cx.call(Method::GET, "/api/peppol/access-point", None).await;
+    cx.set("peppol", json!(ap == 200));
     if got == 200 {
         for i in invs["items"].as_array().into_iter().flatten() {
             let inv = i["id"].as_str().unwrap_or_default();
@@ -294,7 +297,34 @@ async fn detail(mut cx: Ctx, id: &str, error: Option<String>, status: StatusCode
                     None,
                 )
                 .await;
+            let (sent, tries) = if ap == 200 {
+                cx.call(
+                    Method::GET,
+                    &format!("/api/invoices/{}/peppol", encode(inv)),
+                    None,
+                )
+                .await
+            } else {
+                (404, Value::Null)
+            };
+            let tries: Vec<Value> = if sent == 200 {
+                tries
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|t| {
+                        json!({
+                            "receiver": t["receiver_id"], "sent": t["status"] == "sent",
+                            "reference": t["reference"], "error": t["error"],
+                            "at": t["created_at"].as_str().and_then(|d| d.get(..16)).map(|d| d.replace('T', " ")),
+                        })
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
             invoices.push(json!({
+                "peppol_tries": tries,
                 "id": inv, "number": i["number"],
                 "kind": if i["kind"] == "credit_note" { "credit note" } else { "invoice" },
                 "issued": i["issued_at"].as_str().and_then(|d| d.get(..10)),
@@ -332,6 +362,7 @@ pub(crate) async fn show(
             "captured" => "Payment captured.",
             "refunded" => "Refunded.",
             "labeled" => "Label printed; the shipment has its tracking.",
+            "peppol_sent" => "Sent over Peppol: the access point took it.",
             "canceled" => "Order canceled.",
             _ => "Done.",
         };
@@ -452,7 +483,8 @@ pub(crate) async fn refund(
 
 /// Act on one of the order's payments or shipments (a form post):
 /// `mark-paid` or `capture` a payment, `delivered` or `cancel` a shipment,
-/// `label` (with `carrier_account_id`) to print a shipment's label.
+/// `label` (with `carrier_account_id`) to print a shipment's label,
+/// `peppol` (with `receiver_id`) to send an invoice over Peppol.
 #[post("/admin/{shop}/orders/{id}/{kind}/{item}/{action}", tag = "admin")]
 pub(crate) async fn item_action(
     s: State<Shared>,
@@ -469,11 +501,23 @@ pub(crate) async fn item_action(
         ("shipments", "delivered") => ("fulfillments", "delivered"),
         ("shipments", "cancel") => ("fulfillments", "unshipped"),
         ("shipments", "label") => ("fulfillments", "labeled"),
+        ("invoices", "peppol") => ("invoices", "peppol_sent"),
         _ => return Ok(cx.failed(404, &Value::Null)),
     };
     // Only this order's payments and shipments.
     let o = page!(cx.get(&format!("/api/orders/{}", encode(&id))).await);
-    let belongs = if path == "payments" {
+    let belongs = if path == "invoices" {
+        let invs = page!(
+            cx.get(&format!(
+                "/api/invoices?order_id={}&sort=id&limit=50",
+                encode(&id)
+            ))
+            .await
+        );
+        invs["items"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|i| i["id"] == item.as_str()))
+    } else if path == "payments" {
         let pays = page!(
             cx.get(&format!("/api/payments?reference={}&limit=50", encode(&id)))
                 .await
@@ -488,6 +532,12 @@ pub(crate) async fn item_action(
     };
     if !belongs {
         return Ok(cx.failed(404, &Value::Null));
+    }
+    if action == "peppol" {
+        let fields = Fields::parse(&body);
+        let api = format!("/api/invoices/{}/peppol", encode(&item));
+        let body = json!({ "receiver_id": fields.get("receiver_id").trim() });
+        return Ok(act(cx, &id, Method::POST, &api, body, done).await);
     }
     if action == "label" {
         let account = Fields::parse(&body).get("carrier_account_id");

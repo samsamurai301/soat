@@ -145,8 +145,11 @@ pub struct Party {
     pub vat_number: Option<String>,
     /// A national tax number, e.g. a German Steuernummer.
     pub tax_number: Option<String>,
-    /// Also the electronic address (BT-34, BT-49, scheme `EM`).
+    /// Also the electronic address (BT-34, BT-49, scheme `EM`) when there
+    /// is no [`Party::endpoint`].
     pub email: Option<String>,
+    /// The Peppol id, the electronic address when sending over Peppol.
+    pub endpoint: Option<crate::peppol::ParticipantId>,
     pub phone: Option<String>,
     /// Who to contact (BT-41); the party's name when empty.
     pub contact: String,
@@ -418,13 +421,13 @@ pub fn check(doc: &Document, format: Format) -> Vec<Problem> {
         );
     }
     if format != Format::Cii {
-        if missing(&s.email) {
+        if missing(&s.email) && s.endpoint.is_none() {
             add(
                 "PEPPOL-EN16931-R020",
                 "The seller needs an electronic address: set the shop's invoice email.",
             );
         }
-        if missing(&b.email) {
+        if missing(&b.email) && b.endpoint.is_none() {
             add(
                 "PEPPOL-EN16931-R010",
                 "The buyer needs an electronic address (their email).",
@@ -635,7 +638,15 @@ fn cii_party(x: &mut Xml, tag: &str, p: &Party, seller: bool) {
         x.some("ram:CountrySubDivisionName", &p.region);
         x.close("ram:PostalTradeAddress");
     }
-    if !missing(&p.email) {
+    if let Some(e) = &p.endpoint {
+        x.open("ram:URIUniversalCommunication");
+        x.leaf_with(
+            "ram:URIID",
+            &format!(" schemeID=\"{}\"", e.scheme()),
+            e.id(),
+        );
+        x.close("ram:URIUniversalCommunication");
+    } else if !missing(&p.email) {
         x.open("ram:URIUniversalCommunication");
         x.leaf_with("ram:URIID", " schemeID=\"EM\"", opt(&p.email));
         x.close("ram:URIUniversalCommunication");
@@ -807,7 +818,13 @@ xmlns:cbc=\"urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2
 fn ubl_party(x: &mut Xml, tag: &str, p: &Party) {
     x.open(tag);
     x.open("cac:Party");
-    if !missing(&p.email) {
+    if let Some(e) = &p.endpoint {
+        x.leaf_with(
+            "cbc:EndpointID",
+            &format!(" schemeID=\"{}\"", e.scheme()),
+            e.id(),
+        );
+    } else if !missing(&p.email) {
         x.leaf_with("cbc:EndpointID", " schemeID=\"EM\"", opt(&p.email));
     }
     if !blank(&p.country) {
@@ -1273,6 +1290,26 @@ mod tests {
                 .unwrap_or_else(|| panic!("{part} missing or out of order in\n{out}"));
             at += found + part.len();
         }
+    }
+
+    #[test]
+    fn peppol_ids_are_the_electronic_addresses() {
+        use crate::peppol::ParticipantId;
+        let mut doc = example();
+        doc.seller.email = None;
+        doc.buyer.email = None;
+        assert_eq!(
+            rules(&doc, Format::Peppol),
+            ["PEPPOL-EN16931-R020", "PEPPOL-EN16931-R010"]
+        );
+        doc.seller.endpoint = ParticipantId::parse("9930:DE123456789").ok();
+        doc.buyer.endpoint = ParticipantId::parse("0208:0123456749").ok();
+        assert_eq!(rules(&doc, Format::Peppol), Vec::<&str>::new());
+        let ubl = xml(&doc, Format::Peppol);
+        assert!(ubl.contains("<cbc:EndpointID schemeID=\"9930\">DE123456789</cbc:EndpointID>"));
+        assert!(ubl.contains("<cbc:EndpointID schemeID=\"0208\">0123456749</cbc:EndpointID>"));
+        let cii = xml(&doc, Format::Cii);
+        assert!(cii.contains("<ram:URIID schemeID=\"0208\">0123456749</ram:URIID>"));
     }
 
     #[test]

@@ -85,6 +85,11 @@
       <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=cii">its XML</a> ·
       <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=peppol">Peppol</a>
       {{#if problems }}<ul class="muted">{{#each problems }}<li>XRechnung {{ rule }}: {{ message }}</li>{{/each}}</ul>{{/if}}
+      {{#if peppol_tries }}<ul class="muted">{{#each peppol_tries }}<li>Peppol to {{ receiver }}, {{ at }}: {{#if sent }}sent ({{ reference }}){{else}}failed: {{ error }}{{/if}}</li>{{/each}}</ul>{{/if}}
+      {{#if peppol }}<form method="post" action="{{ base }}/orders/{{ order.id }}/invoices/{{ id }}/peppol" class="inline">
+        <label>Buyer's Peppol id <input name="receiver_id" required maxlength="100" placeholder="0208:0123456749" autocomplete="off"></label>
+        <button class="link">Send over Peppol</button>
+      </form>{{/if}}
     </td></tr>{{/each}}</tbody>
   </table>
 </section>
