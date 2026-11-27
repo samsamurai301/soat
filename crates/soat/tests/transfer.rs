@@ -260,7 +260,7 @@ async fn customers_round_trip_through_csv() {
 
 /// Part of a product export as Shopify writes it.
 const SHOPIFY_PRODUCTS: &str = "Handle,Title,Body (HTML),Vendor,Product Category,Type,Tags,Published,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Option3 Name,Option3 Value,Variant SKU,Variant Grams,Variant Inventory Tracker,Variant Inventory Qty,Variant Inventory Policy,Variant Fulfillment Service,Variant Price,Variant Compare At Price,Variant Requires Shipping,Variant Taxable,Variant Barcode,Image Src,Image Position,Image Alt Text,Gift Card,SEO Title,SEO Description,Variant Image,Variant Weight Unit,Variant Tax Code,Cost per item,Status\n\
-linen-shirt,Linen Shirt,\"<p>Breathable <strong>linen</strong>.</p><ul><li>Relaxed fit</li><li>Made in Lithuania</li></ul>\",Acme,,Shirts,\"summer, linen\",TRUE,Size,S,Color,White,,,LIN-S-W,220.0,shopify,3,deny,manual,89.00,,TRUE,TRUE,,http://127.0.0.1:9/a.jpg,1,,FALSE,Linen shirt for summer,Breathable linen.,,g,,,active\n\
+linen-shirt,Linen Shirt,\"<p>Breathable <strong>linen</strong>.</p><ul><li>Relaxed fit</li><li>Made in Lithuania</li></ul>\",Acme,,Shirts,\"summer, linen\",TRUE,Size,S,Color,White,,,LIN-S-W,220.0,shopify,3,deny,manual,89.00,,TRUE,TRUE,,http://127.0.0.1:9/a.jpg,1,\"Linen shirt, front\",FALSE,Linen shirt for summer,Breathable linen.,,g,,,active\n\
 linen-shirt,,,,,,,,,M,,White,,,LIN-M-W,220.0,shopify,5,deny,manual,89.00,,TRUE,TRUE,,http://127.0.0.1:9/b.jpg,2,,,,,,g,,,\n\
 linen-shirt,,,,,,,,,M,,Sand,,,LIN-M-S,220.0,shopify,0,deny,manual,92.00,,TRUE,TRUE,,,,,,,,,g,,,\n\
 linen-shirt,,,,,,,,,,,,,,,,,,,,,,,,,http://127.0.0.1:9/c.jpg,3,,,,,,,,,\n\
@@ -526,6 +526,8 @@ async fn product_images_come_along_with_an_import() {
     assert_eq!(names, ["a.jpg", "b.jpg"], "in the export's order");
     assert_eq!(media[0]["content_type"], "image/jpeg");
     assert_eq!(media[0]["width"], 4);
+    assert_eq!(media[0]["alt"], "Linen shirt, front", "Image Alt Text");
+    assert_eq!(media[1]["alt"], "");
 
     // Importing again fetches nothing twice; an image staff removed stays
     // removed.

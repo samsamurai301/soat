@@ -86,32 +86,45 @@ pub fn products(t: &Table) -> Table {
         );
         row.push(t.get(r, "seo title").to_owned());
         row.push(t.get(r, "seo description").to_owned());
-        row.push(if first {
+        let (images, alts) = if first {
             images_of(t, t.get(r, "handle"))
         } else {
-            String::new()
-        });
+            Default::default()
+        };
+        row.push(images);
+        row.push(alts);
         row.push((r + 2).to_string());
         rows.push(row);
     }
     Table { headers, rows }
 }
 
-/// Every `Image Src` (and variant image) of `handle`, in order, once each.
-fn images_of(t: &Table, handle: &str) -> String {
-    let mut urls: Vec<&str> = Vec::new();
+/// Every `Image Src` (and variant image) of `handle`, in order, once each,
+/// and their `Image Alt Text`: the `images` and `image_alts` cells.
+fn images_of(t: &Table, handle: &str) -> (String, String) {
+    let mut images: Vec<(&str, &str)> = Vec::new();
     for r in 0..t.rows.len() {
         if t.get(r, "handle") != handle {
             continue;
         }
-        for column in ["image src", "variant image"] {
+        for (column, alt) in [("image src", "image alt text"), ("variant image", "")] {
             let url = t.get(r, column).trim();
-            if !url.is_empty() && !urls.contains(&url) {
-                urls.push(url);
+            if url.is_empty() || url.contains([' ', ',']) {
+                continue;
+            }
+            let alt = if alt.is_empty() { "" } else { t.get(r, alt) };
+            match images.iter_mut().find(|(u, _)| *u == url) {
+                Some((_, a)) if a.trim().is_empty() => *a = alt,
+                Some(_) => {}
+                None => images.push((url, alt)),
             }
         }
     }
-    urls.join(" ")
+    let urls: Vec<&str> = images.iter().map(|(u, _)| *u).collect();
+    (
+        urls.join(" "),
+        import::alts_cell(images.iter().map(|(_, a)| *a)),
+    )
 }
 
 /// The customer export as SOAT's customer file.
@@ -180,14 +193,19 @@ pub fn api_products(list: &[Value]) -> Table {
                 }
                 .to_owned();
                 row.tags = str_of(p, "tags");
-                row.images = p["images"]
+                let images: Vec<(String, String)> = p["images"]
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .map(|i| str_of(i, "src"))
-                    .filter(|s| !s.is_empty())
+                    .map(|i| (str_of(i, "src"), str_of(i, "alt")))
+                    .filter(|(s, _)| !s.is_empty() && !s.contains([' ', ',']))
+                    .collect();
+                row.images = images
+                    .iter()
+                    .map(|(s, _)| s.as_str())
                     .collect::<Vec<_>>()
                     .join(" ");
+                row.image_alts = import::alts_cell(images.iter().map(|(_, a)| a.as_str()));
                 row.weight_grams = v["grams"]
                     .as_i64()
                     .map(|g| g.to_string())
@@ -386,11 +404,11 @@ mod tests {
         assert_eq!(to_markdown("<h1>Big</h1>"), "## Big");
     }
 
-    const EXPORT: &str = "Handle,Title,Body (HTML),Vendor,Tags,Published,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Variant SKU,Variant Grams,Variant Inventory Tracker,Variant Inventory Qty,Variant Price,Variant Taxable,Image Src,SEO Title,Status\n\
-        tee,Tee,<p>Soft</p>,Acme,\"tops, cotton\",TRUE,Size,S,Color,Red,TEE-S-R,180.0,shopify,4,29.00,TRUE,https://cdn/x.jpg,Organic tee,active\n\
-        tee,,,,,,,M,,Red,TEE-M-R,180.0,shopify,0,29.00,TRUE,,,\n\
-        tee,,,,,,,,,,,,,,,,https://cdn/y.jpg,,\n\
-        card,Gift card,,Acme,,FALSE,Title,Default Title,,,CARD,0,,,25.00,FALSE,,,\n";
+    const EXPORT: &str = "Handle,Title,Body (HTML),Vendor,Tags,Published,Option1 Name,Option1 Value,Option2 Name,Option2 Value,Variant SKU,Variant Grams,Variant Inventory Tracker,Variant Inventory Qty,Variant Price,Variant Taxable,Image Src,Image Alt Text,SEO Title,Status\n\
+        tee,Tee,<p>Soft</p>,Acme,\"tops, cotton\",TRUE,Size,S,Color,Red,TEE-S-R,180.0,shopify,4,29.00,TRUE,https://cdn/x.jpg,Tee | front,Organic tee,active\n\
+        tee,,,,,,,M,,Red,TEE-M-R,180.0,shopify,0,29.00,TRUE,,,,\n\
+        tee,,,,,,,,,,,,,,,,https://cdn/y.jpg,,,\n\
+        card,Gift card,,Acme,,FALSE,Title,Default Title,,,CARD,0,,,25.00,FALSE,,,,\n";
 
     #[test]
     fn reads_the_product_export() {
@@ -405,7 +423,9 @@ mod tests {
         assert_eq!(p.get(0, "stock"), "4");
         assert_eq!(p.get(0, "seo_title"), "Organic tee");
         assert_eq!(p.get(0, "images"), "https://cdn/x.jpg https://cdn/y.jpg");
+        assert_eq!(p.get(0, "image_alts"), "Tee / front|");
         assert_eq!(p.get(1, "images"), "");
+        assert_eq!(p.get(1, "image_alts"), "");
         assert_eq!(p.get(1, "option1_value"), "M");
         assert_eq!(p.get(1, "status"), "");
         assert_eq!(p.get(2, "option1_name"), "");
@@ -435,7 +455,7 @@ mod tests {
     fn reads_the_admin_api() {
         let list = serde_json::json!([
             { "handle": "tee", "title": "Tee", "body_html": "<p>Soft</p>", "status": "active",
-              "images": [{ "src": "https://cdn/a.jpg" }, { "src": "https://cdn/b.jpg" }],
+              "images": [{ "src": "https://cdn/a.jpg" }, { "src": "https://cdn/b.jpg", "alt": "Back" }],
               "tags": "tops, cotton", "options": [{ "name": "Size" }],
               "variants": [
                 { "sku": "TEE-S", "price": "29.00", "option1": "S", "grams": 180,
@@ -454,6 +474,7 @@ mod tests {
         assert_eq!(t.get(0, "stock"), "4");
         assert_eq!(t.get(0, "weight_grams"), "180");
         assert_eq!(t.get(0, "images"), "https://cdn/a.jpg https://cdn/b.jpg");
+        assert_eq!(t.get(0, "image_alts"), "|Back");
         assert_eq!(t.get(1, "images"), "");
         assert_eq!(t.get(1, "title"), "");
         assert_eq!(t.get(1, "option1_value"), "M");

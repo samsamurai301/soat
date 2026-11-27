@@ -443,17 +443,20 @@ async fn make_sizes(
     Ok(Json(view))
 }
 
-/// Stores `bytes` as a file of the shop, named after `name`, in the
-/// tenant transaction `tx`, and publishes `file.created`: for files a
-/// module makes itself (a shipping label, say). A type SOAT does not store
-/// is a 415 `unsupported_file_type`.
+/// Stores `bytes` as a file of the shop, named after `name` and described
+/// by `alt` (cut to 1000 characters), in the tenant transaction `tx`, and
+/// publishes `file.created`: for files a module makes itself (a shipping
+/// label, an imported image). A type SOAT does not store is a 415
+/// `unsupported_file_type`.
 pub async fn store(
     tx: &mut soat_tenancy::TenantTx,
     scope: &impl soat_tenancy::Scope,
     storage: &Storage,
     name: &str,
+    alt: &str,
     bytes: zapline::Bytes,
 ) -> Result<FileView> {
+    let alt: String = alt.trim().chars().take(1000).collect();
     let kind = detect(&bytes).ok_or_else(|| {
         Error::new(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -472,7 +475,7 @@ pub async fn store(
     let row = sqlx::query_as::<_, Row>(&format!(
         "INSERT INTO files (id, tenant_id, key, file_name, content_type, size, alt, \
          width, height, sizes) \
-         VALUES ($1, $2, $3, $4, $5, $6, '', $7, $8, $9) RETURNING {COLUMNS}"
+         VALUES ($1, $2, $3, $4, $5, $6, $10, $7, $8, $9) RETURNING {COLUMNS}"
     ))
     .bind(id.as_str())
     .bind(scope.tenant_id())
@@ -483,6 +486,7 @@ pub async fn store(
     .bind(width)
     .bind(height)
     .bind(&widths)
+    .bind(&alt)
     .fetch_one(&mut **tx)
     .await?;
     let view = row.view(storage);
