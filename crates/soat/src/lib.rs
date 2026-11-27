@@ -4,6 +4,8 @@
 //! a `Module`; [`modules`] lists the ones this build includes, in dependency
 //! order, and [`app`] wires them into one Zapline app.
 
+pub mod guard;
+
 use soat_admin::Admin;
 pub use soat_auth::Auth;
 use soat_cart::Carts;
@@ -299,8 +301,7 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
 /// When the module list is inconsistent (a missing dependency, a duplicate
 /// name or migration version). That is a build mistake, caught by tests.
 pub fn app(db: Database, settings: Settings) -> App {
-    let app = App::new()
-        .wrap(SecurityHeaders::default())
+    let app = guard::wrap(App::new().wrap(SecurityHeaders::default()))
         .plugin(Health::new().check("database", DbCheck::new()))
         .openapi(OpenApi::new("SOAT", env!("CARGO_PKG_VERSION")));
     modules(settings).build(app, db)
