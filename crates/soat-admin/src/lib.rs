@@ -255,6 +255,8 @@ impl Module for Admin {
             orders::cancel,
             orders::refund,
             orders::item_action,
+            orders::invoice_page,
+            orders::invoice_download,
         ))
         .mount((
             customers::list,

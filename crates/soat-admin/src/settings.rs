@@ -524,6 +524,7 @@ async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Field
                     "line1": f.get("line1"), "line2": f.get("line2"),
                     "postal_code": f.get("postal_code"), "city": f.get("city"),
                     "country": f.get("country").to_ascii_uppercase(),
+                    "phone": f.get("phone"),
                 },
                 "vat_number": opt("vat_number"), "tax_number": opt("tax_number"),
                 "email": opt("email"), "bank_details": f.get("bank_details"),

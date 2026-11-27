@@ -529,3 +529,227 @@ async fn invoices_stay_in_their_shop() {
     )
     .await;
 }
+
+/// GET `path` as staff (or with `headers` instead): status, content type,
+/// content disposition and body.
+async fn fetch(s: &Shop, path: &str, headers: &[(&str, &str)]) -> (u16, String, String, String) {
+    let req = s.client.get(path).header("x-soat-tenant", "acme");
+    let req = if headers.is_empty() {
+        req.bearer(&s.admin)
+    } else {
+        headers.iter().fold(req, |r, (k, v)| r.header(*k, *v))
+    };
+    let res = req.send().await;
+    (
+        res.status().as_u16(),
+        res.header("content-type").unwrap_or_default().to_owned(),
+        res.header("content-disposition")
+            .unwrap_or_default()
+            .to_owned(),
+        res.text(),
+    )
+}
+
+fn rules(check: &Value) -> Vec<String> {
+    check["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["rule"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn e_invoices_in_xrechnung_zugferd_and_peppol() {
+    let s = shop().await;
+    s.settings("paid").await;
+    let (order, token) = s.order(berlin(), None).await;
+    let id = order["id"].as_str().unwrap();
+    s.pay(id).await;
+    s.dispatch().await;
+    s.dispatch().await;
+    let inv = s.invoices(id).await[0].clone();
+    let inv_id = inv["id"].as_str().unwrap();
+    let number = inv["number"].as_str().unwrap();
+
+    // The shop has no phone or email yet: XRechnung and Peppol say so.
+    let check = |f: &str| format!("/api/invoices/{inv_id}/e-invoice/check?format={f}");
+    let x = s.staff("GET", &check("xrechnung"), Value::Null, 200).await;
+    assert_eq!(x["ready"], false);
+    assert_eq!(
+        rules(&x),
+        ["PEPPOL-EN16931-R020", "BR-DE-6", "BR-DE-7"],
+        "{x}"
+    );
+    let cii = s.staff("GET", &check("zugferd"), Value::Null, 200).await;
+    assert_eq!(cii["format"], "cii");
+    assert_eq!(cii["ready"], true, "{cii}");
+    s.staff("GET", &check("pdf"), Value::Null, 422).await;
+
+    s.staff(
+        "PUT",
+        "/api/invoices/settings",
+        json!({
+            "legal_name": "Acme GmbH",
+            "address": { "line1": "Torstr. 5", "postal_code": "10119", "city": "Berlin", "country": "DE", "phone": "+49 30 1234567" },
+            "vat_number": "DE 123456789",
+            "email": "billing@acme.example",
+            "bank_details": "Acme Bank\nIBAN DE02 1203 0000 0000 2020 51",
+            "issue_on": "paid",
+        }),
+        200,
+    )
+    .await;
+    // The issued invoice keeps its seller; only new invoices get the phone.
+    let x = s.staff("GET", &check("xrechnung"), Value::Null, 200).await;
+    assert_eq!(rules(&x), ["PEPPOL-EN16931-R020", "BR-DE-6", "BR-DE-7"]);
+    let (order, token2) = s.order(berlin(), None).await;
+    let id2 = order["id"].as_str().unwrap();
+    s.pay(id2).await;
+    s.dispatch().await;
+    s.dispatch().await;
+    let inv2 = s.invoices(id2).await[0].clone();
+    let inv2_id = inv2["id"].as_str().unwrap();
+    for f in ["xrechnung", "cii", "peppol"] {
+        let c = s
+            .staff(
+                "GET",
+                &format!("/api/invoices/{inv2_id}/e-invoice/check?format={f}"),
+                Value::Null,
+                200,
+            )
+            .await;
+        assert_eq!(c["ready"], true, "{f}: {c}");
+    }
+
+    let (status, kind, disposition, xml) = fetch(
+        &s,
+        &format!("/api/invoices/{inv2_id}/e-invoice?buyer_reference=04011000-1234512345-06"),
+        &[],
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert!(kind.starts_with("application/xml"));
+    assert!(disposition.contains("-xrechnung.xml"), "{disposition}");
+    for part in [
+        "urn:xeinkauf.de:kosit:xrechnung_3.0",
+        "<ram:TypeCode>380</ram:TypeCode>",
+        "<ram:BuyerReference>04011000-1234512345-06</ram:BuyerReference>",
+        "<ram:CompleteNumber>+49 30 1234567</ram:CompleteNumber>",
+        "<ram:URIID schemeID=\"EM\">billing@acme.example</ram:URIID>",
+        "<ram:URIID schemeID=\"EM\">ada@example.com</ram:URIID>",
+        "<ram:ID schemeID=\"VA\">DE123456789</ram:ID>",
+        "<ram:IBANID>DE02120300000000202051</ram:IBANID>",
+        "<ram:IssuerAssignedID>1002</ram:IssuerAssignedID>",
+        "<ram:CalculatedAmount>4.59</ram:CalculatedAmount>",
+        "<ram:BasisAmount>24.16</ram:BasisAmount>",
+        "<ram:RateApplicablePercent>7.00</ram:RateApplicablePercent>",
+        "<ram:TaxTotalAmount currencyID=\"EUR\">5.29</ram:TaxTotalAmount>",
+        "<ram:GrandTotalAmount>39.45</ram:GrandTotalAmount>",
+        "<ram:TotalPrepaidAmount>39.45</ram:TotalPrepaidAmount>",
+        "<ram:DuePayableAmount>0.00</ram:DuePayableAmount>",
+    ] {
+        assert!(xml.contains(part), "{part} missing in\n{xml}");
+    }
+    // Without a reference, the order number.
+    let (_, _, _, xml) = fetch(
+        &s,
+        &format!("/api/invoices/{inv2_id}/e-invoice?format=cii"),
+        &[],
+    )
+    .await;
+    assert!(xml.contains("<ram:BuyerReference>1002</ram:BuyerReference>"));
+    assert!(xml.contains("<ram:ID>urn:cen.eu:en16931:2017</ram:ID>"));
+
+    // A refund's credit note, in UBL.
+    s.staff(
+        "POST",
+        &format!("/api/orders/{id2}/refunds"),
+        json!({ "amount_minor": 1000 }),
+        201,
+    )
+    .await;
+    s.dispatch().await;
+    s.dispatch().await;
+    let all = s.invoices(id2).await;
+    let note = all[1]["id"].as_str().unwrap();
+    let (status, _, disposition, ubl) = fetch(
+        &s,
+        &format!("/api/invoices/{note}/e-invoice?format=peppol"),
+        &[],
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert!(disposition.contains("CN-"), "{disposition}");
+    for part in [
+        "<CreditNote xmlns=\"urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2\"",
+        "<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>",
+        &format!("<cbc:ID>{}</cbc:ID>", inv2["number"].as_str().unwrap()),
+        "<cbc:PayableAmount currencyID=\"EUR\">0.00</cbc:PayableAmount>",
+        "<cbc:TaxInclusiveAmount currencyID=\"EUR\">10.00</cbc:TaxInclusiveAmount>",
+    ] {
+        assert!(ubl.contains(part), "{part} missing in\n{ubl}");
+    }
+
+    // The buyer gets theirs with the order's token, not another order's.
+    let mine = format!("/api/storefront/orders/{id}/invoices/{inv_id}/e-invoice?format=cii");
+    let (status, _, _, xml) = fetch(&s, &mine, &[("x-soat-order-token", &token)]).await;
+    assert_eq!(status, 200);
+    assert!(xml.contains(&format!("<ram:ID>{number}</ram:ID>")));
+    let (status, ..) = fetch(&s, &mine, &[("x-soat-order-token", &token2)]).await;
+    assert_eq!(status, 404);
+    let theirs = format!("/api/storefront/orders/{id2}/invoices/{inv_id}/e-invoice");
+    let (status, ..) = fetch(&s, &theirs, &[("x-soat-order-token", &token2)]).await;
+    assert_eq!(status, 404);
+
+    // Another shop sees none of it.
+    for path in [
+        format!("/api/invoices/{inv_id}/e-invoice"),
+        format!("/api/invoices/{inv_id}/e-invoice/check"),
+    ] {
+        call(
+            &s.client,
+            "other",
+            "GET",
+            &path,
+            Some(&s.admin),
+            &[],
+            Value::Null,
+            404,
+        )
+        .await;
+    }
+
+    // In the admin: the order lists them, with downloads that work.
+    let res = s
+        .client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let cookie = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let admin = |path: String| {
+        let cookie = cookie.clone();
+        let s = &s;
+        async move {
+            let res = s.client.get(&path).header("cookie", &cookie).send().await;
+            (res.status().as_u16(), res.text())
+        }
+    };
+    let (status, page) = admin(format!("/admin/acme/orders/{id}")).await;
+    assert_eq!(status, 200);
+    assert!(page.contains(number), "{page}");
+    assert!(
+        page.contains("XRechnung BR-DE-6"),
+        "the old invoice lacks a phone"
+    );
+    let (status, xml) = admin(format!(
+        "/admin/acme/invoices/{inv2_id}/e-invoice?format=peppol"
+    ))
+    .await;
+    assert_eq!(status, 200);
+    assert!(xml.contains("<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>"));
+    let (status, html) = admin(format!("/admin/acme/invoices/{inv2_id}/document")).await;
+    assert_eq!(status, 200);
+    assert!(html.contains("Invoice "));
+}

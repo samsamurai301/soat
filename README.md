@@ -110,7 +110,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-subscriptions` | Subscriptions: plans on products, renewals placed as orders on schedule, pause, skip and cancel (feature `subscriptions`) |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
-| `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |
+| `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable, and as e-invoices in XRechnung, ZUGFeRD / Factur-X XML and Peppol BIS (guide `docs/e-invoices.md`) |
 | `crates/soat-notify` | Transactional email: order, shipping, cancel and refund emails, staff notices, editable templates, sent log |
 | `crates/soat-cms` | Content: pages built from blocks (drafts and published), a blog with tags, scheduling and a feed, menus and URL redirects, read by the storefront |
 | `crates/soat-theme` | Themes: a default theme, per-shop template and style edits, settings; safe templates with Markdown |

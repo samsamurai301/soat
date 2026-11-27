@@ -272,6 +272,38 @@ async fn detail(mut cx: Ctx, id: &str, error: Option<String>, status: StatusCode
         Vec::new()
     };
     cx.set("carrier_accounts", Value::Array(accounts));
+    // Invoices and credit notes, with what XRechnung would reject.
+    let (got, invs) = cx
+        .call(
+            Method::GET,
+            &format!("/api/invoices?order_id={}&sort=id&limit=50", encode(id)),
+            None,
+        )
+        .await;
+    let mut invoices = Vec::new();
+    if got == 200 {
+        for i in invs["items"].as_array().into_iter().flatten() {
+            let inv = i["id"].as_str().unwrap_or_default();
+            let (checked, check) = cx
+                .call(
+                    Method::GET,
+                    &format!(
+                        "/api/invoices/{}/e-invoice/check?format=xrechnung",
+                        encode(inv)
+                    ),
+                    None,
+                )
+                .await;
+            invoices.push(json!({
+                "id": inv, "number": i["number"],
+                "kind": if i["kind"] == "credit_note" { "credit note" } else { "invoice" },
+                "issued": i["issued_at"].as_str().and_then(|d| d.get(..10)),
+                "total": m(&i["total_minor"]),
+                "problems": if checked == 200 { check["problems"].clone() } else { json!([]) },
+            }));
+        }
+    }
+    cx.set("invoices", Value::Array(invoices));
     crate::apps::links(&mut cx, "order", Some(id)).await;
     cx.set("shipments", Value::Array(shipments));
     if let Some(e) = error {
@@ -465,4 +497,76 @@ pub(crate) async fn item_action(
     }
     let api = format!("/api/{path}/{}/{}", encode(&item), action);
     Ok(act(cx, &id, Method::POST, &api, json!({}), done).await)
+}
+
+/// An invoice's printable page, opened from its order.
+#[get("/admin/{shop}/invoices/{id}/document", tag = "admin")]
+pub(crate) async fn invoice_page(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, id)): Path<(String, String)>,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "orders").await);
+    let (status, out) = cx
+        .call(
+            Method::GET,
+            &format!("/api/invoices/{}/document", encode(&id)),
+            None,
+        )
+        .await;
+    match out {
+        Value::String(html) if status == 200 => Ok(Html(html).into_response()),
+        out => Ok(cx.failed(status, &out)),
+    }
+}
+
+/// An invoice as an e-invoice download (`?format=xrechnung`, `cii` or
+/// `peppol`).
+#[get("/admin/{shop}/invoices/{id}/e-invoice", tag = "admin")]
+pub(crate) async fn invoice_download(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path((shop, id)): Path<(String, String)>,
+    Query(q): Query<serde_json::Map<String, Value>>,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "orders").await);
+    let format = q
+        .get("format")
+        .and_then(Value::as_str)
+        .unwrap_or("xrechnung");
+    let (status, out) = cx
+        .call(
+            Method::GET,
+            &format!(
+                "/api/invoices/{}/e-invoice?format={}",
+                encode(&id),
+                encode(format)
+            ),
+            None,
+        )
+        .await;
+    let Value::String(xml) = out else {
+        return Ok(cx.failed(status, &out));
+    };
+    if status != 200 {
+        return Ok(cx.failed(status, &json!({})));
+    }
+    let mut res = xml.into_response();
+    let h = res.headers_mut();
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/xml; charset=utf-8"),
+    );
+    let name: String = format!("{id}-{format}.xml")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        .collect();
+    if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")) {
+        h.insert(header::CONTENT_DISPOSITION, v);
+    }
+    Ok(res)
 }

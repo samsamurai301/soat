@@ -162,4 +162,6 @@ layer.
 
 - [x] J2 Cookie consent (feature `privacy`, guide `docs/privacy.md`): htmx is served by SOAT itself (`soat_core::assets`), so neither storefront nor admin contacts a third party; a shop's cookie banner (`/api/consent`, `privacy:settings`, admin Privacy) with Accept all and Reject all side by side and a choice per purpose (analytics, marketing, apps), kept six months and asked again for a new version; Google Analytics 4 (with Consent Mode v2), the Meta Pixel and apps' scripts load only with consent to their purpose; each choice recorded without who made it, with stats; `/consent` settings page linked from the footer; headless storefronts read the settings and record choices (`/api/storefront/consent`)
 
-J3 e-invoicing · J4 data retention · J5 accessibility checks in CI
+- [x] J3 E-invoices (crate `soat-invoices`, logic in `soat_core::einvoice`, guide `docs/e-invoices.md`): every invoice and credit note downloads as an EN 16931 e-invoice in XRechnung 3.0 (CII), the XML of ZUGFeRD / Factur-X (profile EN 16931) or Peppol BIS Billing 3.0 (UBL), for staff and for the buyer holding the order's token, with the buyer's reference (Leitweg-ID), VAT categories S, Z, AE (reverse charge) and G (export), the IBAN from the bank details and what was paid; a check names by rule what a receiver's validator would reject (seller phone and email for XRechnung, VAT IDs for reverse charge, totals that do not add up), shown on the admin order page beside the downloads
+
+J4 data retention · J5 accessibility checks in CI
