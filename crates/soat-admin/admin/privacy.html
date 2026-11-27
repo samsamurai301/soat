@@ -1,4 +1,4 @@
-<div class="head"><h1>Privacy requests</h1> <a href="{{ base }}/customers">Customers</a></div>
+<div class="head"><h1>Privacy</h1> <a href="{{ base }}/customers">Customers</a></div>
 {{#if missing}}<p class="muted">Privacy tools are not part of this build of SOAT.</p>{{else}}
 {{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
 {{#if report }}
@@ -10,6 +10,19 @@
   </tbody></table>
 </section>
 {{/if}}
+<form method="post" action="{{ base }}/privacy/consent" class="form">
+  <fieldset><legend>Cookie banner</legend>
+    <p class="muted">SOAT sets only the cookies your shop needs to work and counts visits without cookies, so you need no banner unless you add tracking or apps. With the banner on, Google Analytics, the Meta Pixel and apps' scripts load only for visitors who agree. Accept all and Reject all are shown side by side, as EU law expects.</p>
+    <label><input type="checkbox" name="enabled"{{#if banner.enabled }} checked{{/if}}> Ask visitors (version {{ banner.version }})</label>
+    <label>Privacy policy <input name="privacy_url" value="{{ banner.privacy_url }}" placeholder="/pages/privacy"></label>
+    <label>Google Analytics 4 id <input name="ga4_id" value="{{ banner.ga4_id }}" placeholder="G-XXXXXXXXXX"></label>
+    <label>Meta Pixel id <input name="meta_pixel_id" value="{{ banner.meta_pixel_id }}" inputmode="numeric"></label>
+    <label><input type="checkbox" name="ask_again"> Ask everyone again (after adding tracking)</label>
+  </fieldset>
+  <button class="button">Save banner</button>
+</form>
+{{#if stats.choices }}<p>Last 30 days: {{ stats.choices }} choices · {{ stats.accepted_all }} accepted all · {{ stats.rejected_all }} rejected all · {{ stats.analytics }} analytics · {{ stats.marketing }} marketing · {{ stats.apps }} apps</p>{{/if}}
+<h2>Requests</h2>
 <p class="muted">Customers can download their own data and ask to be erased from their account page. Under the GDPR you answer within a month. Erase a customer from their page, or decline with the reason, for example an unpaid order still owed.</p>
 {{#if requests }}
 <table class="table"><thead><tr><th>Customer</th><th>Asked</th><th>Status</th><th></th></tr></thead><tbody>

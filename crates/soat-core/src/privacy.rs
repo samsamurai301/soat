@@ -74,3 +74,69 @@ fn walk(value: &mut Value, email: &str) -> bool {
         _ => false,
     }
 }
+
+/// What a visitor agreed to, beyond what the shop needs to work.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Consent {
+    /// The version of the shop's banner it was given for; a new version
+    /// asks again.
+    pub version: i64,
+    /// Measuring visits with a third party (e.g. Google Analytics).
+    pub analytics: bool,
+    /// Ads and their measuring (e.g. the Meta Pixel).
+    pub marketing: bool,
+    /// Features that apps load from their own servers.
+    pub apps: bool,
+}
+
+impl Consent {
+    /// Agreeing to everything, or to nothing.
+    pub fn all(version: i64, yes: bool) -> Self {
+        Self {
+            version,
+            analytics: yes,
+            marketing: yes,
+            apps: yes,
+        }
+    }
+
+    /// As a cookie value, e.g. `3.am` (version 3, analytics and marketing).
+    ///
+    /// ```
+    /// use soat_core::privacy::Consent;
+    /// let c = Consent { version: 3, analytics: true, marketing: true, apps: false };
+    /// assert_eq!(c.cookie(), "3.am");
+    /// assert_eq!(Consent::parse("3.am"), Some(c));
+    /// assert_eq!(Consent::parse("2."), Some(Consent::all(2, false)));
+    /// assert_eq!(Consent::parse("x.am"), None);
+    /// assert_eq!(Consent::parse("3.zz"), None);
+    /// ```
+    pub fn cookie(&self) -> String {
+        let mut flags = String::new();
+        if self.analytics {
+            flags.push('a');
+        }
+        if self.marketing {
+            flags.push('m');
+        }
+        if self.apps {
+            flags.push('x');
+        }
+        format!("{}.{flags}", self.version)
+    }
+
+    /// A cookie value from [`Consent::cookie`]; `None` when it is not one.
+    pub fn parse(value: &str) -> Option<Self> {
+        let (version, flags) = value.split_once('.')?;
+        let version: i64 = version.parse().ok().filter(|v| *v > 0)?;
+        if flags.len() > 3 || !flags.chars().all(|c| matches!(c, 'a' | 'm' | 'x')) {
+            return None;
+        }
+        Some(Self {
+            version,
+            analytics: flags.contains('a'),
+            marketing: flags.contains('m'),
+            apps: flags.contains('x'),
+        })
+    }
+}

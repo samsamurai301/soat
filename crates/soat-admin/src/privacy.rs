@@ -120,10 +120,14 @@ async fn requests_page(mut cx: Ctx, error: Option<String>, status: StatusCode) -
         404 => cx.set("missing", json!(true)),
         _ => return cx.failed(code, &listed),
     }
+    let (_, banner) = cx.call(Method::GET, "/api/consent", None).await;
+    let (_, stats) = cx.call(Method::GET, "/api/consent/stats", None).await;
+    cx.set("banner", banner);
+    cx.set("stats", stats);
     if let Some(e) = error {
         cx.set("error", json!(e));
     }
-    cx.set("page_title", json!("Privacy requests"));
+    cx.set("page_title", json!("Privacy"));
     cx.render("privacy", status)
 }
 
@@ -151,6 +155,34 @@ pub(crate) async fn decline(
         200 => Redirect::to(&format!("/admin/{shop}/privacy")).into_response(),
         401 => crate::to_login(),
         409 | 422 => requests_page(cx, Some(message(&out)), StatusCode::UNPROCESSABLE_ENTITY).await,
+        _ => cx.failed(status, &out),
+    })
+}
+
+/// Set up the cookie banner (a form post).
+#[post("/admin/{shop}/privacy/consent", tag = "admin")]
+pub(crate) async fn consent(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path(shop): Path<String>,
+    raw: Bytes,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "customers").await);
+    let f = Fields::parse(&raw);
+    let b = json!({
+        "enabled": f.get("enabled") == "on",
+        "privacy_url": f.get("privacy_url"),
+        "ga4_id": f.get("ga4_id"),
+        "meta_pixel_id": f.get("meta_pixel_id"),
+        "ask_again": f.get("ask_again") == "on",
+    });
+    let (status, out) = cx.call(Method::PUT, "/api/consent", Some(&b)).await;
+    Ok(match status {
+        200 => Redirect::to(&format!("/admin/{shop}/privacy")).into_response(),
+        401 => crate::to_login(),
+        422 => requests_page(cx, Some(message(&out)), StatusCode::UNPROCESSABLE_ENTITY).await,
         _ => cx.failed(status, &out),
     })
 }

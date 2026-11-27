@@ -15,6 +15,11 @@
 //! (`/api/storefront/account/personal-data`,
 //! `/api/storefront/account/erasure-request`). Staff then erase them, or
 //! decline with a reason (`/api/privacy-requests`).
+//!
+//! **Cookie consent.** The shop's cookie banner and the tracking it holds
+//! back until consent: see [`consent`].
+
+pub mod consent;
 
 use serde_json::{json, Value};
 use soat_core::{id_kind, Permission};
@@ -54,7 +59,12 @@ impl Module for Compliance {
     }
 
     fn permissions(&self) -> &'static [Permission] {
-        &[PRIVACY_READ, PRIVACY_EXPORT, PRIVACY_ERASE]
+        &[
+            PRIVACY_READ,
+            PRIVACY_EXPORT,
+            PRIVACY_ERASE,
+            consent::PRIVACY_SETTINGS,
+        ]
     }
 
     fn mount(&self, app: App) -> App {
@@ -65,6 +75,13 @@ impl Module for Compliance {
             request_erasure,
             list_requests,
             decline_request,
+        ))
+        .mount((
+            consent::get_settings,
+            consent::put_settings,
+            consent::stats,
+            consent::storefront_settings,
+            consent::storefront_record,
         ))
     }
 }

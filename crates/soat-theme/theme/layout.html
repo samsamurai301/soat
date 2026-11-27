@@ -17,8 +17,11 @@
 <meta name="twitter:card" content="{{#if og_image }}summary_large_image{{else}}summary{{/if}}">
 <link rel="stylesheet" href="/theme.css">
 {{#if theme.accent_color }}<style>:root { --accent: {{ theme.accent_color }}; }</style>{{/if}}
-<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" defer></script>
-</head>
+<script src="/assets/htmx-1.9.12.min.js" defer></script>
+{{#if consent.ga4_id }}<script async src="https://www.googletagmanager.com/gtag/js?id={{ consent.ga4_id }}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{analytics_storage:'granted',ad_storage:'{{#if consent.marketing }}granted{{else}}denied{{/if}}',ad_user_data:'{{#if consent.marketing }}granted{{else}}denied{{/if}}',ad_personalization:'{{#if consent.marketing }}granted{{else}}denied{{/if}}'});gtag('js',new Date());gtag('config','{{ consent.ga4_id }}');</script>
+{{/if}}{{#if consent.meta_pixel_id }}<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','{{ consent.meta_pixel_id }}');fbq('track','PageView');</script>
+{{/if}}</head>
 <body>
 {{#if theme.announcement }}<div class="announcement">{{ theme.announcement }}</div>{{/if}}
 {{> header }}
@@ -26,6 +29,10 @@
 {{> content }}
 </main>
 {{> footer }}
+{{#if consent.ask }}<aside class="consent" aria-label="{{ t.consent_title }}">
+  <h2>{{ t.consent_title }}</h2>
+  {{> consent_form }}
+</aside>{{/if}}
 {{#each app_blocks.body }}<div class="soat-app-block" data-soat-app="{{ app }}" data-block="{{ handle }}"></div>
 {{/each}}{{#each app_scripts }}<script src="{{ this }}" defer></script>
 {{/each}}</body>

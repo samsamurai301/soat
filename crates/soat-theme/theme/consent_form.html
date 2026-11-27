@@ -1,0 +1,16 @@
+<form method="post" action="{{ root }}/consent" class="consent-form">
+  <input type="hidden" name="back" value="{{ root }}{{ here }}">
+  <p>{{ t.consent_text }}{{#if consent.privacy_url }} <a href="{{ consent.privacy_url }}">{{ t.privacy_policy }}</a>{{/if}}</p>
+  <div class="consent-actions">
+    <button class="button" type="submit" name="choice" value="all">{{ t.consent_accept_all }}</button>
+    <button class="button" type="submit" name="choice" value="none">{{ t.consent_reject_all }}</button>
+  </div>
+  <details>
+    <summary>{{ t.consent_choose }}</summary>
+    <label class="choice"><input type="checkbox" checked disabled> {{ t.consent_necessary }}</label>
+    <label class="choice"><input type="checkbox" name="analytics" value="1"{{#if consent.analytics }} checked{{/if}}> {{ t.consent_analytics }}</label>
+    <label class="choice"><input type="checkbox" name="marketing" value="1"{{#if consent.marketing }} checked{{/if}}> {{ t.consent_marketing }}</label>
+    <label class="choice"><input type="checkbox" name="apps" value="1"{{#if consent.apps }} checked{{/if}}> {{ t.consent_apps }}</label>
+    <button class="button" type="submit" name="choice" value="chosen">{{ t.consent_save }}</button>
+  </details>
+</form>

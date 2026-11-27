@@ -109,6 +109,12 @@ pub const DEFAULT_FILES: &[(&str, Kind, &str)] = &[
         include_str!("../theme/footer.html"),
     ),
     (
+        "consent_form",
+        Kind::Partial,
+        include_str!("../theme/consent_form.html"),
+    ),
+    ("consent", Kind::Page, include_str!("../theme/consent.html")),
+    (
         "product_card",
         Kind::Partial,
         include_str!("../theme/product_card.html"),

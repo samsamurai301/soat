@@ -160,5 +160,6 @@ layer.
 
 - [x] J1 GDPR export and erasure (feature `privacy`, crate `soat-compliance`, guide `docs/privacy.md`): every module declares the tables in which it keeps customer data (`Module::personal_data`: how rows match a customer, what an export shows, and whether erasing deletes, anonymizes or keeps them for a legal reason); staff download a customer's data as JSON (`privacy:export`) and erase them after typing their email again (`privacy:erase`: account, addresses, carts, reviews, points and the like deleted, orders and discount uses kept without them, invoices kept for tax law, the event log redacted, with a report per table); customers download their own data and ask to be erased from their account, and staff see and decline requests (admin Privacy requests); a test fails for any table with customer columns and no declaration
 
-J2 cookie consent · J3 e-invoicing · J4 data retention · J5 accessibility
-checks in CI
+- [x] J2 Cookie consent (feature `privacy`, guide `docs/privacy.md`): htmx is served by SOAT itself (`soat_core::assets`), so neither storefront nor admin contacts a third party; a shop's cookie banner (`/api/consent`, `privacy:settings`, admin Privacy) with Accept all and Reject all side by side and a choice per purpose (analytics, marketing, apps), kept six months and asked again for a new version; Google Analytics 4 (with Consent Mode v2), the Meta Pixel and apps' scripts load only with consent to their purpose; each choice recorded without who made it, with stats; `/consent` settings page linked from the footer; headless storefronts read the settings and record choices (`/api/storefront/consent`)
+
+J3 e-invoicing · J4 data retention · J5 accessibility checks in CI

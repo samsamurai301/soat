@@ -100,3 +100,11 @@ main.wrap { padding-top: 24px; padding-bottom: 48px; min-height: 60vh; }
 .review { border-top: 1px solid var(--soft); padding: 12px 0; }
 .review blockquote { margin: 8px 0 0; padding-left: 12px; border-left: 3px solid var(--soft); }
 .review-form { display: grid; gap: 8px; max-width: 480px; margin-top: 16px; }
+
+/* The cookie banner. */
+.consent { position: fixed; inset: auto 1rem 1rem 1rem; max-width: 36rem; margin: 0 auto; padding: 1rem 1.25rem; background: var(--bg, #fff); color: inherit; border: 1px solid var(--line); border-radius: .5rem; box-shadow: 0 .5rem 2rem rgba(0,0,0,.15); z-index: 50; }
+.consent h2 { margin: 0 0 .5rem; font-size: 1.1rem; }
+.consent-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin: .75rem 0; }
+.consent-actions .button { flex: 1 1 10rem; }
+.consent-form details { margin-top: .5rem; }
+.consent-form .choice { display: block; margin: .35rem 0; }
