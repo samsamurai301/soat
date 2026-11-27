@@ -835,8 +835,9 @@ async fn buyer_document(
 
 /// The invoice as an electronic invoice to download (`invoices:read`):
 /// `?format=xrechnung` (default; XRechnung 3.0, CII), `cii` (the XML of
-/// Factur-X / ZUGFeRD, profile EN 16931) or `peppol` (Peppol BIS Billing
-/// 3.0, UBL). `?buyer_reference=` sets BT-10, such as a Leitweg-ID (default:
+/// Factur-X / ZUGFeRD, profile EN 16931), `peppol` (Peppol BIS Billing
+/// 3.0, UBL) or `pdf` (Factur-X / ZUGFeRD: a PDF/A-3 that shows the
+/// invoice, with the `cii` XML inside). `?buyer_reference=` sets BT-10, such as a Leitweg-ID (default:
 /// the order number). See `/e-invoice/check` for what a receiver would
 /// reject.
 #[get("/api/invoices/{id}/e-invoice", tag = "invoices")]
@@ -846,14 +847,14 @@ async fn invoice_xml(
     Path(id): Path<String>,
     Valid(Query(q)): Valid<Query<EInvoiceQuery>>,
 ) -> Result<Response> {
-    let format = q.format()?;
+    q.format()?;
     let mut tx = tenant.begin_for(&db, &INVOICES_READ).await?;
     let inv = get(&mut tx, &tenant, &id)
         .await?
         .ok_or_else(Error::not_found)?;
     let doc = einvoice::document(&mut tx, &tenant, &inv, q.buyer_reference.as_deref()).await?;
     tx.commit().await?;
-    Ok(einvoice::download(&doc, format))
+    einvoice::download(&doc, &q)
 }
 
 /// What a receiver's validator would reject in the invoice as an
@@ -892,7 +893,7 @@ async fn buyer_invoice_xml(
     Path((id, invoice_id)): Path<(String, String)>,
     Valid(Query(q)): Valid<Query<EInvoiceQuery>>,
 ) -> Result<Response> {
-    let format = q.format()?;
+    q.format()?;
     let (mut tx, id) = holder.open(&db, &id).await?;
     let inv = get(&mut tx, &holder.shop, &invoice_id)
         .await?
@@ -900,7 +901,7 @@ async fn buyer_invoice_xml(
         .ok_or_else(Error::not_found)?;
     let doc = einvoice::document(&mut tx, &holder.shop, &inv, q.buyer_reference.as_deref()).await?;
     tx.commit().await?;
-    Ok(einvoice::download(&doc, format))
+    einvoice::download(&doc, &q)
 }
 
 /// The shop an event belongs to; the system acts.

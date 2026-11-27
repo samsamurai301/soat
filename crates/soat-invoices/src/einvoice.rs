@@ -13,7 +13,8 @@ use crate::{get, settings, Invoice, Party};
 #[model]
 pub struct EInvoiceQuery {
     /// `xrechnung` (default), `cii` (Factur-X / ZUGFeRD XML, also
-    /// `zugferd`) or `peppol` (UBL).
+    /// `zugferd`), `peppol` (UBL), or `pdf` (Factur-X / ZUGFeRD: a PDF/A-3
+    /// with the `cii` XML inside).
     pub format: Option<String>,
     /// BT-10, the buyer's reference, such as a German Leitweg-ID; default:
     /// the order number.
@@ -22,15 +23,31 @@ pub struct EInvoiceQuery {
 }
 
 impl EInvoiceQuery {
-    /// The format asked for; a 422 `invalid_format` for an unknown one.
+    /// The format asked for, the PDF's being CII; a 422 `invalid_format`
+    /// for an unknown one.
     pub fn format(&self) -> Result<Format> {
+        if self.wants_pdf() {
+            return Ok(Format::Cii);
+        }
         match self.format.as_deref().filter(|f| !f.trim().is_empty()) {
             None => Ok(Format::XRechnung),
             Some(f) => Format::parse(f).ok_or_else(|| {
-                Error::unprocessable("format is xrechnung, cii (ZUGFeRD, Factur-X) or peppol")
-                    .with_code("invalid_format")
+                Error::unprocessable(
+                    "format is xrechnung, cii (ZUGFeRD, Factur-X), peppol or pdf (ZUGFeRD, Factur-X)",
+                )
+                .with_code("invalid_format")
             }),
         }
+    }
+
+    /// Whether the PDF/A-3 with the XML inside is asked for.
+    pub fn wants_pdf(&self) -> bool {
+        self.format.as_deref().is_some_and(|f| {
+            matches!(
+                f.trim().to_ascii_lowercase().as_str(),
+                "pdf" | "zugferd-pdf" | "facturx-pdf" | "factur-x-pdf"
+            )
+        })
     }
 }
 
@@ -190,22 +207,33 @@ pub(crate) async fn document(
     })
 }
 
-/// The XML of `doc` in `format`, as a download named after the invoice.
-pub(crate) fn download(doc: &Document, format: Format) -> Response {
-    let mut res = einvoice::xml(doc, format).into_response();
-    let h = res.headers_mut();
-    h.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/xml; charset=utf-8"),
-    );
+/// `doc` as the query asks, as a download named after the invoice: the
+/// XML in its format, or the Factur-X / ZUGFeRD PDF.
+pub(crate) fn download(doc: &Document, q: &EInvoiceQuery) -> Result<Response> {
+    let format = q.format()?;
     let safe: String = doc
         .number
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
         .collect();
-    let name = format!("{safe}-{}.xml", format.name());
+    let (mut res, content_type, name) = if q.wants_pdf() {
+        let pdf = soat_core::facturx::pdf(doc, &einvoice::xml(doc, format));
+        (
+            pdf.into_response(),
+            "application/pdf",
+            format!("{safe}.pdf"),
+        )
+    } else {
+        (
+            einvoice::xml(doc, format).into_response(),
+            "application/xml; charset=utf-8",
+            format!("{safe}-{}.xml", format.name()),
+        )
+    };
+    let h = res.headers_mut();
+    h.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")) {
         h.insert(header::CONTENT_DISPOSITION, v);
     }
-    res
+    Ok(res)
 }

@@ -522,8 +522,8 @@ pub(crate) async fn invoice_page(
     }
 }
 
-/// An invoice as an e-invoice download (`?format=xrechnung`, `cii` or
-/// `peppol`).
+/// An invoice as an e-invoice download (`?format=xrechnung`, `cii`,
+/// `peppol`, or `pdf` for ZUGFeRD / Factur-X).
 #[get("/admin/{shop}/invoices/{id}/e-invoice", tag = "admin")]
 pub(crate) async fn invoice_download(
     s: State<Shared>,
@@ -538,35 +538,11 @@ pub(crate) async fn invoice_download(
         .get("format")
         .and_then(Value::as_str)
         .unwrap_or("xrechnung");
-    let (status, out) = cx
-        .call(
-            Method::GET,
-            &format!(
-                "/api/invoices/{}/e-invoice?format={}",
-                encode(&id),
-                encode(format)
-            ),
-            None,
-        )
-        .await;
-    let Value::String(xml) = out else {
-        return Ok(cx.failed(status, &out));
-    };
-    if status != 200 {
-        return Ok(cx.failed(status, &json!({})));
-    }
-    let mut res = xml.into_response();
-    let h = res.headers_mut();
-    h.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/xml; charset=utf-8"),
-    );
-    let name: String = format!("{id}-{format}.xml")
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-        .collect();
-    if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")) {
-        h.insert(header::CONTENT_DISPOSITION, v);
-    }
-    Ok(res)
+    Ok(cx
+        .download(&format!(
+            "/api/invoices/{}/e-invoice?format={}",
+            encode(&id),
+            encode(format)
+        ))
+        .await)
 }

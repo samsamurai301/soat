@@ -434,6 +434,31 @@ impl Ctx {
             .await
     }
 
+    /// A file from the API, passed through as a download; the error page
+    /// when the API refuses.
+    pub async fn download(&self, path: &str) -> Response {
+        let (status, content_type, disposition, bytes) = self
+            .s
+            .api
+            .download(&self.db, path, &self.token, &self.shop, self.conn)
+            .await;
+        if status != 200 {
+            let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            return self.failed(status, &body);
+        }
+        let mut res = bytes.into_response();
+        let h = res.headers_mut();
+        for (name, value) in [
+            (header::CONTENT_TYPE, content_type),
+            (header::CONTENT_DISPOSITION, disposition),
+        ] {
+            if let Some(v) = value.and_then(|v| HeaderValue::from_str(&v).ok()) {
+                h.insert(name, v);
+            }
+        }
+        res
+    }
+
     /// A read that must work: its body, or the page that says why not.
     pub async fn get(&self, path: &str) -> Page<Value> {
         let (status, body) = self.call(Method::GET, path, None).await;

@@ -179,6 +179,6 @@ already has before adding to it.
 - [x] K4 Backups (guide `docs/backups.md`): what to keep (database, files, secrets), `pg_dump` and restore steps with row-level security intact, the upgrade routine; an older build refuses to start on a database a newer one migrated, naming the migrations it does not know (`soat_module::upgrade`) **alpha**
 - [x] K5 Load baseline (guide `docs/performance.md`): `cargo run --release -p soat --example load` drives the storefront, cart and checkout with staff API reads, prints p50/p95/p99 per step and fails on a p95 over budget or an unexpected answer; baseline 82 orders a second at 20 shoppers on 4 cores
 - [x] K6 Release builds made locally (guide `docs/releases.md`): `scripts/release.sh` builds Linux binaries in Debian 12 (glibc 2.36+, arm64 opt-in), macOS ones on a Mac, `SHA256SUMS`, and a distroless, non-root container image, without Actions minutes
-- [ ] K7 ZUGFeRD / Factur-X as PDF/A-3 with the XML inside
+- [x] K7 ZUGFeRD / Factur-X as PDF/A-3 with the XML inside (guide `docs/e-invoices.md`): `?format=pdf` on the staff, buyer and admin e-invoice downloads answers a PDF/A-3b laid out for people with the EN 16931 CII attached as `factur-x.xml`; own PDF writer in `soat_core::pdf` (embedded, subset fonts, sRGB output intent, XMP), layout in `soat_core::facturx`
 - [ ] K8 Peppol sending through an access point adapter
 - [ ] K9 Plugin host on `zapline-wasm` (once Zapline PR #23 merges)
