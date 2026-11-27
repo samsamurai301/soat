@@ -1407,32 +1407,6 @@ pub fn parse_quick_order(text: &str) -> std::result::Result<Vec<(String, i64)>, 
     Ok(out)
 }
 
-/// The item with SKU `sku` (a variant's or a product's), sold today.
-///
-/// # Errors
-///
-/// Database errors.
-pub async fn item_by_sku(
-    conn: &mut PgConnection,
-    scope: &impl Scope,
-    sku: &str,
-) -> Result<Option<(String, String)>> {
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT v.id, v.product_id FROM product_variants v JOIN products p ON p.id = v.product_id \
-         WHERE v.tenant_id = $1 AND lower(v.sku) = lower($2) AND p.status = 'active' \
-         UNION ALL \
-         SELECT p.id, p.id FROM products p WHERE p.tenant_id = $1 AND lower(p.sku) = lower($2) \
-         AND p.status = 'active' AND NOT EXISTS \
-         (SELECT 1 FROM product_variants v WHERE v.tenant_id = p.tenant_id AND v.product_id = p.id) \
-         LIMIT 1",
-    )
-    .bind(scope.tenant_id())
-    .bind(sku)
-    .fetch_optional(conn)
-    .await?;
-    Ok(row)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

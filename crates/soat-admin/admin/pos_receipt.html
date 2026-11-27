@@ -1,0 +1,17 @@
+<div class="head"><h1>Receipt #{{ receipt.order.number }}</h1> <a href="{{ base }}/orders/{{ receipt.order.id }}">The order</a> <button type="button" class="link" onclick="print()">Print</button></div>
+<section class="card receipt">
+  <p><strong>{{ shop.name }}</strong><br>{{ receipt.location_name }} · {{ receipt.register_name }}<br>{{ receipt.sold_at }}</p>
+  <table class="table">
+    <tbody>{{#each receipt.lines }}<tr><td>{{ title }}</td><td class="num">{{ quantity }} × {{ unit_price }}</td></tr>{{/each}}</tbody>
+    <tfoot>
+      <tr><td>Subtotal</td><td class="num">{{ receipt.subtotal }}</td></tr>
+      {{#if receipt.has_discount }}<tr><td>Discount</td><td class="num">{{ receipt.discount }}</td></tr>{{/if}}
+      <tr><td>Of which tax</td><td class="num">{{ receipt.tax }}</td></tr>
+      <tr><td><strong>Total</strong></td><td class="num"><strong>{{ receipt.total }}</strong></td></tr>
+      {{#if receipt.has_card }}<tr><td>Card</td><td class="num">{{ receipt.card }}</td></tr>{{/if}}
+      {{#if receipt.has_other }}<tr><td>Other</td><td class="num">{{ receipt.other }}</td></tr>{{/if}}
+      {{#if receipt.has_cash }}<tr><td>Cash given</td><td class="num">{{ receipt.cash }}</td></tr>
+      <tr><td>Change</td><td class="num">{{ receipt.change }}</td></tr>{{/if}}
+    </tfoot>
+  </table>
+</section>

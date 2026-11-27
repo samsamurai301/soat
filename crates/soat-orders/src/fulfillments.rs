@@ -289,6 +289,47 @@ async fn create_fulfillment(
     Ok((StatusCode::CREATED, Json(order)))
 }
 
+/// Hands every unit of order `order_id` not shipped yet to the buyer at
+/// `location` (a sale at the counter): takes them out of stock there and
+/// records them as delivered, in the caller's transaction. Publishes
+/// `fulfillment.created` and `order.fulfilled`.
+///
+/// # Errors
+///
+/// 404 for an unknown order, 422 `nothing_to_ship`, database errors.
+pub async fn hand_over(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    order_id: &str,
+    location: &str,
+) -> Result<Order> {
+    let left: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT l.id, l.item_id, (l.quantity - COALESCE((SELECT SUM(fl.quantity) \
+           FROM fulfillment_lines fl JOIN fulfillments f ON f.id = fl.fulfillment_id \
+           WHERE fl.order_line_id = l.id AND f.status <> 'canceled'), 0))::BIGINT \
+         FROM order_lines l WHERE l.tenant_id = $1 AND l.order_id = $2 ORDER BY l.position",
+    )
+    .bind(scope.tenant_id())
+    .bind(order_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    let wanted: Vec<_> = left.into_iter().filter(|(_, _, q)| *q > 0).collect();
+    if wanted.is_empty() {
+        return Err(Error::unprocessable("nothing left to ship").with_code("nothing_to_ship"));
+    }
+    record(
+        tx,
+        scope,
+        order_id,
+        &wanted,
+        Some(location),
+        ["", "", ""],
+        true,
+    )
+    .await?;
+    sync(tx, scope, order_id).await
+}
+
 /// Records a fulfillment of `wanted` (line, item, units), taking them out
 /// of stock, and publishes `fulfillment.created`. `tracking` is carrier,
 /// number and link; `delivered` records it as delivered at once.

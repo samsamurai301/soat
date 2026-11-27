@@ -751,6 +751,52 @@ pub async fn complete_in(
     })
 }
 
+/// Sells `input` at the counter (a point of sale), in the caller's
+/// transaction, which it leaves open: the draft is written and completed
+/// at once and its order placed with the stock held, without the email
+/// and address checks of a shipped order (give the shop's location as the
+/// address, so taxes are worked out there). The caller records the
+/// payment and hands the goods over. Publishes `draft_order.created`,
+/// `order.placed` and `draft_order.completed`.
+///
+/// # Errors
+///
+/// As `POST /api/draft-orders`; 422 `draft_incomplete` without lines; 409
+/// `insufficient_stock`.
+pub async fn sell_at_counter(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    taxes: &TaxProviders,
+    input: &DraftInput,
+) -> Result<(Order, String)> {
+    let id = write(tx, scope, DraftOrderId::new().as_str(), input, true)
+        .await?
+        .ok_or_else(|| Error::internal("insert returned nothing"))?;
+    let draft = load(tx, scope, taxes, &id).await?;
+    scope.publish(tx, "draft_order.created", &draft).await?;
+    let r = row(tx, scope, &id, true).await?;
+    let (_, order) = work_out(tx, scope, taxes, r).await?;
+    if order.lines.is_empty() {
+        return Err(Error::unprocessable("the sale has no lines")
+            .with_code("draft_incomplete")
+            .with_details(["lines"]));
+    }
+    let (placed, token) = soat_orders::place(tx, scope, &order).await?;
+    hold(tx, scope, &order.lines, &placed.id, true).await?;
+    sqlx::query(
+        "UPDATE draft_orders SET status = 'completed', order_id = $3, updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(scope.tenant_id())
+    .bind(&id)
+    .bind(&placed.id)
+    .execute(&mut **tx)
+    .await?;
+    let draft = load(tx, scope, taxes, &id).await?;
+    scope.publish(tx, "draft_order.completed", &draft).await?;
+    Ok((placed, token))
+}
+
 /// Customer `customer`'s default saved address (else their first) as an
 /// order address; none when they saved none.
 ///

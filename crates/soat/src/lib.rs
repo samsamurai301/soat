@@ -259,6 +259,8 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
     let modules = modules.with(soat_b2b::B2b);
     #[cfg(feature = "feeds")]
     let modules = modules.with(soat_channels::Channels);
+    #[cfg(feature = "pos")]
+    let modules = modules.with(soat_pos::Pos);
     let modules = modules.with(Storefront);
     #[cfg(feature = "stripe")]
     let modules = match settings.stripe {
