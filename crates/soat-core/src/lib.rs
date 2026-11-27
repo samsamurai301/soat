@@ -18,6 +18,7 @@ mod id;
 pub mod import;
 pub mod invoice;
 pub mod markdown;
+pub mod marketplaces;
 pub mod media;
 mod money;
 pub mod options;

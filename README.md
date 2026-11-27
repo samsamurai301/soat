@@ -104,6 +104,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-marketing` | Email campaigns to customers who agreed to news, with one-click unsubscribe (feature `marketing`) |
 | `crates/soat-channels` | Sales channels: product feeds for Google Merchant Center and Meta catalogs, with a problems preview (feature `feeds`) |
 | `crates/soat-b2b` | B2B: companies with shared prices, payment terms and a credit limit, quotes answered with draft orders, quick order by SKU (feature `b2b`) |
+| `crates/soat-marketplaces` | Selling on marketplaces (Amazon, eBay, Otto, Kaufland and more): offers with a markup and a stock buffer, orders brought in, shipments and cancellations reported back (feature `marketplaces`, guide `docs/marketplaces.md`) |
 | `crates/soat-pos` | Point of sale: registers at a location, sessions with a cash count, counter sales paid in cash or card with change, receipts (feature `pos`) |
 | `crates/soat-subscriptions` | Subscriptions: plans on products, renewals placed as orders on schedule, pause, skip and cancel (feature `subscriptions`) |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |

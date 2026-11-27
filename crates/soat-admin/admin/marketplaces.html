@@ -1,0 +1,29 @@
+<div class="head"><h1>Marketplaces</h1> <a href="{{ base }}/orders">Orders</a></div>
+{{#if missing}}<p class="muted">Marketplaces are not part of this build of SOAT.</p>{{else}}
+<p class="muted">Sell your products on Amazon, eBay, Otto, Kaufland and other marketplaces. A connector (an app, or a script with an API key that has <code>marketplaces:sync</code>) sends the offers there and brings the orders in. Orders from a marketplace are paid and hold stock like any other, and the marketplace is told when you ship them.</p>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#each marketplaces }}
+<section class="card">
+  <h2>{{ name }} <small class="muted">{{ channel_name }} · {{ currency }}{{#if active}}{{else}} · paused{{/if}}</small></h2>
+  <p>Prices {{ markup }} on yours{{#if has_markup_amount }} plus {{ markup_amount }}{{/if}} · {{ stock_buffer }} units held back · {{#if all_products }}every active product{{else}}only listed products{{/if}}</p>
+  <p>{{ orders }} orders brought in{{#if pending }} · <strong>{{ pending }} the marketplace has not been told about yet</strong>{{/if}}</p>
+  <p class="muted">For its connector: offers at <code>/api/marketplaces/{{ id }}/offers</code>, orders at <code>/api/marketplaces/{{ id }}/orders</code>.</p>
+  {{#if recent }}<table class="table"><thead><tr><th>There</th><th>Order</th><th class="num">Total</th><th>State</th></tr></thead><tbody>
+  {{#each recent }}<tr><td>{{ external_id }}</td><td><a href="{{ base }}/orders/{{ order_id }}">#{{ number }}</a></td><td class="num">{{ total }}</td><td>{{ state }}{{#if pending }} (not told yet){{/if}}</td></tr>{{/each}}
+  </tbody></table>{{/if}}
+  <form method="post" action="{{ base }}/marketplaces/{{ id }}/{{#if active}}off{{else}}on{{/if}}" class="inline"><button class="link">{{#if active}}Pause{{else}}Resume{{/if}}</button></form>
+  <form method="post" action="{{ base }}/marketplaces/{{ id }}/delete" class="inline"><button class="link">Delete</button></form>
+</section>
+{{/each}}
+<form method="post" action="{{ base }}/marketplaces" class="form">
+  <fieldset><legend>Sell on a marketplace</legend>
+    <label>Name <input name="name" maxlength="100" placeholder="Amazon DE" required></label>
+    <label>Marketplace <select name="channel">{{#each channels }}<option value="{{ key }}">{{ name }}</option>{{/each}}</select></label>
+    <label>Currency <input name="currency" maxlength="3" placeholder="the shop's"></label>
+    <label>Prices there, % on yours (for their fees) <input name="markup" inputmode="decimal" placeholder="0"></label>
+    <label>Units held back from the stock offered <input name="buffer" type="number" min="0" placeholder="0"></label>
+    <label><input type="checkbox" name="only_listed"> Offer only the products I list</label>
+  </fieldset>
+  <button class="button">Add marketplace</button>
+</form>
+{{/if}}

@@ -2255,6 +2255,7 @@ dependencies = [
  "soat-invoices",
  "soat-loyalty",
  "soat-marketing",
+ "soat-marketplaces",
  "soat-mcp",
  "soat-module",
  "soat-mollie",
@@ -2635,6 +2636,25 @@ dependencies = [
  "soat-customers",
  "soat-module",
  "soat-notify",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-marketplaces"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-catalog",
+ "soat-checkout",
+ "soat-core",
+ "soat-inventory",
+ "soat-module",
+ "soat-orders",
+ "soat-payments",
+ "soat-pricing",
  "soat-tenancy",
  "sqlx",
  "zapline",

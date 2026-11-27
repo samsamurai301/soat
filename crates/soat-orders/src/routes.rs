@@ -129,15 +129,33 @@ async fn cancel_order(
     Path(id): Path<String>,
     Valid(Json(c)): Valid<Json<Cancel>>,
 ) -> Result<Json<Order>> {
-    let id = OrderId::parse(&id).map_err(|_| Error::not_found())?;
     let mut tx = tenant.begin_for(&db, &ORDERS_WRITE).await?;
+    let order = cancel(&mut tx, &tenant, &id, c.reason.as_deref().unwrap_or("")).await?;
+    tx.commit().await?;
+    Ok(Json(order))
+}
+
+/// Cancels open, unfulfilled order `id` in `tx` and releases the stock
+/// held for it, for modules that cancel orders (e.g. a marketplace's).
+/// Payments are not touched. Publishes `order.canceled`.
+///
+/// # Errors
+///
+/// 404 for an unknown order, 409 `not_cancelable`, database errors.
+pub async fn cancel(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    id: &str,
+    reason: &str,
+) -> Result<Order> {
+    let id = OrderId::parse(id).map_err(|_| Error::not_found())?;
     let row: Option<(String, String)> = sqlx::query_as(
         "SELECT status, fulfillment_status FROM orders \
          WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
     )
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(id.as_str())
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?;
     let (status, fulfillment) = row.ok_or_else(Error::not_found)?;
     if status != "open" || fulfillment != "unfulfilled" {
@@ -150,18 +168,17 @@ async fn cancel_order(
         "UPDATE orders SET status = 'canceled', canceled_at = now(), cancel_reason = $3 \
          WHERE tenant_id = $1 AND id = $2",
     )
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(id.as_str())
-    .bind(c.reason.as_deref().unwrap_or("").trim())
-    .execute(&mut *tx)
+    .bind(reason.trim())
+    .execute(&mut **tx)
     .await?;
-    soat_inventory::reservations::release(&mut tx, &tenant, id.as_str()).await?;
-    let order = load(&mut tx, &tenant, id.as_str())
+    soat_inventory::reservations::release(tx, scope, id.as_str()).await?;
+    let order = load(tx, scope, id.as_str())
         .await?
         .ok_or_else(Error::not_found)?;
-    tenant.publish(&mut tx, "order.canceled", &order).await?;
-    tx.commit().await?;
-    Ok(Json(order))
+    scope.publish(tx, "order.canceled", &order).await?;
+    Ok(order)
 }
 
 /// The signed-in customer's orders, newest first.

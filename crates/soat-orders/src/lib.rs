@@ -21,7 +21,7 @@ pub mod report;
 mod returns;
 mod routes;
 
-pub use routes::{customer_order, customer_orders, OrderSummary, OrderToken};
+pub use routes::{cancel, customer_order, customer_orders, OrderSummary, OrderToken};
 
 use std::sync::Arc;
 

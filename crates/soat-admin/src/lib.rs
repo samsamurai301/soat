@@ -45,6 +45,7 @@ mod discounts;
 mod feeds;
 mod giftcards;
 mod launch;
+mod marketplaces;
 mod onboarding;
 mod orders;
 mod pages;
@@ -210,6 +211,7 @@ impl Module for Admin {
             b2b::quote_act,
         ))
         .mount((feeds::list, feeds::create, feeds::act))
+        .mount((marketplaces::list, marketplaces::create, marketplaces::act))
         .mount((
             pos::registers,
             pos::create_register,
