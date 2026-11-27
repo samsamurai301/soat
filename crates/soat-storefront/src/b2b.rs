@@ -90,7 +90,7 @@ pub(crate) async fn quick_order_post(
     let mut items = Vec::with_capacity(lines.len());
     let mut unknown = Vec::new();
     for (sku, quantity) in &lines {
-        match soat_b2b::item_by_sku(&mut v.tx, &shop, sku).await? {
+        match soat_catalog::item_by_sku(&mut v.tx, &shop, sku).await? {
             Some((item, _)) => items.push((sku.clone(), item, *quantity)),
             None => unknown.push(sku.clone()),
         }

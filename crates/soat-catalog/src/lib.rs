@@ -533,6 +533,32 @@ pub async fn product_tags(
     Ok(row.map(|(t,)| t))
 }
 
+/// The item with SKU `sku` (a variant's or a product's), sold today.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn item_by_sku(
+    conn: &mut sqlx::PgConnection,
+    scope: &impl soat_tenancy::Scope,
+    sku: &str,
+) -> Result<Option<(String, String)>> {
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT v.id, v.product_id FROM product_variants v JOIN products p ON p.id = v.product_id \
+         WHERE v.tenant_id = $1 AND lower(v.sku) = lower($2) AND p.status = 'active' \
+         UNION ALL \
+         SELECT p.id, p.id FROM products p WHERE p.tenant_id = $1 AND lower(p.sku) = lower($2) \
+         AND p.status = 'active' AND NOT EXISTS \
+         (SELECT 1 FROM product_variants v WHERE v.tenant_id = p.tenant_id AND v.product_id = p.id) \
+         LIMIT 1",
+    )
+    .bind(scope.tenant_id())
+    .bind(sku)
+    .fetch_optional(conn)
+    .await?;
+    Ok(row)
+}
+
 /// Looks up a stock item of the shop. A product that has variants is not
 /// one (`Err` 422 `has_variants`: stock its variants); an unknown id is
 /// `Ok(None)`. Run it in the tenant transaction.

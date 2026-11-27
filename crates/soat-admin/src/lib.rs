@@ -49,6 +49,7 @@ mod onboarding;
 mod orders;
 mod pages;
 mod palette;
+mod pos;
 mod products;
 mod reviews;
 mod samples;
@@ -209,6 +210,14 @@ impl Module for Admin {
             b2b::quote_act,
         ))
         .mount((feeds::list, feeds::create, feeds::act))
+        .mount((
+            pos::registers,
+            pos::create_register,
+            pos::register_act,
+            pos::till,
+            pos::till_act,
+            pos::receipt,
+        ))
         .mount((
             customers::adjust_points,
             giftcards::list,

@@ -1,0 +1,28 @@
+<div class="head"><h1>Point of sale</h1> <a href="{{ base }}/orders">Orders</a></div>
+{{#if missing}}<p class="muted">The point of sale is not part of this build of SOAT.</p>{{else}}
+<p class="muted">Each register sells from one of your locations: stock leaves there, and taxes are worked out at its address. Open a session with the cash in the drawer, ring up sales, and close it with the cash you count.</p>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#each registers }}
+<section class="card">
+  <h2>{{ name }} <small class="muted">{{ location_name }} · {{ currency }}{{#if active}}{{else}} · not in use{{/if}}</small></h2>
+  {{#if session_id }}<p><a class="button" href="{{ base }}/pos/sessions/{{ session_id }}">Go to the till</a></p>
+  {{else}}{{#if active }}
+  <form method="post" action="{{ base }}/pos/registers/{{ id }}/open" class="inline">
+    <input type="hidden" name="currency" value="{{ currency }}">
+    <label>Cash in the drawer <input name="cash" inputmode="decimal" placeholder="0.00" size="8"></label>
+    <button class="button">Open session</button>
+  </form>{{/if}}{{/if}}
+  <form method="post" action="{{ base }}/pos/registers/{{ id }}/{{#if active}}off{{else}}on{{/if}}" class="inline"><button class="link">{{#if active}}Take out of use{{else}}Put back in use{{/if}}</button></form>
+</section>
+{{/each}}
+{{#if locations }}
+<form method="post" action="{{ base }}/pos" class="form">
+  <fieldset><legend>New register</legend>
+    <label>Name <input name="name" maxlength="100" placeholder="Front desk" required></label>
+    <label>At <select name="location_id">{{#each locations }}<option value="{{ id }}">{{ name }}</option>{{/each}}</select></label>
+    <label>Currency <input name="currency" maxlength="3" placeholder="the shop's"></label>
+  </fieldset>
+  <button class="button">Add register</button>
+</form>
+{{else}}<p class="muted">Add a location under Settings first: a register sells from one.</p>{{/if}}
+{{/if}}

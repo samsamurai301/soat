@@ -1,0 +1,50 @@
+<div class="head"><h1>{{ session.register_name }} <small class="muted">{{#if session.open }}open since {{ session.opened_at }}{{else}}closed {{ session.closed_at }}{{/if}}</small></h1> <a href="{{ base }}/pos">Registers</a></div>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#if session.open }}
+<form method="post" action="{{ base }}/pos/sessions/{{ session.id }}/total" class="form">
+  <input type="hidden" name="currency" value="{{ session.currency }}">
+  <fieldset><legend>Sale</legend>
+    <label>Items: one SKU per line, with a quantity after it if more than one <textarea name="lines" rows="6" autofocus required placeholder="MUG&#10;TEE-M 2">{{ lines }}</textarea></label>
+    <label>Discount <input name="discount" inputmode="decimal" value="{{ discount }}" placeholder="0.00"></label>
+  </fieldset>
+  <button class="button">Total</button>
+</form>
+{{#if quote }}
+<table class="table">
+  <tbody>{{#each quote.lines }}<tr><td>{{ title }} <small class="muted">{{ sku }}</small></td><td class="num">{{ quantity }} × {{ unit_price }}</td><td class="num">{{ total }}</td></tr>{{/each}}</tbody>
+  <tfoot><tr><td colspan="2">Subtotal</td><td class="num">{{ quote.subtotal }}</td></tr><tr><td colspan="2">Discount</td><td class="num">{{ quote.discount }}</td></tr><tr><td colspan="2">Tax</td><td class="num">{{ quote.tax }}</td></tr><tr><td colspan="2"><strong>Due</strong></td><td class="num"><strong>{{ quote.total }}</strong></td></tr></tfoot>
+</table>
+<form method="post" action="{{ base }}/pos/sessions/{{ session.id }}/pay" class="form">
+  <input type="hidden" name="currency" value="{{ session.currency }}">
+  <input type="hidden" name="lines" value="{{ lines }}">
+  <input type="hidden" name="discount" value="{{ discount }}">
+  <fieldset><legend>Payment</legend>
+    <label>Cash given <input name="cash" inputmode="decimal" placeholder="{{ quote.due }}"></label>
+    <label>On the card terminal <input name="card" inputmode="decimal" placeholder="0.00"></label>
+  </fieldset>
+  <button class="button">Take payment</button>
+  <button class="button" name="method" value="card">All by card</button>
+</form>
+{{/if}}
+{{/if}}
+<section class="card">
+  <h2>Session</h2>
+  <table class="table"><tbody>
+    <tr><td>Sales</td><td class="num">{{ session.sales }}</td></tr>
+    <tr><td>Taken</td><td class="num">{{ session.total }}</td></tr>
+    <tr><td>Cash (less change)</td><td class="num">{{ session.cash }}</td></tr>
+    <tr><td>Card</td><td class="num">{{ session.card }}</td></tr>
+    <tr><td>Other</td><td class="num">{{ session.other }}</td></tr>
+    <tr><td>Cash at the start</td><td class="num">{{ session.opening_cash }}</td></tr>
+    <tr><td><strong>Cash expected in the drawer</strong></td><td class="num"><strong>{{ session.expected_cash }}</strong></td></tr>
+    {{#if session.counted_cash }}<tr><td>Counted</td><td class="num">{{ session.counted_cash }}</td></tr>
+    <tr><td>{{#if session.short }}<strong>Missing</strong>{{else}}Difference{{/if}}</td><td class="num">{{ session.difference }}</td></tr>{{/if}}
+  </tbody></table>
+  {{#if session.open }}
+  <form method="post" action="{{ base }}/pos/sessions/{{ session.id }}/close" class="inline">
+    <input type="hidden" name="currency" value="{{ session.currency }}">
+    <label>Cash counted <input name="cash" inputmode="decimal" required placeholder="0.00" size="8"></label>
+    <label>Note <input name="note" maxlength="1000"></label>
+    <button class="button">Close session</button>
+  </form>{{/if}}
+</section>

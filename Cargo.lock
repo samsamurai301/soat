@@ -2263,6 +2263,7 @@ dependencies = [
  "soat-payments",
  "soat-paypal",
  "soat-plugin-host",
+ "soat-pos",
  "soat-pricing",
  "soat-promotions",
  "soat-reviews",
@@ -2769,6 +2770,24 @@ dependencies = [
  "soat-core",
  "soat-plugin-api",
  "wasmtime",
+]
+
+[[package]]
+name = "soat-pos"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-catalog",
+ "soat-checkout",
+ "soat-core",
+ "soat-inventory",
+ "soat-module",
+ "soat-orders",
+ "soat-payments",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
 ]
 
 [[package]]
