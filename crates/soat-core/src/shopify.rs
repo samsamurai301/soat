@@ -18,8 +18,9 @@ pub fn is_customers(t: &Table) -> bool {
 }
 
 /// The product export as SOAT's product file (see the admin's import):
-/// a row per variant, with `line` its line in the export. Rows that only
-/// add an image are left out, a
+/// a row per variant, with `line` its line in the export. The images of
+/// a product (`Image Src`, also on rows that only add an image) go on its
+/// first row, a
 /// product's only `Default Title` variant becomes a product without
 /// options, and a variant that is not taxable is `exempt`.
 pub fn products(t: &Table) -> Table {
@@ -85,10 +86,32 @@ pub fn products(t: &Table) -> Table {
         );
         row.push(t.get(r, "seo title").to_owned());
         row.push(t.get(r, "seo description").to_owned());
+        row.push(if first {
+            images_of(t, t.get(r, "handle"))
+        } else {
+            String::new()
+        });
         row.push((r + 2).to_string());
         rows.push(row);
     }
     Table { headers, rows }
+}
+
+/// Every `Image Src` (and variant image) of `handle`, in order, once each.
+fn images_of(t: &Table, handle: &str) -> String {
+    let mut urls: Vec<&str> = Vec::new();
+    for r in 0..t.rows.len() {
+        if t.get(r, "handle") != handle {
+            continue;
+        }
+        for column in ["image src", "variant image"] {
+            let url = t.get(r, column).trim();
+            if !url.is_empty() && !urls.contains(&url) {
+                urls.push(url);
+            }
+        }
+    }
+    urls.join(" ")
 }
 
 /// The customer export as SOAT's customer file.
@@ -157,6 +180,14 @@ pub fn api_products(list: &[Value]) -> Table {
                 }
                 .to_owned();
                 row.tags = str_of(p, "tags");
+                row.images = p["images"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|i| str_of(i, "src"))
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 row.weight_grams = v["grams"]
                     .as_i64()
                     .map(|g| g.to_string())
@@ -373,6 +404,8 @@ mod tests {
         assert_eq!(p.get(0, "weight_grams"), "180");
         assert_eq!(p.get(0, "stock"), "4");
         assert_eq!(p.get(0, "seo_title"), "Organic tee");
+        assert_eq!(p.get(0, "images"), "https://cdn/x.jpg https://cdn/y.jpg");
+        assert_eq!(p.get(1, "images"), "");
         assert_eq!(p.get(1, "option1_value"), "M");
         assert_eq!(p.get(1, "status"), "");
         assert_eq!(p.get(2, "option1_name"), "");
@@ -402,6 +435,7 @@ mod tests {
     fn reads_the_admin_api() {
         let list = serde_json::json!([
             { "handle": "tee", "title": "Tee", "body_html": "<p>Soft</p>", "status": "active",
+              "images": [{ "src": "https://cdn/a.jpg" }, { "src": "https://cdn/b.jpg" }],
               "tags": "tops, cotton", "options": [{ "name": "Size" }],
               "variants": [
                 { "sku": "TEE-S", "price": "29.00", "option1": "S", "grams": 180,
@@ -419,6 +453,8 @@ mod tests {
         assert_eq!(t.get(0, "option1_name"), "Size");
         assert_eq!(t.get(0, "stock"), "4");
         assert_eq!(t.get(0, "weight_grams"), "180");
+        assert_eq!(t.get(0, "images"), "https://cdn/a.jpg https://cdn/b.jpg");
+        assert_eq!(t.get(1, "images"), "");
         assert_eq!(t.get(1, "title"), "");
         assert_eq!(t.get(1, "option1_value"), "M");
         assert_eq!(t.get(1, "stock"), "", "not tracked");

@@ -68,6 +68,10 @@ pub struct Settings {
     /// The bearer token Prometheus scrapes `/metrics` with; none keeps
     /// `/metrics` hidden (404).
     pub metrics_token: Option<String>,
+    /// Which links shops may have the server call (webhooks) or fetch
+    /// (images to import): public `https://` only, unless
+    /// `SOAT_ALLOW_PRIVATE_URLS=1`, for local development.
+    pub url_policy: soat_webhooks::TargetPolicy,
     /// Stripe, when configured.
     #[cfg(feature = "stripe")]
     pub stripe: Option<soat_stripe::StripeConfig>,
@@ -101,7 +105,9 @@ impl Settings {
     /// `SOAT_SECRET_KEY` (32 characters or more, kept across restarts) to
     /// seal the keys shops store; `SOAT_ANTHROPIC_API_BASE` to reach
     /// Anthropic's API elsewhere (a proxy); `SOAT_METRICS_TOKEN` for
-    /// Prometheus to scrape `/metrics`; `SOAT_PLUGINS_DIR` for the
+    /// Prometheus to scrape `/metrics`; `SOAT_ALLOW_PRIVATE_URLS=1` to let
+    /// webhooks and image imports reach this machine and private networks
+    /// (development only); `SOAT_PLUGINS_DIR` for the
     /// WebAssembly plugins checkout runs (one folder each, see
     /// `docs/plugins.md`).
     ///
@@ -133,6 +139,11 @@ impl Settings {
             metrics_token: std::env::var("SOAT_METRICS_TOKEN")
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
+            url_policy: if std::env::var("SOAT_ALLOW_PRIVATE_URLS").as_deref() == Ok("1") {
+                soat_webhooks::TargetPolicy::Any
+            } else {
+                soat_webhooks::TargetPolicy::PublicHttps
+            },
             #[cfg(feature = "stripe")]
             stripe: soat_stripe::StripeConfig::from_env(),
             #[cfg(feature = "mollie")]
@@ -159,6 +170,7 @@ impl Settings {
             // Nothing listens here: tests that call Claude set a fake.
             anthropic_api: "http://127.0.0.1:9".to_owned(),
             metrics_token: None,
+            url_policy: soat_webhooks::TargetPolicy::PublicHttps,
             #[cfg(feature = "stripe")]
             stripe: None,
             #[cfg(feature = "mollie")]
@@ -225,7 +237,10 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
         .with(settings.auth)
         .with(events)
         .with(Tenancy)
-        .with(Webhooks::new())
+        .with(match settings.url_policy {
+            soat_webhooks::TargetPolicy::Any => Webhooks::new().allow_private_targets(),
+            soat_webhooks::TargetPolicy::PublicHttps => Webhooks::new(),
+        })
         .with(Fields)
         .with(Files::new(settings.storage))
         .with(Catalog)

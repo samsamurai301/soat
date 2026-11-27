@@ -3,7 +3,7 @@
 //! variable products take their variations as variants, with the
 //! variations' attributes as options. Grouped and external products are
 //! left out: SOAT does not sell them. Descriptions turn from HTML into
-//! Markdown; images are not imported.
+//! Markdown; the images' links go along for the import to fetch.
 
 use crate::csv::Table;
 use crate::handle::handleize;
@@ -39,6 +39,7 @@ fn product_fields(t: &Table, r: usize) -> ProductRow {
         }
         .to_owned(),
         tags: t.get(r, "tags").to_owned(),
+        images: crate::import::image_urls(t.get(r, "images")).join(" "),
         line: r + 2,
         ..ProductRow::default()
     }
@@ -154,6 +155,7 @@ mod tests {
         assert_eq!(p.get(0, "price"), "12.00");
         assert_eq!(p.get(0, "weight_grams"), "350");
         assert_eq!(p.get(0, "stock"), "7");
+        assert_eq!(p.get(0, "images"), "https://x/mug.jpg");
         assert_eq!(p.get(0, "option1_name"), "");
         assert_eq!(p.get(1, "handle"), "organic-tee");
         assert_eq!(p.get(1, "title"), "Organic Tee");

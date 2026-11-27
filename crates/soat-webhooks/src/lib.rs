@@ -26,7 +26,7 @@ use zapline::Resources;
 
 pub use send::{backlog, send_due, send_resources};
 pub use sign::{sign, verify};
-pub use target::{check_target, TargetPolicy};
+pub use target::{check_target, is_public, TargetPolicy};
 
 id_kind!(EndpointId, EndpointKind, "whk");
 id_kind!(DeliveryId, DeliveryKind, "whd");

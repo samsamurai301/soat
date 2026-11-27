@@ -5,7 +5,7 @@ use crate::csv::Table;
 
 /// The columns of SOAT's product file: a row per variant, product fields
 /// on a product's first row.
-pub const PRODUCT_COLUMNS: [&str; 20] = [
+pub const PRODUCT_COLUMNS: [&str; 21] = [
     "handle",
     "title",
     "description",
@@ -25,6 +25,7 @@ pub const PRODUCT_COLUMNS: [&str; 20] = [
     "stock",
     "seo_title",
     "seo_description",
+    "images",
     "line",
 ];
 
@@ -51,6 +52,8 @@ pub struct ProductRow {
     pub stock: String,
     pub seo_title: String,
     pub seo_description: String,
+    /// Image URLs, separated by spaces, on a product's first row.
+    pub images: String,
     /// Its line in the original export, for problems.
     pub line: usize,
 }
@@ -78,6 +81,7 @@ impl ProductRow {
             self.stock,
             self.seo_title,
             self.seo_description,
+            self.images,
             self.line.to_string(),
         ]);
         out
@@ -135,6 +139,24 @@ pub fn price(value: &str) -> String {
         (Some(_), None) => v.replace(',', "."),
         _ => v.to_owned(),
     }
+}
+
+/// The image URLs of an `images` cell, in order, each once: `https://`
+/// (or `http://`) links separated by spaces or commas.
+///
+/// ```
+/// let urls = soat_core::import::image_urls("https://a.test/1.jpg, https://a.test/2.png https://a.test/1.jpg x");
+/// assert_eq!(urls, ["https://a.test/1.jpg", "https://a.test/2.png"]);
+/// ```
+pub fn image_urls(cell: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for url in cell.split([' ', ',', '\n', '\t']).map(str::trim) {
+        let web = url.starts_with("https://") || url.starts_with("http://");
+        if web && url.len() <= 2000 && !out.iter().any(|u| u == url) {
+            out.push(url.to_owned());
+        }
+    }
+    out
 }
 
 #[cfg(test)]

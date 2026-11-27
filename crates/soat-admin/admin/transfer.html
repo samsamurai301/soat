@@ -1,10 +1,14 @@
 <h1>Import and export</h1>
-<p class="muted">Moving from another shop? Upload its exports as they are: Shopify’s product export (Products › Export, “Plain CSV file”) and customer export, WooCommerce’s product export (Products › Export), or Shopware’s product and customer exports (Settings › Import/Export, default profiles). Images are not imported yet.</p>
+<p class="muted">Moving from another shop? Upload its exports as they are: Shopify’s product export (Products › Export, “Plain CSV file”) and customer export, WooCommerce’s product export (Products › Export), or Shopware’s product and customer exports (Settings › Import/Export, default profiles). Product images come along: SOAT fetches the links in the export and keeps the images itself.</p>
 {{#if error }}<p class="error" role="alert">{{ error }}</p>{{/if}}
 {{#if result }}
 <section class="panel" role="status">
   <h2>Imported {{ result.kind }}</h2>
-  <p>{{ result.created }} created, {{ result.updated }} updated.</p>
+  <p>{{ result.created }} created, {{ result.updated }} updated{{#if result.images }}, {{ result.images }} images added{{/if}}.</p>
+  {{#if result.image_problems }}
+  <p>These images were not imported; their products were:</p>
+  <ul>{{#each result.image_problems }}<li>Line {{ line }}: {{ message }}</li>{{/each}}</ul>
+  {{/if}}
   {{#if result.failed }}
   <p class="error">These rows were not imported:</p>
   <ul>{{#each result.problems }}<li>Line {{ line }}: {{ message }}</li>{{/each}}</ul>
@@ -19,7 +23,7 @@
     <label>CSV file <input type="file" name="file" accept=".csv,text/csv" required></label>
     <button class="button">Import products</button>
   </form>
-  <p class="muted">A row per variant; rows with the same handle are one product. A handle the shop has updates that product, and its variants are matched by SKU. Empty cells change nothing; <code>stock</code> sets the units on hand. Columns: <code>{{ product_columns }}</code>.</p>
+  <p class="muted">A row per variant; rows with the same handle are one product. A handle the shop has updates that product, and its variants are matched by SKU. Empty cells change nothing; <code>stock</code> sets the units on hand; <code>images</code> takes links to the product's images, separated by spaces, fetched once each. Columns: <code>{{ product_columns }}</code>.</p>
 </section>
 
 <section class="panel">
