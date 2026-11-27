@@ -25,6 +25,7 @@
 //! assert_eq!(modules.names(), ["hello"]);
 //! ```
 
+pub mod backlog;
 pub mod events;
 mod migrations;
 pub mod privacy;
@@ -36,6 +37,7 @@ use soat_core::{is_permission_name, Permission};
 use zapline::embed::Dir;
 use zapline::prelude::App;
 
+pub use backlog::Backlog;
 pub use events::{Event, HandlerFuture, Subscriber, Subscribers};
 pub use migrations::merge_migrations;
 pub use privacy::{Erase, PersonalData, PersonalDataMap, Retention, RetentionMap};

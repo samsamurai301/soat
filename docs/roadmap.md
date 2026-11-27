@@ -174,7 +174,7 @@ Hardening for the public alpha (week of 2027-01-04), using what Zapline
 already has before adding to it.
 
 - [x] K1 Request guards (guide `docs/security.md`): other sites cannot post the admin's or the storefront's forms (Zapline `SameOrigin`, `/api/` exempt as it takes no cookies); 20 tries a minute per client and endpoint where passwords, codes and links are checked (sign-in, sign-up, setup, sign-in links, gift card balance, cart recovery, app tokens, unsubscribe), with `TRUSTED_PROXIES` for reverse proxies **alpha**
-- [ ] K2 Operations: Prometheus metrics behind a token (`SOAT_METRICS_TOKEN`), the outbox and job backlog in health, structured logs with request ids **alpha**
+- [x] K2 Operations (guide `docs/operations.md`): Prometheus metrics behind a token (`SOAT_METRICS_TOKEN`, 404 without it) with the backlog of the event, subscriber and webhook queues (`soat_queue_*`); those queues in `/health`, degraded when one waits over 10 minutes; JSON request logs with request ids (`x-request-id`, kept from a proxy) **alpha**
 - [ ] K3 Content Security Policy for the admin and the storefront, with nonces for the theme's and tracking scripts **alpha**
 - [ ] K4 Backups and upgrades: a documented backup and restore of Postgres and files, and an upgrade check that refuses to start on a database newer than the binary **alpha**
 - [ ] K5 Load baseline: a local script that drives the storefront, cart and checkout, with p95 budgets to keep

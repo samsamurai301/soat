@@ -90,6 +90,34 @@ pub async fn send_resources(res: &Resources) -> Result<usize> {
     send_due(&pool, policy).await
 }
 
+/// Webhook deliveries that are due, and those given up in the past day.
+///
+/// # Errors
+///
+/// When the database cannot be reached.
+pub async fn backlog(pool: &PgPool) -> Result<soat_module::Backlog> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT set_config('soat.system', 'on', true)")
+        .execute(&mut *tx)
+        .await?;
+    let (waiting, oldest_secs, failed_last_day): (i64, f64, i64) = sqlx::query_as(
+        "SELECT \
+           (SELECT count(*) FROM webhook_deliveries \
+             WHERE delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= now()), \
+           COALESCE((SELECT EXTRACT(EPOCH FROM now() - min(next_attempt_at)) FROM webhook_deliveries \
+             WHERE delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= now()), 0)::float8, \
+           (SELECT count(*) FROM webhook_deliveries WHERE failed_at > now() - interval '1 day')",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(soat_module::Backlog {
+        waiting,
+        oldest_secs: oldest_secs.max(0.0),
+        failed_last_day,
+    })
+}
+
 type DueRow = (
     String,
     String,

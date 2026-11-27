@@ -18,7 +18,7 @@ use std::time::Duration;
 use futures_util::FutureExt;
 use serde::Serialize;
 use soat_core::id_kind;
-use soat_module::{Event, Module, Subscribers};
+use soat_module::{Backlog, Event, Module, Subscribers};
 use zapline::db::sqlx::{self, types::Json as SqlJson, PgConnection, PgPool};
 use zapline::embed::Dir;
 use zapline::prelude::*;
@@ -136,6 +136,44 @@ pub async fn dispatch_once(
 ) -> Result<usize> {
     fan_out(pool, subscribers).await?;
     deliver(pool, subscribers, resources).await
+}
+
+/// The two queues behind events: new events not fanned out to their
+/// subscribers yet, and subscriber deliveries that are due.
+///
+/// # Errors
+///
+/// When the database cannot be reached.
+pub async fn backlog(pool: &PgPool) -> Result<(Backlog, Backlog)> {
+    let mut tx = system_tx(pool).await?;
+    let (waiting, oldest_secs): (i64, f64) = sqlx::query_as(
+        "SELECT count(*), COALESCE(EXTRACT(EPOCH FROM now() - min(occurred_at)), 0)::float8 \
+         FROM events WHERE NOT fanned_out",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    let events = Backlog {
+        waiting,
+        oldest_secs: oldest_secs.max(0.0),
+        failed_last_day: 0,
+    };
+    let (waiting, oldest_secs, failed_last_day): (i64, f64, i64) = sqlx::query_as(
+        "SELECT \
+           (SELECT count(*) FROM event_deliveries \
+             WHERE delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= now()), \
+           COALESCE((SELECT EXTRACT(EPOCH FROM now() - min(next_attempt_at)) FROM event_deliveries \
+             WHERE delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= now()), 0)::float8, \
+           (SELECT count(*) FROM event_deliveries WHERE failed_at > now() - interval '1 day')",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let deliveries = Backlog {
+        waiting,
+        oldest_secs: oldest_secs.max(0.0),
+        failed_last_day,
+    };
+    Ok((events, deliveries))
 }
 
 async fn system_tx(pool: &PgPool) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {

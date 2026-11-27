@@ -5,6 +5,7 @@
 //! order, and [`app`] wires them into one Zapline app.
 
 pub mod guard;
+pub mod ops;
 
 use soat_admin::Admin;
 pub use soat_auth::Auth;
@@ -34,7 +35,7 @@ use soat_tax::Taxes;
 use soat_tenancy::Tenancy;
 use soat_theme::Themes;
 use soat_webhooks::Webhooks;
-use zapline::db::{Database, DbCheck};
+use zapline::db::Database;
 use zapline::mail::Mailer;
 use zapline::middleware::SecurityHeaders;
 use zapline::openapi::OpenApi;
@@ -63,6 +64,9 @@ pub struct Settings {
     /// Where Anthropic's API is: `soat_mcp::ANTHROPIC_API` unless a test
     /// or a proxy says otherwise.
     pub anthropic_api: String,
+    /// The bearer token Prometheus scrapes `/metrics` with; none keeps
+    /// `/metrics` hidden (404).
+    pub metrics_token: Option<String>,
     /// Stripe, when configured.
     #[cfg(feature = "stripe")]
     pub stripe: Option<soat_stripe::StripeConfig>,
@@ -95,7 +99,8 @@ impl Settings {
     /// build keeps mail in the dev inbox at `/_dev/mail`);
     /// `SOAT_SECRET_KEY` (32 characters or more, kept across restarts) to
     /// seal the keys shops store; `SOAT_ANTHROPIC_API_BASE` to reach
-    /// Anthropic's API elsewhere (a proxy); `SOAT_PLUGINS_DIR` for the
+    /// Anthropic's API elsewhere (a proxy); `SOAT_METRICS_TOKEN` for
+    /// Prometheus to scrape `/metrics`; `SOAT_PLUGINS_DIR` for the
     /// WebAssembly plugins checkout runs (one folder each, see
     /// `docs/plugins.md`).
     ///
@@ -124,6 +129,9 @@ impl Settings {
                 .ok()
                 .filter(|v| !v.trim().is_empty())
                 .unwrap_or_else(|| soat_mcp::ANTHROPIC_API.to_owned()),
+            metrics_token: std::env::var("SOAT_METRICS_TOKEN")
+                .ok()
+                .filter(|v| !v.trim().is_empty()),
             #[cfg(feature = "stripe")]
             stripe: soat_stripe::StripeConfig::from_env(),
             #[cfg(feature = "mollie")]
@@ -149,6 +157,7 @@ impl Settings {
             sealer: Sealer::from_secret("the test server's secret, long enough to use").ok(),
             // Nothing listens here: tests that call Claude set a fake.
             anthropic_api: "http://127.0.0.1:9".to_owned(),
+            metrics_token: None,
             #[cfg(feature = "stripe")]
             stripe: None,
             #[cfg(feature = "mollie")]
@@ -301,10 +310,10 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
 /// When the module list is inconsistent (a missing dependency, a duplicate
 /// name or migration version). That is a build mistake, caught by tests.
 pub fn app(db: Database, settings: Settings) -> App {
-    let app = guard::wrap(App::new().wrap(SecurityHeaders::default()))
-        .plugin(Health::new().check("database", DbCheck::new()))
+    let metrics_token = settings.metrics_token.clone();
+    let app = guard::wrap(ops::first(App::new()).wrap(SecurityHeaders::default()))
         .openapi(OpenApi::new("SOAT", env!("CARGO_PKG_VERSION")));
-    modules(settings).build(app, db)
+    ops::last(modules(settings).build(app, db), metrics_token)
 }
 
 /// The plugins in `SOAT_PLUGINS_DIR`, in folder order, as checkout hooks.
