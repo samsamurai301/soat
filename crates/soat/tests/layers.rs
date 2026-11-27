@@ -71,6 +71,7 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-loyalty", 40),
     ("soat-b2b", 40),
     ("soat-pos", 40),
+    ("soat-marketplaces", 40),
     ("soat-channels", 40),
     ("soat-compliance", 40),
     // Surfaces.
