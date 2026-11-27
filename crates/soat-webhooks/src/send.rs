@@ -16,7 +16,7 @@ use zapline::db::sqlx::{self, types::Json as SqlJson, PgPool};
 use zapline::prelude::*;
 use zapline::Resources;
 
-use crate::target::{check_target, is_public, TargetPolicy};
+use crate::target::{check_target, PublicResolver, TargetPolicy};
 use crate::{sign, DeliveryId};
 
 /// How long a receiver gets to answer.
@@ -70,7 +70,9 @@ impl Subscriber for Recorder {
 }
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Full<Bytes>>;
+type PublicClient = Client<HttpsConnector<HttpConnector<PublicResolver>>, Full<Bytes>>;
 
+/// For [`TargetPolicy::Any`]: local development and tests.
 fn client() -> &'static HttpsClient {
     static CLIENT: OnceLock<HttpsClient> = OnceLock::new();
     CLIENT.get_or_init(|| {
@@ -79,6 +81,22 @@ fn client() -> &'static HttpsClient {
             .https_or_http()
             .enable_http1()
             .build();
+        Client::builder(TokioExecutor::new()).build(https)
+    })
+}
+
+/// For [`TargetPolicy::PublicHttps`]: HTTPS, connecting to public
+/// addresses only.
+fn public_client() -> &'static PublicClient {
+    static CLIENT: OnceLock<PublicClient> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        let mut http = HttpConnector::new_with_resolver(PublicResolver);
+        http.enforce_http(false);
+        let https = hyper_rustls::HttpsConnectorBuilder::new()
+            .with_webpki_roots()
+            .https_only()
+            .enable_http1()
+            .wrap_connector(http);
         Client::builder(TokioExecutor::new()).build(https)
     })
 }
@@ -201,19 +219,6 @@ async fn post(
 ) -> std::result::Result<u16, (Option<u16>, String)> {
     let fail = |e: String| (None, e);
     let uri = check_target(url, policy).map_err(fail)?;
-    if policy == TargetPolicy::PublicHttps {
-        // Check what the name resolves to now, not when it was registered.
-        let host = uri.host().unwrap_or_default().to_owned();
-        let port = uri.port_u16().unwrap_or(443);
-        let addrs = tokio::net::lookup_host((host.as_str(), port))
-            .await
-            .map_err(|e| fail(format!("cannot resolve {host}: {e}")))?;
-        for addr in addrs {
-            if !is_public(addr.ip()) {
-                return Err(fail(format!("{host} resolves to a private address")));
-            }
-        }
-    }
     let bytes = serde_json::to_vec(body).map_err(|e| fail(e.to_string()))?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -225,10 +230,16 @@ async fn post(
         .header("soat-signature", sign(secret, now, &bytes))
         .body(Full::new(Bytes::from(bytes)))
         .map_err(|e| fail(e.to_string()))?;
-    let response = tokio::time::timeout(TIMEOUT, client().request(request))
+    let sent = match policy {
+        // The name is resolved as the connection is made: it can only
+        // reach public addresses, whatever it resolved to before.
+        TargetPolicy::PublicHttps => public_client().request(request),
+        TargetPolicy::Any => client().request(request),
+    };
+    let response = tokio::time::timeout(TIMEOUT, sent)
         .await
         .map_err(|_| fail("timed out after 10 s".into()))?
-        .map_err(|e| fail(e.to_string()))?;
+        .map_err(|e| fail(innermost(&e)))?;
     let status = response.status().as_u16();
     // Drain the body so the connection can be reused; its content is ignored.
     let _ = tokio::time::timeout(TIMEOUT, response.into_body().collect()).await;
@@ -237,4 +248,14 @@ async fn post(
     } else {
         Err((Some(status), format!("the receiver answered {status}")))
     }
+}
+
+/// The deepest cause of `e`, which says what went wrong (hyper's own
+/// message is only "client error (Connect)").
+pub fn innermost(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut deepest = e;
+    while let Some(next) = deepest.source() {
+        deepest = next;
+    }
+    deepest.to_string()
 }

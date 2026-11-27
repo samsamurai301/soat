@@ -80,52 +80,13 @@ pub struct Fetched {
     pub body: Bytes,
 }
 
-/// Resolves names to their public addresses only, so a name cannot point
-/// the server at its own network, also when it changes between a check
-/// and the connection.
-#[derive(Clone)]
-struct PublicOnly;
-
-impl tower_service::Service<hyper_util::client::legacy::connect::dns::Name> for PublicOnly {
-    type Response = std::vec::IntoIter<std::net::SocketAddr>;
-    type Error = std::io::Error;
-    type Future = std::pin::Pin<
-        Box<dyn std::future::Future<Output = std::io::Result<Self::Response>> + Send>,
-    >;
-
-    fn poll_ready(
-        &mut self,
-        _: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        std::task::Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, name: hyper_util::client::legacy::connect::dns::Name) -> Self::Future {
-        Box::pin(async move {
-            let host = name.as_str().to_owned();
-            let all: Vec<std::net::SocketAddr> =
-                tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
-            let public: Vec<_> = all
-                .into_iter()
-                .filter(|a| soat_webhooks::is_public(a.ip()))
-                .collect();
-            if public.is_empty() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    format!("{host} has no public address"),
-                ));
-            }
-            Ok(public.into_iter())
-        })
-    }
-}
-
-type PublicClient = Client<HttpsConnector<HttpConnector<PublicOnly>>, Full<Bytes>>;
+type PublicClient =
+    Client<HttpsConnector<HttpConnector<soat_webhooks::PublicResolver>>, Full<Bytes>>;
 
 fn public_client() -> &'static PublicClient {
     static CLIENT: OnceLock<PublicClient> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        let mut http = HttpConnector::new_with_resolver(PublicOnly);
+        let mut http = HttpConnector::new_with_resolver(soat_webhooks::PublicResolver);
         http.enforce_http(false);
         let https = hyper_rustls::HttpsConnectorBuilder::new()
             .with_webpki_roots()
@@ -168,15 +129,7 @@ pub async fn fetch(url: &str, policy: TargetPolicy, max_bytes: usize) -> Result<
         let res = tokio::time::timeout(TIMEOUT, sent)
             .await
             .map_err(|_| failed(format!("{url}: timed out")))?
-            .map_err(|e| {
-                let mut why = e.to_string();
-                let mut source = std::error::Error::source(&e);
-                while let Some(s) = source {
-                    why = s.to_string();
-                    source = s.source();
-                }
-                failed(format!("{url}: {why}"))
-            })?;
+            .map_err(|e| failed(format!("{url}: {}", soat_webhooks::innermost(&e))))?;
         let status = res.status();
         if status.is_redirection() {
             let Some(next) = res

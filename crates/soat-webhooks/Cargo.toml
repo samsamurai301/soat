@@ -25,7 +25,8 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "ring", "webpki-roots"] }
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "net"] }
+tower-service = "0.3"
 
 [dev-dependencies]
 soat-auth.workspace = true

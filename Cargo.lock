@@ -2573,7 +2573,6 @@ dependencies = [
  "serde_json",
  "soat-webhooks",
  "tokio",
- "tower-service",
  "zapline",
 ]
 
@@ -3062,6 +3061,7 @@ dependencies = [
  "soat-testing",
  "sqlx",
  "tokio",
+ "tower-service",
  "zapline",
 ]
 

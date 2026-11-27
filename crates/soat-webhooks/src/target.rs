@@ -42,6 +42,51 @@ pub fn check_target(url: &str, policy: TargetPolicy) -> Result<http::Uri, String
     Ok(uri)
 }
 
+/// A resolver for hyper's `HttpConnector` that answers only a name's
+/// public addresses, so a request can only connect to the public internet,
+/// also when the name's addresses change between a check and the
+/// connection (DNS rebinding). A name with none is an error.
+///
+/// ```
+/// use hyper_util::client::legacy::connect::HttpConnector;
+/// let connector = HttpConnector::new_with_resolver(soat_webhooks::PublicResolver);
+/// # drop(connector);
+/// ```
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PublicResolver;
+
+impl tower_service::Service<hyper_util::client::legacy::connect::dns::Name> for PublicResolver {
+    type Response = std::vec::IntoIter<std::net::SocketAddr>;
+    type Error = std::io::Error;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<Self::Response>> + Send>,
+    >;
+
+    fn poll_ready(
+        &mut self,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, name: hyper_util::client::legacy::connect::dns::Name) -> Self::Future {
+        Box::pin(async move {
+            let host = name.as_str().to_owned();
+            let public: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
+                .await?
+                .filter(|a| is_public(a.ip()))
+                .collect();
+            if public.is_empty() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("{host} has no public address"),
+                ));
+            }
+            Ok(public.into_iter())
+        })
+    }
+}
+
 /// Whether an address is on the public internet.
 pub fn is_public(ip: IpAddr) -> bool {
     match ip {
@@ -114,6 +159,15 @@ mod tests {
                 "{url}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn the_resolver_answers_public_addresses_only() {
+        use std::str::FromStr;
+        use tower_service::Service;
+        let name = hyper_util::client::legacy::connect::dns::Name::from_str("localhost").unwrap();
+        let e = PublicResolver.call(name).await.unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied);
     }
 
     #[test]
