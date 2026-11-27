@@ -124,6 +124,10 @@ async fn requests_page(mut cx: Ctx, error: Option<String>, status: StatusCode) -
     let (_, stats) = cx.call(Method::GET, "/api/consent/stats", None).await;
     cx.set("banner", banner);
     cx.set("stats", stats);
+    let (got, retention) = cx.call(Method::GET, "/api/retention", None).await;
+    if got == 200 {
+        cx.set("retention", retention);
+    }
     if let Some(e) = error {
         cx.set("error", json!(e));
     }
@@ -183,6 +187,90 @@ pub(crate) async fn consent(
         200 => Redirect::to(&format!("/admin/{shop}/privacy")).into_response(),
         401 => crate::to_login(),
         422 => requests_page(cx, Some(message(&out)), StatusCode::UNPROCESSABLE_ENTITY).await,
+        _ => cx.failed(status, &out),
+    })
+}
+
+/// Set how long each kind of data is kept (a form post: `days_{rule}`,
+/// blank keeps it).
+#[post("/admin/{shop}/privacy/retention", tag = "admin")]
+pub(crate) async fn retention_settings(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path(shop): Path<String>,
+    raw: Bytes,
+) -> Result<Response> {
+    let cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "customers").await);
+    let f = Fields::parse(&raw);
+    let (got, current) = cx.call(Method::GET, "/api/retention", None).await;
+    if got != 200 {
+        return Ok(cx.failed(got, &current));
+    }
+    let mut days = serde_json::Map::new();
+    for r in current["rules"].as_array().into_iter().flatten() {
+        let Some(key) = r["key"].as_str() else {
+            continue;
+        };
+        let raw = f.get(&format!("days_{key}"));
+        let raw = raw.trim();
+        let value = if raw.is_empty() {
+            Value::Null
+        } else {
+            match raw.parse::<i64>() {
+                Ok(d) => json!(d),
+                Err(_) => {
+                    let m = format!(
+                        "{} needs a number of days, or nothing to keep it.",
+                        r["label"].as_str().unwrap_or(key)
+                    );
+                    return Ok(requests_page(cx, Some(m), StatusCode::UNPROCESSABLE_ENTITY).await);
+                }
+            }
+        };
+        days.insert(key.to_owned(), value);
+    }
+    let (status, out) = cx
+        .call(
+            Method::PUT,
+            "/api/retention",
+            Some(&json!({ "days": days })),
+        )
+        .await;
+    Ok(match status {
+        200 => Redirect::to(&format!("/admin/{shop}/privacy")).into_response(),
+        401 => crate::to_login(),
+        422 => requests_page(cx, Some(message(&out)), StatusCode::UNPROCESSABLE_ENTITY).await,
+        _ => cx.failed(status, &out),
+    })
+}
+
+/// Remove now what is past its time (a form post).
+#[post("/admin/{shop}/privacy/retention/sweep", tag = "admin")]
+pub(crate) async fn retention_sweep(
+    s: State<Shared>,
+    db: Db,
+    headers: HeaderMap,
+    conn: ConnInfo,
+    Path(shop): Path<String>,
+) -> Result<Response> {
+    let mut cx = page!(Ctx::open(s.0, db, &headers, conn, &shop, "customers").await);
+    let (status, out) = cx.call(Method::POST, "/api/retention/sweep", None).await;
+    Ok(match status {
+        200 => {
+            let n = out["total"].as_i64().unwrap_or(0);
+            cx.set(
+                "swept",
+                json!(if n == 1 {
+                    "Swept: 1 record removed.".to_owned()
+                } else {
+                    format!("Swept: {n} records removed.")
+                }),
+            );
+            requests_page(cx, None, StatusCode::OK).await
+        }
+        401 => crate::to_login(),
         _ => cx.failed(status, &out),
     })
 }

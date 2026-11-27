@@ -82,6 +82,17 @@ impl Module for Carts {
         }]
     }
 
+    fn retention(&self) -> &'static [soat_module::Retention] {
+        &[soat_module::Retention {
+            key: "abandoned_carts",
+            label: "Carts never checked out, after their last change",
+            table: "carts",
+            expired: "status = 'open' AND updated_at < now() - make_interval(days => $2)",
+            default_days: Some(90),
+            min_days: 7,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((list_carts, get_cart))
             .plugin(storefront::mount)

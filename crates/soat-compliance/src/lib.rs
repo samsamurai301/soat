@@ -18,8 +18,12 @@
 //!
 //! **Cookie consent.** The shop's cookie banner and the tracking it holds
 //! back until consent: see [`consent`].
+//!
+//! **Data retention.** How long each kind of data is kept, swept daily:
+//! see [`retention`].
 
 pub mod consent;
+pub mod retention;
 
 use serde_json::{json, Value};
 use soat_core::{id_kind, Permission};
@@ -51,7 +55,7 @@ impl Module for Compliance {
     }
 
     fn depends_on(&self) -> &'static [&'static str] {
-        &["tenancy", "events", "customers"]
+        &["tenancy", "events", "customers", "orders"]
     }
 
     fn migrations(&self) -> Option<zapline::embed::Dir> {
@@ -64,6 +68,27 @@ impl Module for Compliance {
             PRIVACY_EXPORT,
             PRIVACY_ERASE,
             consent::PRIVACY_SETTINGS,
+        ]
+    }
+
+    fn retention(&self) -> &'static [soat_module::Retention] {
+        &[
+            soat_module::Retention {
+                key: "consent_records",
+                label: "Cookie choices (recorded without who made them)",
+                table: "consent_records",
+                expired: "created_at < now() - make_interval(days => $2)",
+                default_days: Some(1095),
+                min_days: 365,
+            },
+            soat_module::Retention {
+                key: "closed_privacy_requests",
+                label: "Customers' privacy requests, after they were closed",
+                table: "privacy_requests",
+                expired: "status <> 'open' AND closed_at < now() - make_interval(days => $2)",
+                default_days: None,
+                min_days: 365,
+            },
         ]
     }
 
@@ -83,6 +108,7 @@ impl Module for Compliance {
             consent::storefront_settings,
             consent::storefront_record,
         ))
+        .plugin(retention::mount)
     }
 }
 

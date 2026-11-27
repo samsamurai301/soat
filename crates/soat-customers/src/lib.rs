@@ -102,6 +102,17 @@ impl Module for Customers {
         ]
     }
 
+    fn retention(&self) -> &'static [soat_module::Retention] {
+        &[soat_module::Retention {
+            key: "expired_sessions",
+            label: "Customers' sign-ins, after they expired",
+            table: "customer_sessions",
+            expired: "expires_at < now() - make_interval(days => $2)",
+            default_days: Some(30),
+            min_days: 1,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             list_customers,

@@ -69,6 +69,54 @@ fn personal_data(&self) -> &'static [soat_module::PersonalData] {
 `author_name` column and no declaration. It also fails for a declaration
 whose columns don't exist, or that anonymizes a NOT NULL column to NULL.
 
+## How long data is kept
+
+The GDPR asks shops to keep personal data no longer than they need it
+(article 5(1)(e)). Every module declares how long its old rows are kept,
+and each shop can change the days under Admin → Privacy, never below a
+rule's minimum, or keep the data:
+
+| Rule | What | Default |
+|---|---|---|
+| `abandoned_carts` | carts never checked out, after their last change | 90 days |
+| `expired_sessions` | customers' sign-ins, after they expired | 30 days |
+| `sent_emails` | copies of emails sent to customers | 730 days |
+| `consent_records` | cookie choices (recorded without who made them) | 1095 days |
+| `events` | the event log, which is also the audit log, once delivered | kept |
+| `closed_privacy_requests` | privacy requests, after they were closed | kept |
+| `inactive_customers` | customers with no order and no sign-in, **erased** as above | kept |
+
+Orders and invoices are never removed, because tax law requires keeping
+them.
+
+- `GET /api/retention` (`privacy:read`) lists the rules with the days set
+  and how many records a sweep would remove now.
+- `PUT /api/retention {"days": {"abandoned_carts": 30, "events": null}, "reset": ["sent_emails"]}`
+  (`privacy:settings`) sets days (`null` keeps), and `reset` goes back to the
+  default. Publishes `retention.updated`.
+- `POST /api/retention/sweep` (`privacy:erase`) removes what is due now.
+
+An hourly task sweeps each shop once a day. A sweep that removes anything
+publishes `retention.swept` with the count per rule; each customer erased
+for inactivity publishes `customer.erased` with `"reason":
+"inactive_customers"`. Customers with a running subscription are not
+erased, and at most 200 are erased per sweep.
+
+A module declares its rules in `Module::retention`:
+
+```rust
+fn retention(&self) -> &'static [soat_module::Retention] {
+    &[soat_module::Retention {
+        key: "abandoned_carts",
+        label: "Carts never checked out, after their last change",
+        table: "carts",
+        expired: "status = 'open' AND updated_at < now() - make_interval(days => $2)", // $2: the days
+        default_days: Some(90), // None: kept until the shop sets a time
+        min_days: 7,
+    }]
+}
+```
+
 ## Cookies and the cookie banner
 
 On its own, SOAT needs no cookie banner:
