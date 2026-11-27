@@ -132,12 +132,12 @@ fn tags(raw: Option<&[String]>) -> Result<Option<Vec<String>>> {
 }
 
 /// One of the shop's customers, or 404.
-pub async fn load(tx: &mut TenantTx, tenant: &Tenant, id: &str) -> Result<Customer> {
+pub async fn load(tx: &mut TenantTx, scope: &impl Scope, id: &str) -> Result<Customer> {
     let id = CustomerId::parse(id).map_err(|_| Error::not_found())?;
     sqlx::query_as::<_, Customer>(&format!(
         "SELECT {COLUMNS} FROM customers WHERE tenant_id = $1 AND id = $2"
     ))
-    .bind(tenant.id())
+    .bind(scope.tenant_id())
     .bind(id.as_str())
     .fetch_optional(&mut **tx)
     .await?

@@ -1,0 +1,46 @@
+<div class="head"><h1>Subscriptions</h1> <a href="{{ base }}/customers">Customers</a></div>
+{{#if missing}}<p class="muted">Subscriptions are not part of this build of SOAT.</p>{{else}}
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+<nav class="tabs" aria-label="Status">
+  <a href="{{ base }}/subscriptions"{{#if status}}{{else}} aria-current="page"{{/if}}>All</a>
+  <a href="{{ base }}/subscriptions?status=active">Active</a>
+  <a href="{{ base }}/subscriptions?status=paused">Paused</a>
+  <a href="{{ base }}/subscriptions?status=canceled">Canceled</a>
+</nav>
+{{#if subscriptions }}<table class="table">
+  <thead><tr><th>Product</th><th>Plan</th><th>Customer</th><th>Status</th><th>Next order</th><th class="num">Orders</th><th></th></tr></thead>
+  <tbody>{{#each subscriptions }}<tr>
+    <td>{{ title }} × {{ quantity }}</td><td>{{ plan_name }}</td>
+    <td><a href="{{ base }}/customers/{{ customer_id }}">Customer</a></td>
+    <td>{{ status }}{{#if last_error }}<br><small class="muted">Last renewal failed: {{ last_error }}</small>{{/if}}</td>
+    <td>{{#if canceled}}{{else}}{{ next_day }}{{/if}}</td>
+    <td class="num">{{#if last_order_id }}<a href="{{ base }}/orders/{{ last_order_id }}">{{ orders_count }}</a>{{else}}{{ orders_count }}{{/if}}</td>
+    <td>{{#if active }}<form method="post" action="{{ base }}/subscriptions/{{ id }}/skip" class="inline"><button class="link">Skip next</button></form>
+      <form method="post" action="{{ base }}/subscriptions/{{ id }}/pause" class="inline"><button class="link">Pause</button></form>{{/if}}
+      {{#if paused }}<form method="post" action="{{ base }}/subscriptions/{{ id }}/resume" class="inline"><button class="link">Resume</button></form>{{/if}}
+      {{#if canceled}}{{else}}<form method="post" action="{{ base }}/subscriptions/{{ id }}/cancel" class="inline"><button class="link">Cancel</button></form>{{/if}}</td>
+  </tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No subscriptions yet. Give a product a plan below, and customers can subscribe to it from its page in the shop.</p>{{/if}}
+
+<h2>Plans</h2>
+{{#if plans }}<table class="table">
+  <thead><tr><th>Product</th><th>Plan</th><th>Every</th><th class="num">Discount</th><th class="num">Shipping</th><th></th></tr></thead>
+  <tbody>{{#each plans }}<tr>
+    <td>{{ product_title }}</td><td>{{ name }}{{#if active}}{{else}} <small class="muted">(off)</small>{{/if}}</td>
+    <td>{{ interval_count }} {{ unit_label }}</td>
+    <td class="num">{{ discount_percent }}%</td><td class="num">{{ shipping }}</td>
+    <td><form method="post" action="{{ base }}/subscription-plans/{{ id }}/{{#if active}}off{{else}}on{{/if}}" class="inline"><button class="link">{{#if active}}Turn off{{else}}Turn on{{/if}}</button></form></td>
+  </tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No plans yet.</p>{{/if}}
+<form method="post" action="{{ base }}/subscription-plans" class="form">
+  <fieldset><legend>New plan</legend>
+    <label>Product <select name="product_id" required>{{#each products }}<option value="{{ id }}">{{ title }}</option>{{/each}}</select></label>
+    <label>Name <input name="name" value="{{ typed.name }}" maxlength="100" placeholder="Every 2 weeks" required></label>
+    <label>Every <input name="interval_count" type="number" min="1" max="52" value="1" required></label>
+    <label>Unit <select name="interval_unit"><option value="week">weeks</option><option value="month" selected>months</option></select></label>
+    <label>Discount (%) <input name="discount_percent" type="number" min="0" max="90" step="0.01" value="0"></label>
+    <label>Shipping per order <input name="shipping_price" type="number" min="0" step="0.01" value="0"></label>
+  </fieldset>
+  <button class="button">Add plan</button>
+</form>
+{{/if}}
