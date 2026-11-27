@@ -3,7 +3,9 @@
 //! product's variants become variants with one option, `Variant`, named
 //! by the variant's own name or number: the default profile lists a
 //! variant's options only by id. Prices are taken gross; descriptions
-//! turn from HTML into Markdown; images are not imported.
+//! turn from HTML into Markdown; the cover image's link (`cover_media_url`)
+//! and any in a `media` or `media_url` column go along for the import to
+//! fetch.
 
 use crate::csv::Table;
 use crate::handle::handleize;
@@ -19,6 +21,17 @@ pub fn is_products(t: &Table) -> bool {
 /// Whether `t` is Shopware's customer export.
 pub fn is_customers(t: &Table) -> bool {
     t.column("customer_number").is_some() && t.column("email").is_some()
+}
+
+/// The cover first, then the other media links (`|`, comma or space
+/// separated), once each.
+fn images(t: &Table, r: usize) -> String {
+    let cells = [
+        t.get(r, "cover_media_url"),
+        t.get(r, "media"),
+        t.get(r, "media_url"),
+    ];
+    crate::import::image_urls(&cells.join(" ").replace('|', " ")).join(" ")
 }
 
 fn active(t: &Table, r: usize) -> String {
@@ -49,6 +62,7 @@ pub fn products(t: &Table) -> Table {
             title: name.to_owned(),
             description: to_markdown(t.get(r, "description")),
             status: active(t, r),
+            images: images(t, r),
             line: r + 2,
             ..ProductRow::default()
         };
@@ -136,6 +150,19 @@ mod tests {
         b3;b1;SW-TEE-M;0;2;;;;31,00;19;\n";
 
     #[test]
+    fn takes_the_cover_and_the_other_media() {
+        let t = Table::parse(
+            "id;product_number;name;price_gross;cover_media_url;media\n\
+             a1;SW-1;One;1,00;https://x/c.jpg;https://x/a.jpg|https://x/c.jpg|https://x/b.png\n",
+        )
+        .unwrap();
+        assert_eq!(
+            products(&t).get(0, "images"),
+            "https://x/c.jpg https://x/a.jpg https://x/b.png"
+        );
+    }
+
+    #[test]
     fn reads_the_product_export() {
         let t = Table::parse(EXPORT).unwrap();
         assert!(is_products(&t) && !is_customers(&t));
@@ -143,6 +170,8 @@ mod tests {
         assert_eq!(p.rows.len(), 3);
         assert_eq!(p.get(0, "handle"), "enamel-mug");
         assert_eq!(p.get(0, "price"), "12.00");
+        assert_eq!(p.get(0, "images"), "https://x/m.jpg");
+        assert_eq!(p.get(1, "images"), "");
         assert_eq!(p.get(0, "description"), "A mug.");
         assert_eq!(p.get(0, "stock"), "7");
         assert_eq!(p.get(1, "handle"), "organic-tee");
