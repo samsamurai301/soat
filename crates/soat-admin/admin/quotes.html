@@ -1,0 +1,14 @@
+<div class="head"><h1>Quotes</h1> <a href="{{ base }}/companies">Companies</a></div>
+{{#if missing}}<p class="muted">B2B is not part of this build of SOAT.</p>{{else}}
+<nav class="tabs" aria-label="Status">
+  <a href="{{ base }}/quotes"{{#if status}}{{else}} aria-current="page"{{/if}}>All</a>
+  <a href="{{ base }}/quotes?status=requested">Waiting</a>
+  <a href="{{ base }}/quotes?status=offered">Offered</a>
+  <a href="{{ base }}/quotes?status=accepted">Accepted</a>
+  <a href="{{ base }}/quotes?status=declined">Declined</a>
+</nav>
+{{#if quotes }}<table class="table">
+  <thead><tr><th>Asked</th><th>For</th><th class="num">Lines</th><th>Status</th></tr></thead>
+  <tbody>{{#each quotes }}<tr><td><a href="{{ base }}/quotes/{{ id }}">{{ date }}</a></td><td>{{ first }}</td><td class="num">{{ count }}</td><td>{{ status }}</td></tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No quotes. Buyers ask for one from their account, with a quick order or a list of items.</p>{{/if}}
+{{/if}}

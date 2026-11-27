@@ -1,0 +1,22 @@
+[package]
+name = "soat-b2b"
+description = "B2B: company accounts with shared prices, payment terms and a credit limit, and quotes answered with draft orders."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+soat-core.workspace = true
+soat-module.workspace = true
+soat-tenancy.workspace = true
+soat-customers.workspace = true
+soat-catalog.workspace = true
+soat-orders.workspace = true
+soat-payments.workspace = true
+soat-checkout.workspace = true
+zapline.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true

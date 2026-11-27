@@ -1,0 +1,11 @@
+<h1>{{ t.quotes }}</h1>
+{{#if items }}
+<table class="cart-lines">
+  <tbody>
+  {{#each items }}<tr><td><a href="{{ root }}/account/quotes/{{ id }}">{{ date }}</a></td><td>{{ first }}{{#if lines }} ({{ lines }}){{/if}}</td><td>{{ status }}</td></tr>{{/each}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">{{ t.quotes_empty }} <a href="{{ root }}/account/quick-order">{{ t.quick_order }}</a></p>
+{{/if}}
+<p><a href="{{ root }}/account">{{ t.account }}</a></p>

@@ -1,0 +1,36 @@
+<div class="head"><h1>{{ company.name }}</h1> <a href="{{ base }}/companies">Companies</a></div>
+{{#if notice }}<p class="notice" role="status">{{ notice }}</p>{{/if}}
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#if company.on_hold }}<p class="notice" role="alert">On hold: its people cannot accept quotes.</p>{{/if}}
+<p>Open <strong>{{ balance.open }}</strong>{{#if balance.overdue_minor }} · overdue <strong>{{ balance.overdue }}</strong>{{/if}}{{#if balance.credit_limit }} · credit left {{ balance.available }} of {{ balance.credit_limit }}{{/if}}</p>
+{{#if balance.orders }}<table class="table">
+  <thead><tr><th>Order</th><th>Placed</th><th class="num">Total</th><th>Due</th><th>State</th></tr></thead>
+  <tbody>{{#each balance.orders }}<tr><td><a href="{{ base }}/orders/{{ order_id }}">#{{ number }}</a></td><td>{{ placed }}</td><td class="num">{{ total }}</td><td>{{ due }}</td><td>{{#if overdue }}<strong>{{ state }}</strong>{{else}}{{ state }}{{/if}}</td></tr>{{/each}}</tbody>
+</table>{{/if}}
+
+<h2>People</h2>
+{{#if members }}<table class="table">
+  <thead><tr><th>Customer</th><th>Role</th><th></th></tr></thead>
+  <tbody>{{#each members }}<tr><td><a href="{{ base }}/customers/{{ customer_id }}">{{ email }}</a> {{ first_name }} {{ last_name }}</td><td>{{ role }}</td>
+    <td><form method="post" action="{{ base }}/companies/{{ company.id }}/remove" class="inline"><input type="hidden" name="customer_id" value="{{ customer_id }}"><button class="link">Remove</button></form></td></tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No one buys for this company yet.</p>{{/if}}
+<form method="post" action="{{ base }}/companies/{{ company.id }}/add" class="form">
+  <fieldset><legend>Add a person</legend>
+    <label>Customer email <input name="email" type="email" required></label>
+    <label>Role <select name="role"><option value="buyer">Buyer</option><option value="admin">Admin (sees what the company owes)</option></select></label>
+  </fieldset>
+  <button class="button">Add</button>
+</form>
+
+<form method="post" action="{{ base }}/companies/{{ company.id }}/save" class="form">
+  <fieldset><legend>Details</legend>
+    <label>Name <input name="name" value="{{ company.name }}" maxlength="200" required></label>
+    <label>VAT number <input name="vat_number" value="{{ company.vat_number }}" maxlength="20"></label>
+    <label>Price group (customer tag) <input name="price_tag" value="{{ company.price_tag }}" maxlength="100"></label>
+    <label>Payment terms (days) <input name="payment_terms_days" type="number" min="0" max="180" value="{{ company.payment_terms_days }}"></label>
+    <label>Credit limit ({{ company.currency }}) <input name="credit_limit" value="{{ company.credit_limit }}" inputmode="decimal" placeholder="no limit"></label>
+    <label>Note <textarea name="note" rows="3">{{ company.note }}</textarea></label>
+  </fieldset>
+  <button class="button">Save</button>
+</form>
+<form method="post" action="{{ base }}/companies/{{ company.id }}/{{#if company.on_hold }}release{{else}}hold{{/if}}" class="inline"><button class="link">{{#if company.on_hold }}Take off hold{{else}}Put on hold{{/if}}</button></form>

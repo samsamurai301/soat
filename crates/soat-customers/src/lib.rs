@@ -233,6 +233,45 @@ pub async fn unsubscribe(tx: &mut TenantTx, scope: &impl Scope, id: &str) -> Res
     }
 }
 
+/// Gives customer `id` tag `tag` (e.g. a company's price group), or takes
+/// it away when `on` is false, in the caller's transaction. Publishes
+/// `customer.updated` when it changed anything.
+///
+/// # Errors
+///
+/// 422 `invalid_tags` for a tag that is not one; database errors.
+pub async fn set_tag(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    id: &str,
+    tag: &str,
+    on: bool,
+) -> Result<bool> {
+    let tag = tags(Some(&[tag.to_owned()]))?
+        .and_then(|t| t.into_iter().next())
+        .ok_or_else(|| Error::unprocessable("give a tag").with_code("invalid_tags"))?;
+    let sql = if on {
+        "UPDATE customers SET tags = array_append(tags, $3) \
+         WHERE tenant_id = $1 AND id = $2 AND NOT ($3 = ANY(tags))"
+    } else {
+        "UPDATE customers SET tags = array_remove(tags, $3) \
+         WHERE tenant_id = $1 AND id = $2 AND $3 = ANY(tags)"
+    };
+    let changed: Option<Customer> = sqlx::query_as(&format!("{sql} RETURNING {COLUMNS}"))
+        .bind(scope.tenant_id())
+        .bind(id)
+        .bind(&tag)
+        .fetch_optional(&mut **tx)
+        .await?;
+    match changed {
+        Some(c) => {
+            scope.publish(tx, "customer.updated", &c).await?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
 /// Change a customer (`customers:write`). Turning marketing on records the
 /// time of consent; turning it off clears it. Publishes `customer.updated`.
 #[patch("/api/customers/{id}", tag = "customers")]

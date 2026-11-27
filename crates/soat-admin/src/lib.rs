@@ -33,6 +33,7 @@ mod analytics;
 mod api;
 mod apps;
 mod assistant;
+mod b2b;
 mod blog;
 mod builder;
 mod campaigns;
@@ -196,6 +197,15 @@ impl Module for Admin {
             subscriptions::create_plan,
             subscriptions::toggle_plan,
             subscriptions::act,
+        ))
+        .mount((
+            b2b::list,
+            b2b::create,
+            b2b::edit_page,
+            b2b::act,
+            b2b::quotes,
+            b2b::quote,
+            b2b::quote_act,
         ))
         .mount((
             customers::adjust_points,

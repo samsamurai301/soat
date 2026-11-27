@@ -22,6 +22,8 @@ analytics = ["dep:soat-analytics"]
 marketing = ["dep:soat-marketing"]
 # Subscribe on product pages and manage subscriptions in the account.
 subscriptions = ["dep:soat-subscriptions"]
+# Quick order by SKU, quotes and the buyer's company in the account.
+b2b = ["dep:soat-b2b"]
 
 [dependencies]
 soat-core.workspace = true
@@ -46,6 +48,7 @@ soat-loyalty = { workspace = true, optional = true }
 soat-analytics = { workspace = true, optional = true }
 soat-marketing = { workspace = true, optional = true }
 soat-subscriptions = { workspace = true, optional = true }
+soat-b2b = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true

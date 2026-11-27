@@ -1,0 +1,30 @@
+<h1>{{ t.quote }} · {{ quote.status }}</h1>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#if quote.reply }}<blockquote>{{ quote.reply }}</blockquote>{{/if}}
+{{#if quote.offer }}
+<table class="cart-lines">
+  <tbody>
+  {{#each quote.offer.lines }}<tr><td>{{ title }} <small class="muted">{{ sku }}</small></td><td>{{ quantity }} × {{ unit_price }}</td></tr>{{/each}}
+  </tbody>
+  <tfoot>
+    <tr><td>{{ t.subtotal }}</td><td>{{ quote.offer.subtotal }}</td></tr>
+    {{#if quote.offer.discount }}<tr><td>{{ t.discount }}</td><td>−{{ quote.offer.discount }}</td></tr>{{/if}}
+    <tr><td>{{ t.shipping }}</td><td>{{ quote.offer.shipping }}</td></tr>
+    <tr><td>{{ t.tax }}</td><td>{{ quote.offer.tax }}</td></tr>
+    <tr><td><strong>{{ t.total }}</strong></td><td><strong>{{ quote.offer.total }}</strong></td></tr>
+  </tfoot>
+</table>
+{{#if quote.expires }}<p class="muted">{{ t.offer_holds_until }} {{ quote.expires }}</p>{{/if}}
+{{else}}
+<table class="cart-lines">
+  <tbody>
+  {{#each quote.lines }}<tr><td>{{ title }} <small class="muted">{{ sku }}</small></td><td>{{ quantity }}</td></tr>{{/each}}
+  </tbody>
+</table>
+{{/if}}
+{{#if quote.note }}<p class="muted">{{ quote.note }}</p>{{/if}}
+{{#if quote.open }}<p>
+  {{#if quote.offered }}<form method="post" action="{{ root }}/account/quotes/{{ quote.id }}/accept"><button class="button" type="submit">{{ t.accept_offer }}</button></form>{{/if}}
+  <form method="post" action="{{ root }}/account/quotes/{{ quote.id }}/decline"><button class="link" type="submit">{{ t.decline_quote }}</button></form>
+</p>{{/if}}
+<p><a href="{{ root }}/account/quotes">{{ t.quotes }}</a></p>

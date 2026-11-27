@@ -1,0 +1,31 @@
+<div class="head"><h1>Quote · {{ quote.status }}</h1> <a href="{{ base }}/quotes">Quotes</a></div>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+<p>From <a href="{{ base }}/customers/{{ quote.customer_id }}">{{ quote.customer_email }}</a>{{#if quote.company_name }} for <a href="{{ base }}/companies/{{ quote.company_id }}">{{ quote.company_name }}</a>{{/if}}.</p>
+{{#if quote.note }}<blockquote>{{ quote.note }}</blockquote>{{/if}}
+{{#if quote.offer }}
+<h2>Offer{{#if quote.expires_at }} <small class="muted">until {{ quote.expires_at }}</small>{{/if}}</h2>
+<table class="table">
+  <tbody>{{#each quote.offer.lines }}<tr><td>{{ title }} <small class="muted">{{ sku }}</small></td><td class="num">{{ quantity }} × {{ unit_price }}</td></tr>{{/each}}</tbody>
+  <tfoot><tr><td>Subtotal</td><td class="num">{{ quote.offer.subtotal }}</td></tr><tr><td>Discount</td><td class="num">{{ quote.offer.discount }}</td></tr><tr><td>Shipping</td><td class="num">{{ quote.offer.shipping_price }}</td></tr><tr><td>Tax</td><td class="num">{{ quote.offer.tax }}</td></tr><tr><td><strong>Total</strong></td><td class="num"><strong>{{ quote.offer.total }}</strong></td></tr></tfoot>
+</table>
+{{/if}}
+{{#if quote.order_id }}<p><a href="{{ base }}/orders/{{ quote.order_id }}">The order</a></p>{{/if}}
+{{#if quote.open }}
+<form method="post" action="{{ base }}/quotes/{{ quote.id }}/offer" class="form">
+  <fieldset><legend>{{#if quote.offer }}Change the offer{{else}}Make an offer{{/if}}</legend>
+    <input type="hidden" name="currency" value="{{ quote.offer.currency }}">
+    <table class="table">
+      <thead><tr><th>Item</th><th>Quantity</th><th>Price each (blank: their own)</th></tr></thead>
+      <tbody>{{#each form_lines }}<tr><td>{{ title }} <small class="muted">{{ sku }}</small><input type="hidden" name="item_{{ n }}" value="{{ item_id }}"></td>
+        <td><input name="quantity_{{ n }}" type="number" min="0" value="{{ quantity }}"></td>
+        <td><input name="price_{{ n }}" value="{{ price }}" inputmode="decimal"></td></tr>{{/each}}</tbody>
+    </table>
+    <label>Shipping <input name="shipping" inputmode="decimal"></label>
+    <label>Discount <input name="discount" inputmode="decimal"></label>
+    <label>Holds for (days) <input name="days" type="number" min="1" max="365" value="30"></label>
+    <label>A word for the buyer <textarea name="reply" rows="3">{{ quote.reply }}</textarea></label>
+  </fieldset>
+  <button class="button">Send offer</button>
+</form>
+<form method="post" action="{{ base }}/quotes/{{ quote.id }}/decline" class="inline"><input type="hidden" name="reply" value=""><button class="link">Decline</button></form>
+{{/if}}

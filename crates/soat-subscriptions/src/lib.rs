@@ -560,26 +560,6 @@ async fn act_on_mine(
     Ok(Json(s))
 }
 
-/// The customer's default address as an order address.
-async fn default_address(
-    conn: &mut PgConnection,
-    scope: &impl Scope,
-    customer: &str,
-) -> Result<Option<PostalAddress>> {
-    let row: Option<(SqlJson<PostalAddress>,)> = sqlx::query_as(
-        "SELECT json_build_object('first_name', first_name, 'last_name', last_name, \
-         'company', company, 'line1', line1, 'line2', line2, 'postal_code', postal_code, \
-         'city', city, 'region', region, 'country', country, 'phone', phone) \
-         FROM customer_addresses WHERE tenant_id = $1 AND customer_id = $2 \
-         ORDER BY is_default DESC, id LIMIT 1",
-    )
-    .bind(scope.tenant_id())
-    .bind(customer)
-    .fetch_optional(conn)
-    .await?;
-    Ok(row.map(|(a,)| a.0))
-}
-
 /// Subscribes customer `customer` and places the first order. Publishes
 /// `subscription.created` and the order's events.
 ///
@@ -610,7 +590,7 @@ pub async fn start(
         .ok_or_else(|| invalid("the item is not the plan's product or one of its variants"))?;
     let shipping = match s.shipping_address {
         Some(a) => Some(a),
-        None => default_address(&mut tx, shop, customer).await?,
+        None => soat_checkout::drafts::saved_address(&mut tx, shop, customer).await?,
     };
     let Some(shipping) = shipping else {
         return Err(invalid(

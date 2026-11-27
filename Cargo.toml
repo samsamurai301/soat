@@ -40,6 +40,7 @@ soat-loyalty = { path = "crates/soat-loyalty" }
 soat-analytics = { path = "crates/soat-analytics" }
 soat-marketing = { path = "crates/soat-marketing" }
 soat-subscriptions = { path = "crates/soat-subscriptions" }
+soat-b2b = { path = "crates/soat-b2b" }
 soat-orders = { path = "crates/soat-orders" }
 soat-checkout = { path = "crates/soat-checkout" }
 soat-invoices = { path = "crates/soat-invoices" }
