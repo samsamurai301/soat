@@ -78,6 +78,32 @@ impl Module for B2b {
         vec![Arc::new(Ledger)]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[
+            soat_module::PersonalData {
+                table: "company_members",
+                matches: "customer_id = $2",
+                export: &["company_id", "role", "created_at"],
+                erase: soat_module::Erase::Delete,
+            },
+            soat_module::PersonalData {
+                table: "quotes",
+                matches: "customer_id = $2",
+                export: &[
+                    "id",
+                    "company_id",
+                    "lines",
+                    "note",
+                    "status",
+                    "order_id",
+                    "reply",
+                    "created_at",
+                ],
+                erase: soat_module::Erase::Delete,
+            },
+        ]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             list_companies,

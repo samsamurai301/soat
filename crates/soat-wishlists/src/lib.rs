@@ -40,6 +40,15 @@ impl Module for Wishlists {
         &[WISHLISTS_READ]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "wishlist_items",
+            matches: "customer_id = $2",
+            export: &["product_id", "created_at"],
+            erase: soat_module::Erase::Delete,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((my_wishlist, save_item, remove_item, most_saved))
     }

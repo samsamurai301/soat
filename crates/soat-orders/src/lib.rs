@@ -86,6 +86,32 @@ impl Module for Orders {
         vec![Arc::new(PaymentFollower)]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "orders",
+            matches: "customer_id = $2 OR lower(email) = $3",
+            export: &[
+                "id",
+                "number",
+                "email",
+                "currency",
+                "status",
+                "financial_status",
+                "fulfillment_status",
+                "total_minor",
+                "shipping_address",
+                "billing_address",
+                "vat_number",
+                "placed_at",
+            ],
+            erase: soat_module::Erase::Anonymize(&[
+                ("customer_id", "NULL"),
+                ("email", "'erased@invalid'"),
+                ("note", "''"),
+            ]),
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.plugin(routes::mount)
             .plugin(fulfillments::mount)

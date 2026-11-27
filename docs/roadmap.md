@@ -158,5 +158,7 @@ layer.
 
 ## J. Compliance (after alpha)
 
-J1 GDPR export and delete · J2 cookie consent · J3 e-invoicing · J4 data
-retention · J5 accessibility checks in CI
+- [x] J1 GDPR export and erasure (feature `privacy`, crate `soat-compliance`, guide `docs/privacy.md`): every module declares the tables in which it keeps customer data (`Module::personal_data`: how rows match a customer, what an export shows, and whether erasing deletes, anonymizes or keeps them for a legal reason); staff download a customer's data as JSON (`privacy:export`) and erase them after typing their email again (`privacy:erase`: account, addresses, carts, reviews, points and the like deleted, orders and discount uses kept without them, invoices kept for tax law, the event log redacted, with a report per table); customers download their own data and ask to be erased from their account, and staff see and decline requests (admin Privacy requests); a test fails for any table with customer columns and no declaration
+
+J2 cookie consent · J3 e-invoicing · J4 data retention · J5 accessibility
+checks in CI

@@ -165,6 +165,23 @@ impl Module for Checkout {
         vec![Arc::new(KeepPaidStock)]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[
+            soat_module::PersonalData {
+                table: "checkouts",
+                matches: "lower(email) = $3 OR cart_id IN (SELECT id FROM carts WHERE tenant_id = $1 AND customer_id = $2)",
+                export: &["email", "shipping_address", "billing_address", "vat_number", "updated_at"],
+                erase: soat_module::Erase::Delete,
+            },
+            soat_module::PersonalData {
+                table: "draft_orders",
+                matches: "customer_id = $2 OR lower(email) = $3",
+                export: &["id", "status", "order_id", "email", "lines", "shipping_address", "billing_address", "created_at"],
+                erase: soat_module::Erase::Anonymize(&[("customer_id", "NULL"), ("email", "''"), ("shipping_address", "NULL"), ("billing_address", "NULL"), ("note", "''")]),
+            },
+        ]
+    }
+
     fn mount(&self, app: App) -> App {
         let app = app
             .state(self.hooks.clone())

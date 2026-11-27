@@ -100,6 +100,15 @@ impl Module for Notify {
         vec![Arc::new(Mailings)]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "email_messages",
+            matches: "lower(recipient) = $3",
+            export: &["template", "subject", "status", "created_at", "sent_at"],
+            erase: soat_module::Erase::Delete,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mailer(self.mailer.clone())
             .state(MailFrom(self.from.clone()))

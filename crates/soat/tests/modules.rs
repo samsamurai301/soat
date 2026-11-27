@@ -52,6 +52,8 @@ fn module_list_is_valid_and_ordered() {
     expected.push("pos");
     #[cfg(feature = "marketplaces")]
     expected.push("marketplaces");
+    #[cfg(feature = "privacy")]
+    expected.push("compliance");
     expected.push("storefront");
     #[cfg(feature = "shopify-sync")]
     expected.push("import");

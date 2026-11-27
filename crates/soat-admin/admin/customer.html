@@ -44,6 +44,16 @@
 {{/if}}
 </div>
 {{#if customer.id }}
+<section class="panel">
+  <h2>Privacy</h2>
+  <p><a href="{{ base }}/customers/{{ customer.id }}/personal-data" download>Download their personal data</a> <span class="muted">(JSON, to send them when they ask)</span></p>
+  <form method="post" action="{{ base }}/customers/{{ customer.id }}/erase" class="form">
+    <p class="muted">Erasing deletes their account, addresses, carts, reviews and points, and blanks them in the event log. Orders and discount uses stay without their name, and invoices stay as they are, because tax law requires it. This cannot be undone.</p>
+    <label>Type their email to erase them <input type="email" name="email" required autocomplete="off"></label>
+    <button class="button danger">Erase customer</button>
+  </form>
+  <p><a href="{{ base }}/privacy">Privacy requests</a></p>
+</section>
 <form method="post" action="{{ base }}/customers/{{ customer.id }}/delete" class="danger" hx-confirm="Delete this customer? Their orders stay.">
   <button class="link">Delete customer</button>
 </form>

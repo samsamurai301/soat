@@ -51,6 +51,15 @@ impl Module for Promotions {
         &[PROMOTIONS_READ, PROMOTIONS_MANAGE]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "discount_redemptions",
+            matches: "customer_id = $2 OR lower(email) = $3",
+            export: &["discount_id", "order_id", "amount_minor", "created_at"],
+            erase: soat_module::Erase::Anonymize(&[("customer_id", "NULL"), ("email", "''")]),
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             list_discounts,

@@ -69,6 +69,29 @@ impl Module for GiftCards {
         vec![Arc::new(RefundToCard), Arc::new(SellCards)]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "gift_cards",
+            matches: "customer_id = $2 OR lower(recipient_email) = $3",
+            export: &[
+                "id",
+                "kind",
+                "last_chars",
+                "currency",
+                "initial_minor",
+                "balance_minor",
+                "expires_at",
+                "created_at",
+            ],
+            erase: soat_module::Erase::Anonymize(&[
+                ("customer_id", "NULL"),
+                ("recipient_email", "NULL"),
+                ("unsent_code", "NULL"),
+                ("note", "''"),
+            ]),
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             list_cards,
