@@ -1,0 +1,3 @@
+*
+!target/release-x86_64-unknown-linux-gnu/release/soat
+!target/release-aarch64-unknown-linux-gnu/release/soat

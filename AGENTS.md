@@ -11,7 +11,9 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
 - **GitHub Actions minutes are scarce** (shared with other projects). Run the
   checks above locally and push once a piece of work is finished, never a
   push-and-see loop. CI runs only on ready pull requests and by hand; builds
-  and releases are made locally, not in Actions.
+  and releases are made locally, not in Actions (`scripts/release.sh`,
+  `docs/releases.md`). A pull request whose checks all passed locally says
+  `[skip ci]` in its head commit's message, so it uses no minutes.
 - `cargo run -p soat`: the server on :8080, OpenAPI docs at `/docs`.
 
 ## Rules

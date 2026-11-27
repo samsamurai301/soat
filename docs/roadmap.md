@@ -178,7 +178,7 @@ already has before adding to it.
 - [x] K3 Content Security Policy for the admin and the storefront (guide `docs/security.md`), with nonces for the theme's and tracking scripts: a fresh nonce per page, put on every `<script>` and `<style>` the templates (a shop's own theme files too) wrote, `'strict-dynamic'` on the storefront so tracking and apps load, stricter in the admin **alpha**
 - [x] K4 Backups (guide `docs/backups.md`): what to keep (database, files, secrets), `pg_dump` and restore steps with row-level security intact, the upgrade routine; an older build refuses to start on a database a newer one migrated, naming the migrations it does not know (`soat_module::upgrade`) **alpha**
 - [x] K5 Load baseline (guide `docs/performance.md`): `cargo run --release -p soat --example load` drives the storefront, cart and checkout with staff API reads, prints p50/p95/p99 per step and fails on a p95 over budget or an unexpected answer; baseline 82 orders a second at 20 shoppers on 4 cores
-- [ ] K6 Release builds made locally: binaries and checksums for Linux and macOS, and a container image, without Actions minutes
+- [x] K6 Release builds made locally (guide `docs/releases.md`): `scripts/release.sh` builds Linux binaries in Debian 12 (glibc 2.36+, arm64 opt-in), macOS ones on a Mac, `SHA256SUMS`, and a distroless, non-root container image, without Actions minutes
 - [ ] K7 ZUGFeRD / Factur-X as PDF/A-3 with the XML inside
 - [ ] K8 Peppol sending through an access point adapter
 - [ ] K9 Plugin host on `zapline-wasm` (once Zapline PR #23 merges)
