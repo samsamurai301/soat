@@ -311,7 +311,8 @@ impl Module for Admin {
 }
 
 /// Admin form posts must come from this site; admin pages are never
-/// framed or cached.
+/// framed or cached (the server's Content Security Policy, `soat::csp`,
+/// also forbids framing).
 async fn guard(req: Request, next: Next) -> Response {
     let admin = req.uri().path() == "/admin" || req.uri().path().starts_with("/admin/");
     if admin && !SameOrigin::new().allows(&req) {
@@ -321,10 +322,6 @@ async fn guard(req: Request, next: Next) -> Response {
     if admin {
         let h = res.headers_mut();
         h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-        h.insert(
-            header::CONTENT_SECURITY_POLICY,
-            HeaderValue::from_static("frame-ancestors 'none'"),
-        );
         h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     }
     res

@@ -169,6 +169,21 @@ impl Shop {
         .await;
     }
 
+    /// The order's invoices once there are `n`: they are issued by event
+    /// handlers, which the background dispatcher may be the one to run.
+    async fn issued(&self, order: &str, n: usize) -> Vec<Value> {
+        let mut all = Vec::new();
+        for _ in 0..50 {
+            self.dispatch().await;
+            all = self.invoices(order).await;
+            if all.len() >= n {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        all
+    }
+
     async fn invoices(&self, order: &str) -> Vec<Value> {
         let page = self
             .staff(
@@ -298,9 +313,7 @@ async fn paid_orders_are_invoiced_and_refunds_credited() {
     assert!(s.invoices(id).await.is_empty(), "not before payment");
 
     s.pay(id).await;
-    s.dispatch().await;
-    s.dispatch().await;
-    let all = s.invoices(id).await;
+    let all = s.issued(id, 1).await;
     assert_eq!(all.len(), 1);
     let inv = &all[0];
     let number = inv["number"].as_str().unwrap();
@@ -336,9 +349,7 @@ async fn paid_orders_are_invoiced_and_refunds_credited() {
         201,
     )
     .await;
-    s.dispatch().await;
-    s.dispatch().await;
-    let all = s.invoices(id).await;
+    let all = s.issued(id, 2).await;
     assert_eq!(all.len(), 2);
     let note = &all[1];
     assert_eq!(note["kind"], "credit_note");
@@ -480,8 +491,7 @@ async fn invoices_stay_in_their_shop() {
     let s = shop().await;
     s.settings("placed").await;
     let (order, _) = s.order(berlin(), None).await;
-    s.dispatch().await;
-    let all = s.invoices(order["id"].as_str().unwrap()).await;
+    let all = s.issued(order["id"].as_str().unwrap(), 1).await;
     assert_eq!(all.len(), 1, "issued when placed");
     let id = all[0]["id"].as_str().unwrap();
     let other = |method: &'static str, path: String, status: u16| {
@@ -566,9 +576,7 @@ async fn e_invoices_in_xrechnung_zugferd_and_peppol() {
     let (order, token) = s.order(berlin(), None).await;
     let id = order["id"].as_str().unwrap();
     s.pay(id).await;
-    s.dispatch().await;
-    s.dispatch().await;
-    let inv = s.invoices(id).await[0].clone();
+    let inv = s.issued(id, 1).await[0].clone();
     let inv_id = inv["id"].as_str().unwrap();
     let number = inv["number"].as_str().unwrap();
 
@@ -606,9 +614,7 @@ async fn e_invoices_in_xrechnung_zugferd_and_peppol() {
     let (order, token2) = s.order(berlin(), None).await;
     let id2 = order["id"].as_str().unwrap();
     s.pay(id2).await;
-    s.dispatch().await;
-    s.dispatch().await;
-    let inv2 = s.invoices(id2).await[0].clone();
+    let inv2 = s.issued(id2, 1).await[0].clone();
     let inv2_id = inv2["id"].as_str().unwrap();
     for f in ["xrechnung", "cii", "peppol"] {
         let c = s
@@ -669,9 +675,7 @@ async fn e_invoices_in_xrechnung_zugferd_and_peppol() {
         201,
     )
     .await;
-    s.dispatch().await;
-    s.dispatch().await;
-    let all = s.invoices(id2).await;
+    let all = s.issued(id2, 2).await;
     let note = all[1]["id"].as_str().unwrap();
     let (status, _, disposition, ubl) = fetch(
         &s,

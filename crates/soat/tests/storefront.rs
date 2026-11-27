@@ -722,7 +722,7 @@ async fn search_engines_find_the_shop() {
         .contains("<link rel=\"canonical\" href=\"https://acme.example/products/trail-shoe\">"));
     assert!(page1.contains("<meta property=\"og:type\" content=\"product\">"));
     let ld = page1
-        .split("<script type=\"application/ld+json\">")
+        .split(" type=\"application/ld+json\">")
         .nth(1)
         .unwrap()
         .split("</script>")

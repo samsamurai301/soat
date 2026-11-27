@@ -7,6 +7,7 @@ pub mod address;
 pub mod assets;
 pub mod content;
 pub mod content_types;
+pub mod csp;
 pub mod csv;
 pub mod discount;
 mod domain;

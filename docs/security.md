@@ -13,6 +13,33 @@ Every response carries browser hardening headers:
 - a `Permissions-Policy` that turns off camera, microphone, geolocation and
   the like
 
+## Content Security Policy
+
+Every HTML page carries a `Content-Security-Policy` with a fresh nonce
+(`crates/soat/src/csp.rs`). A script runs only when it carries the nonce,
+and only the page's own templates can give it one: when a template is
+loaded, each `<script>` and `<style>` element in its source gets the
+nonce's placeholder (`soat_core::csp::tag`). The server puts the real nonce
+in place of the placeholder in each response. A `<script>` that reaches a
+page any other way, through content or a customer's input, has no nonce
+and the browser refuses it. Inline event handlers (`onclick="..."`) and
+`javascript:` links never run.
+
+- **Storefront:** a trusted script may load others (`'strict-dynamic'`). So
+  the theme's scripts, tracking after consent (Google Analytics, Meta Pixel)
+  and apps' storefront scripts work without listing their hosts. Images,
+  styles, fonts and requests may come from any HTTPS origin.
+- **Admin:** stricter. Its own scripts and styles only, images from
+  anywhere over HTTPS, forms posted only to SOAT itself.
+- **Neither** can be framed (`frame-ancestors 'none'`), and neither loads
+  plugins (`object-src 'none'`) or takes another `<base>`.
+- **Exempt:** the API docs (`/docs`, whose viewer comes from a CDN) and the
+  development mail inbox.
+
+A shop's own theme files need nothing special. Their `<script>` and
+`<style>` elements are tagged the same way, saved files included. Write
+behaviour as script elements with listeners, not as `on...` attributes.
+
 ## Forms from other sites
 
 The admin and the storefront use cookies and take form posts. A browser may
