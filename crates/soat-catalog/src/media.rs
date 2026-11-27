@@ -31,6 +31,10 @@ pub const MAX_IMPORT: usize = 20;
 pub struct ImportMedia {
     /// Links to images, in order; at most 20.
     pub urls: Vec<String>,
+    /// Alternative texts for the images, in the order of `urls` (an empty
+    /// one for none); optional.
+    #[serde(default)]
+    pub alts: Vec<String>,
 }
 
 /// A link that could not be imported.
@@ -139,7 +143,7 @@ async fn set_media(
 /// Add images to the product from links (`products:write`), such as an
 /// import file's: each is fetched (`https://` to public addresses, up to
 /// 20 MB, an image or video SOAT stores) and added after its media, in
-/// order. A link imported for the product before is skipped, also when
+/// order, described by its `alts` entry. A link imported for the product before is skipped, also when
 /// staff removed its image since. A link that fails is reported in
 /// `problems` and the others still go in. Publishes
 /// `product.media_changed` when any was added.
@@ -159,7 +163,17 @@ async fn import_media(
                 .with_code("invalid_media"),
         );
     }
-    let urls = soat_core::import::image_urls(&body.urls.join(" "));
+    // Each link with its text; a link listed twice keeps its first.
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for (n, cell) in body.urls.iter().enumerate() {
+        let alt = body.alts.get(n).map_or("", |a| a.trim());
+        for (url, _) in soat_core::import::images(cell, "") {
+            if !pairs.iter().any(|(u, _)| *u == url) {
+                pairs.push((url, alt.to_owned()));
+            }
+        }
+    }
+    let urls: Vec<String> = pairs.iter().map(|(u, _)| u.clone()).collect();
     let mut tx = tenant.begin_for(&db, &PRODUCTS_WRITE).await?;
     let product = crate::existing(&mut tx, &tenant, &id).await?;
     let known: Vec<(String,)> = sqlx::query_as(
@@ -211,7 +225,11 @@ async fn import_media(
             .filter(|n| !n.is_empty())
             .unwrap_or("image")
             .to_owned();
-        let file = match soat_files::store(&mut tx, &tenant, &storage, &name, bytes).await {
+        let alt = pairs
+            .iter()
+            .find(|(u, _)| *u == url)
+            .map_or("", |(_, a)| a.as_str());
+        let file = match soat_files::store(&mut tx, &tenant, &storage, &name, alt, bytes).await {
             Ok(file) => file,
             Err(e) => {
                 problems.push(MediaImportProblem {

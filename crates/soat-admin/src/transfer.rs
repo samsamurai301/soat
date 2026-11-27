@@ -663,12 +663,21 @@ async fn import_product(
     Ok((created, id))
 }
 
-/// Adds the images the product's `images` cell links to; the API skips
-/// links imported before. Problems are the links' own.
-async fn import_images(cx: &Ctx, product: &str, cell: &str, line: usize, out: &mut Outcome) {
-    let urls = soat_core::import::image_urls(cell);
-    for chunk in urls.chunks(20) {
-        let body = json!({ "urls": chunk });
+/// Adds the images the product's `images` cell links to, described by
+/// its `image_alts` cell; the API skips links imported before. Problems
+/// are the links' own.
+async fn import_images(
+    cx: &Ctx,
+    product: &str,
+    (urls, alts): (&str, &str),
+    line: usize,
+    out: &mut Outcome,
+) {
+    let images = soat_core::import::images(urls, alts);
+    for chunk in images.chunks(20) {
+        let (urls, alts): (Vec<&str>, Vec<&str>) =
+            chunk.iter().map(|(u, a)| (u.as_str(), a.as_str())).unzip();
+        let body = json!({ "urls": urls, "alts": alts });
         let path = format!("/api/products/{}/media/import", encode(product));
         let (status, got) = cx.call(Method::POST, &path, Some(&body)).await;
         if status != 200 {
@@ -886,7 +895,8 @@ pub(crate) async fn import_product_rows(
                 }
                 let images = table.get(rows[0], "images");
                 if !images.is_empty() {
-                    import_images(cx, &id, images, line, &mut out).await;
+                    let alts = table.get(rows[0], "image_alts");
+                    import_images(cx, &id, (images, alts), line, &mut out).await;
                 }
             }
             Err((401, _)) => return Err(Stop::Login),

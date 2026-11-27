@@ -155,6 +155,7 @@ async fn create_label(
         &tenant,
         &storage,
         &format!("label-{}.pdf", order.number),
+        "",
         label.pdf.clone(),
     )
     .await?;

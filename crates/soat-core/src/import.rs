@@ -5,7 +5,7 @@ use crate::csv::Table;
 
 /// The columns of SOAT's product file: a row per variant, product fields
 /// on a product's first row.
-pub const PRODUCT_COLUMNS: [&str; 21] = [
+pub const PRODUCT_COLUMNS: [&str; 22] = [
     "handle",
     "title",
     "description",
@@ -26,6 +26,7 @@ pub const PRODUCT_COLUMNS: [&str; 21] = [
     "seo_title",
     "seo_description",
     "images",
+    "image_alts",
     "line",
 ];
 
@@ -54,6 +55,9 @@ pub struct ProductRow {
     pub seo_description: String,
     /// Image URLs, separated by spaces, on a product's first row.
     pub images: String,
+    /// The images' alternative texts, in the same order, separated by `|`
+    /// (an empty one for an image without).
+    pub image_alts: String,
     /// Its line in the original export, for problems.
     pub line: usize,
 }
@@ -82,6 +86,7 @@ impl ProductRow {
             self.seo_title,
             self.seo_description,
             self.images,
+            self.image_alts,
             self.line.to_string(),
         ]);
         out
@@ -149,14 +154,53 @@ pub fn price(value: &str) -> String {
 /// assert_eq!(urls, ["https://a.test/1.jpg", "https://a.test/2.png"]);
 /// ```
 pub fn image_urls(cell: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for url in cell.split([' ', ',', '\n', '\t']).map(str::trim) {
+    images(cell, "").into_iter().map(|(url, _)| url).collect()
+}
+
+/// The images of an `images` cell with their alternative texts from the
+/// `image_alts` cell, which holds one per link of `images` in order,
+/// separated by `|`. A link kept once keeps its first text.
+///
+/// ```
+/// let got = soat_core::import::images("https://a.test/1.jpg x https://a.test/2.png", "Front|| Back ");
+/// assert_eq!(got, [
+///     ("https://a.test/1.jpg".to_owned(), "Front".to_owned()),
+///     ("https://a.test/2.png".to_owned(), "Back".to_owned()),
+/// ]);
+/// ```
+pub fn images(urls: &str, alts: &str) -> Vec<(String, String)> {
+    let mut alts = alts.split('|').map(str::trim);
+    let mut out: Vec<(String, String)> = Vec::new();
+    for url in urls
+        .split([' ', ',', '\n', '\t'])
+        .map(str::trim)
+        .filter(|u| !u.is_empty())
+    {
+        let alt = alts.next().unwrap_or_default();
         let web = url.starts_with("https://") || url.starts_with("http://");
-        if web && url.len() <= 2000 && !out.iter().any(|u| u == url) {
-            out.push(url.to_owned());
+        if web && url.len() <= 2000 && !out.iter().any(|(u, _)| u == url) {
+            out.push((url.to_owned(), alt.to_owned()));
         }
     }
     out
+}
+
+/// The `image_alts` cell for `alts`, one per image in order; a `|` inside
+/// a text becomes `/`.
+///
+/// ```
+/// assert_eq!(soat_core::import::alts_cell(["Front", "", "A|B"]), "Front||A/B");
+/// ```
+pub fn alts_cell<'a>(alts: impl IntoIterator<Item = &'a str>) -> String {
+    let alts: Vec<String> = alts
+        .into_iter()
+        .map(|a| a.trim().replace('|', "/"))
+        .collect();
+    if alts.iter().all(String::is_empty) {
+        String::new()
+    } else {
+        alts.join("|")
+    }
 }
 
 #[cfg(test)]
