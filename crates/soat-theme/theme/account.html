@@ -29,6 +29,10 @@
     <label class="choice"><input type="checkbox" name="accepts_marketing" value="true"{{#if customer.accepts_marketing }} checked{{/if}}> {{ t.news_opt_in }}</label>
     <button class="button" type="submit">{{ t.save }}</button>
   </form>
+  {{#if features.privacy }}<h2>{{ t.your_data }}</h2>
+  {{#if erasure_requested }}<p class="notice" role="status">{{ t.erasure_requested }}</p>{{/if}}
+  <p><a href="{{ root }}/account/personal-data" download>{{ t.download_my_data }}</a></p>
+  <form method="post" action="{{ root }}/account/erasure-request"><button class="link" type="submit">{{ t.ask_erasure }}</button></form>{{/if}}
   <form method="post" action="{{ root }}/account/logout"><button class="link" type="submit">{{ t.sign_out }}</button></form>
 </aside>
 </div>

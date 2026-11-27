@@ -368,6 +368,7 @@ pub(crate) async fn account_page(
     v.set("page_title", json!(v.t("your_account")));
     v.set("orders", Value::Array(orders));
     v.set("saved", json!(params.get("saved").is_some()));
+    v.set("erasure_requested", json!(params.get("erasure").is_some()));
     v.render("account", StatusCode::OK).await
 }
 

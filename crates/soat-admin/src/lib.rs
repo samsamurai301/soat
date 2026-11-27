@@ -51,6 +51,7 @@ mod orders;
 mod pages;
 mod palette;
 mod pos;
+mod privacy;
 mod products;
 mod reviews;
 mod samples;
@@ -212,6 +213,12 @@ impl Module for Admin {
         ))
         .mount((feeds::list, feeds::create, feeds::act))
         .mount((marketplaces::list, marketplaces::create, marketplaces::act))
+        .mount((
+            privacy::download,
+            privacy::erase,
+            privacy::requests,
+            privacy::decline,
+        ))
         .mount((
             pos::registers,
             pos::create_register,

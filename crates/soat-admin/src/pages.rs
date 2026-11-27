@@ -38,6 +38,7 @@ const FILES: &[(&str, &str)] = &[
     ("feeds", include_str!("../admin/feeds.html")),
     ("marketplaces", include_str!("../admin/marketplaces.html")),
     ("pos", include_str!("../admin/pos.html")),
+    ("privacy", include_str!("../admin/privacy.html")),
     ("pos_till", include_str!("../admin/pos_till.html")),
     ("pos_receipt", include_str!("../admin/pos_receipt.html")),
     ("company", include_str!("../admin/company.html")),

@@ -70,6 +70,30 @@ impl Module for Loyalty {
         vec![Arc::new(EarnPoints)]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[
+            soat_module::PersonalData {
+                table: "loyalty_accounts",
+                matches: "customer_id = $2",
+                export: &["balance", "referral_code", "created_at"],
+                erase: soat_module::Erase::Delete,
+            },
+            soat_module::PersonalData {
+                table: "loyalty_entries",
+                matches: "customer_id = $2",
+                export: &[
+                    "kind",
+                    "points",
+                    "balance",
+                    "order_id",
+                    "note",
+                    "created_at",
+                ],
+                erase: soat_module::Erase::Delete,
+            },
+        ]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             get_program,

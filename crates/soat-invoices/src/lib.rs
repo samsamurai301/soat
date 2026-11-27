@@ -66,6 +66,19 @@ impl Module for Invoices {
         vec![Arc::new(Invoicing)]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[
+            soat_module::PersonalData {
+                table: "invoices",
+                matches: "order_id IN (SELECT id FROM orders WHERE tenant_id = $1 AND (customer_id = $2 OR lower(email) = $3))",
+                export: &["number", "kind", "order_number", "issued_at", "currency", "buyer", "total_minor"],
+                erase: soat_module::Erase::Keep(
+                    "invoices are kept for ten years for tax law (e.g. § 147 AO, § 14b UStG)",
+                ),
+            },
+        ]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             get_settings,

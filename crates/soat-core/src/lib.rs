@@ -25,6 +25,7 @@ pub mod options;
 pub mod order;
 pub mod payment;
 mod permission;
+pub mod privacy;
 pub mod rules;
 pub mod secret;
 pub mod shopify;

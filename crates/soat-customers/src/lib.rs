@@ -50,6 +50,58 @@ impl Module for Customers {
         &[CUSTOMERS_READ, CUSTOMERS_WRITE]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[
+            soat_module::PersonalData {
+                table: "customers",
+                matches: "id = $2",
+                export: &[
+                    "id",
+                    "email",
+                    "first_name",
+                    "last_name",
+                    "phone",
+                    "accepts_marketing",
+                    "marketing_consent_at",
+                    "tags",
+                    "note",
+                    "created_at",
+                ],
+                erase: soat_module::Erase::Delete,
+            },
+            soat_module::PersonalData {
+                table: "customer_addresses",
+                matches: "customer_id = $2",
+                export: &[
+                    "first_name",
+                    "last_name",
+                    "company",
+                    "line1",
+                    "line2",
+                    "postal_code",
+                    "city",
+                    "region",
+                    "country",
+                    "phone",
+                    "is_default",
+                ],
+                erase: soat_module::Erase::Delete,
+            },
+            soat_module::PersonalData {
+                table: "customer_sessions",
+                matches: "customer_id = $2",
+                export: &[],
+                erase: soat_module::Erase::Delete,
+            },
+            soat_module::PersonalData {
+                table: "customer_access_links",
+                matches: "customer_id = $2",
+                export: &[],
+                erase: soat_module::Erase::Delete,
+            },
+        ]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             list_customers,

@@ -24,6 +24,8 @@ marketing = ["dep:soat-marketing"]
 subscriptions = ["dep:soat-subscriptions"]
 # Quick order by SKU, quotes and the buyer's company in the account.
 b2b = ["dep:soat-b2b"]
+# Download your data and ask to be erased, from the account.
+privacy = ["dep:soat-compliance"]
 
 [dependencies]
 soat-core.workspace = true
@@ -49,6 +51,7 @@ soat-analytics = { workspace = true, optional = true }
 soat-marketing = { workspace = true, optional = true }
 soat-subscriptions = { workspace = true, optional = true }
 soat-b2b = { workspace = true, optional = true }
+soat-compliance = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true

@@ -53,6 +53,8 @@ mod subscription;
 
 #[cfg(feature = "b2b")]
 mod b2b;
+#[cfg(feature = "privacy")]
+mod privacy;
 
 use i18n::{root_of, Lang};
 
@@ -94,6 +96,8 @@ impl Module for Storefront {
         let app = app.mount((reviews::review_form,));
         #[cfg(feature = "wishlists")]
         let app = app.mount((wishlist::toggle, wishlist::page));
+        #[cfg(feature = "privacy")]
+        let app = app.mount((privacy::download, privacy::ask));
         #[cfg(feature = "loyalty")]
         let app = app.mount((loyalty::page, loyalty::redeem, loyalty::referral));
         #[cfg(feature = "subscriptions")]
@@ -376,6 +380,7 @@ impl View {
                 "loyalty": cfg!(feature = "loyalty"),
                 "subscriptions": cfg!(feature = "subscriptions"),
                 "b2b": cfg!(feature = "b2b"),
+                "privacy": cfg!(feature = "privacy"),
             }),
         );
         #[cfg(feature = "apps")]

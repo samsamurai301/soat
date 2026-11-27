@@ -60,6 +60,21 @@ impl Module for Marketing {
         &[MARKETING_READ, MARKETING_MANAGE]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "campaign_recipients",
+            matches: "customer_id = $2 OR lower(email) = $3",
+            export: &[
+                "campaign_id",
+                "email",
+                "status",
+                "sent_at",
+                "unsubscribed_at",
+            ],
+            erase: soat_module::Erase::Delete,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             list_campaigns,

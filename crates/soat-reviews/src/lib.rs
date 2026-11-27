@@ -55,6 +55,23 @@ impl Module for Reviews {
         &[REVIEWS_READ, REVIEWS_MANAGE]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "product_reviews",
+            matches: "customer_id = $2",
+            export: &[
+                "product_id",
+                "author_name",
+                "rating",
+                "title",
+                "body",
+                "status",
+                "created_at",
+            ],
+            erase: soat_module::Erase::Delete,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             list_reviews,

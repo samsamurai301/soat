@@ -27,6 +27,7 @@
 
 pub mod events;
 mod migrations;
+pub mod privacy;
 
 use std::collections::HashSet;
 use std::fmt;
@@ -37,6 +38,7 @@ use zapline::prelude::App;
 
 pub use events::{Event, HandlerFuture, Subscriber, Subscribers};
 pub use migrations::merge_migrations;
+pub use privacy::{Erase, PersonalData, PersonalDataMap};
 
 /// One SOAT module.
 ///
@@ -64,6 +66,12 @@ pub trait Module: Send + Sync + 'static {
     /// The permissions this module checks, e.g. `products:write`. Roles,
     /// API keys and AI tools are all scoped by these names.
     fn permissions(&self) -> &'static [Permission] {
+        &[]
+    }
+
+    /// The tables in which this module keeps data about customers, for
+    /// exporting and erasing it.
+    fn personal_data(&self) -> &'static [PersonalData] {
         &[]
     }
 
@@ -221,6 +229,16 @@ impl Modules {
         Permissions(std::sync::Arc::new(all))
     }
 
+    /// Every module's personal data declarations, in module order.
+    pub fn personal_data(&self) -> PersonalDataMap {
+        PersonalDataMap(std::sync::Arc::new(
+            self.0
+                .iter()
+                .flat_map(|m| m.personal_data().iter().map(|d| (m.name(), *d)))
+                .collect(),
+        ))
+    }
+
     /// All modules' migrations as one directory, for `Database::migrations`.
     pub fn migrations(&self) -> Result<Dir, ModuleError> {
         let dirs: Vec<_> = self
@@ -254,10 +272,13 @@ impl Modules {
     }
 
     /// Mounts every module on `app`, in order, and makes the permission and
-    /// subscriber lists available as `State<Permissions>` and
-    /// `State<Subscribers>`.
+    /// subscriber lists available as `State<Permissions>`,
+    /// `State<Subscribers>` and `State<PersonalDataMap>`.
     pub fn install(&self, app: App) -> App {
-        let app = app.state(self.permissions()).state(self.subscribers());
+        let app = app
+            .state(self.permissions())
+            .state(self.subscribers())
+            .state(self.personal_data());
         self.0.iter().fold(app, |app, module| module.mount(app))
     }
 }

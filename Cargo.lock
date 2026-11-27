@@ -2243,6 +2243,7 @@ dependencies = [
  "soat-checkout",
  "soat-cli",
  "soat-cms",
+ "soat-compliance",
  "soat-core",
  "soat-customers",
  "soat-events",
@@ -2447,6 +2448,20 @@ dependencies = [
  "serde",
  "serde_json",
  "soat-core",
+ "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-compliance"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-customers",
  "soat-module",
  "soat-tenancy",
  "sqlx",
@@ -2891,6 +2906,7 @@ dependencies = [
  "soat-catalog",
  "soat-checkout",
  "soat-cms",
+ "soat-compliance",
  "soat-core",
  "soat-customers",
  "soat-files",

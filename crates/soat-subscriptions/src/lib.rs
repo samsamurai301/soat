@@ -78,6 +78,27 @@ impl Module for Subscriptions {
         &[SUBSCRIPTIONS_READ, SUBSCRIPTIONS_MANAGE]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "subscriptions",
+            matches: "customer_id = $2",
+            export: &[
+                "id",
+                "plan_id",
+                "item_id",
+                "quantity",
+                "currency",
+                "shipping_address",
+                "status",
+                "next_order_at",
+                "orders_count",
+                "created_at",
+                "canceled_at",
+            ],
+            erase: soat_module::Erase::Delete,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((
             list_plans,

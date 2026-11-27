@@ -1,0 +1,24 @@
+<div class="head"><h1>Privacy requests</h1> <a href="{{ base }}/customers">Customers</a></div>
+{{#if missing}}<p class="muted">Privacy tools are not part of this build of SOAT.</p>{{else}}
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#if report }}
+<section class="card" role="status">
+  <h2>The customer is erased</h2>
+  <table class="table"><thead><tr><th>Data</th><th>What happened</th><th class="num">Records</th></tr></thead><tbody>
+  {{#each report.tables }}<tr><td>{{ table }}</td><td>{{ action }}{{#if reason }}: {{ reason }}{{/if}}</td><td class="num">{{ rows }}</td></tr>{{/each}}
+  <tr><td>event log</td><td>personal details blanked</td><td class="num">{{ report.events }}</td></tr>
+  </tbody></table>
+</section>
+{{/if}}
+<p class="muted">Customers can download their own data and ask to be erased from their account page. Under the GDPR you answer within a month. Erase a customer from their page, or decline with the reason, for example an unpaid order still owed.</p>
+{{#if requests }}
+<table class="table"><thead><tr><th>Customer</th><th>Asked</th><th>Status</th><th></th></tr></thead><tbody>
+{{#each requests }}<tr>
+  <td>{{#if email }}<a href="{{ base }}/customers/{{ customer_id }}">{{ email }}</a>{{else}}<span class="muted">erased</span>{{/if}}</td>
+  <td>{{ created_at }}</td>
+  <td>{{ status }}{{#if note }}: {{ note }}{{/if}}</td>
+  <td>{{#if open }}<form method="post" action="{{ base }}/privacy/{{ id }}/decline" class="inline"><input name="note" required maxlength="1000" placeholder="Why not" aria-label="Why not"> <button class="link">Decline</button></form>{{/if}}</td>
+</tr>{{/each}}
+</tbody></table>
+{{else}}<p class="muted">No requests.</p>{{/if}}
+{{/if}}

@@ -66,6 +66,22 @@ impl Module for Carts {
         &[CARTS_READ, recovery::CARTS_MANAGE]
     }
 
+    fn personal_data(&self) -> &'static [soat_module::PersonalData] {
+        &[soat_module::PersonalData {
+            table: "carts",
+            matches: "customer_id = $2 OR lower(email) = $3",
+            export: &[
+                "id",
+                "currency",
+                "email",
+                "status",
+                "created_at",
+                "updated_at",
+            ],
+            erase: soat_module::Erase::Delete,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mount((list_carts, get_cart))
             .plugin(storefront::mount)

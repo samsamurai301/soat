@@ -44,6 +44,7 @@ soat-b2b = { path = "crates/soat-b2b" }
 soat-channels = { path = "crates/soat-channels" }
 soat-pos = { path = "crates/soat-pos" }
 soat-marketplaces = { path = "crates/soat-marketplaces" }
+soat-compliance = { path = "crates/soat-compliance" }
 soat-orders = { path = "crates/soat-orders" }
 soat-checkout = { path = "crates/soat-checkout" }
 soat-invoices = { path = "crates/soat-invoices" }
