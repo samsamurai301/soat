@@ -40,7 +40,7 @@ layer.
 - [x] A8 Domain events: transactional outbox, at-least-once subscribers with backoff, `GET /api/events`, `product.created` **alpha**
 - [x] A9 Webhooks: endpoints per shop, HMAC-signed POSTs, retries with backoff, delivery log, public-HTTPS-only targets **alpha**
 - [x] A10 Audit log: every event records its actor (user or API key) and time; staff, roles, keys, webhooks and shops publish events **alpha**
-- [x] A11 Shop resolution: API key, then `x-soat-tenant`, then the `Host` among the shop's domains (`/api/domains`); domain ownership checks (DNS TXT) later **alpha**
+- [x] A11 Shop resolution: API key, then `x-soat-tenant`, then the `Host` among the shop's domains (`/api/domains`); domain ownership checks (DNS TXT) since L4 **alpha**
 - [x] A12 CI check for forbidden crate dependencies (`tests/layers.rs`, from `cargo metadata`)
 
 ## B. Catalog
@@ -190,3 +190,4 @@ What moving shops and the first alpha users need next.
 - [x] L1 Product images come along in imports (Shopify's export and Admin API sync, WooCommerce's export, SOAT's own `images` column): `POST /api/products/{id}/media/import` fetches up to 20 links into the product's media, in order, each link once per product (a re-import skips it, also after staff removed its image), reporting links that fail while the rest go in; fetching goes through `soat_http::fetch`: `https://` to public addresses only, checked when the connection is made (names that resolve to private addresses cannot reach the server's network) and on each of up to three redirects, at most 20 MB, only file types SOAT stores; `SOAT_ALLOW_PRIVATE_URLS=1` lifts this for local development (webhooks too)
 - [x] L2 Webhook sends connect only to public addresses: `soat_webhooks::PublicResolver` answers a name's public addresses only, so a webhook URL whose name later resolves to a private address (DNS rebinding) cannot reach the server's network; image imports use the same resolver
 - [x] L3 Shopware's product export brings its images too: the cover (`cover_media_url`) first, then any links in a `media` or `media_url` column (separated by `|`)
+- [x] L4 Shops prove they own a domain before it serves them (guide `docs/security.md`): adding a domain gives a TXT record for `_soat-challenge.<domain>`, `POST /api/domains/{domain}/verify` looks it up (`soat_tenancy::domains::TxtLookup`, the system's resolvers through hickory) and only then routes the domain; any number of shops may claim a domain and the first to prove it wins, so a claim cannot block the owner; admin Settings, General shows the record and a Verify button; `SOAT_VERIFY_DOMAINS=0` for single-shop installs

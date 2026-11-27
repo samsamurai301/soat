@@ -87,3 +87,15 @@ changed since it was checked. Image imports (`soat_http::fetch`) check
 each of up to three redirects again and keep at most 20 MB of a type SOAT
 stores; webhooks follow no redirects. `SOAT_ALLOW_PRIVATE_URLS=1` lifts all of this
 for local development; never set it on a server.
+
+## Domains
+
+A shop's domain decides which shop a request without a key or header
+acts for, so on an install for many shops nobody may hold a domain they
+do not own. Adding one (`POST /api/domains`, or admin Settings, General)
+gives a TXT record to add at `_soat-challenge.<domain>`; `POST
+/api/domains/{domain}/verify` looks it up and only then does the domain
+serve the shop. Any number of shops may claim a domain and the first to
+prove it gets it, so a claim cannot block the owner. An install for one
+shop, or whose operator adds the domains, sets `SOAT_VERIFY_DOMAINS=0`
+and domains serve the shop as soon as they are added.

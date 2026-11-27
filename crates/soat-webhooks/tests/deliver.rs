@@ -78,7 +78,7 @@ async fn app() -> (TestClient, String) {
     let modules = Modules::new()
         .with(Auth::with_setup_token("t"))
         .with(Events::manual())
-        .with(Tenancy)
+        .with(Tenancy::new())
         .with(Webhooks::new().manual().allow_private_targets())
         .with(soat_fields::Fields)
         .with(soat_files::Files::new(zapline::storage::Storage::memory()))
@@ -193,7 +193,7 @@ async fn private_targets_are_refused_in_production() {
     let modules = Modules::new()
         .with(Auth::with_setup_token("t"))
         .with(Events::manual())
-        .with(Tenancy)
+        .with(Tenancy::new())
         .with(Webhooks::new().manual());
     let client = modules.build(App::new(), Database::postgres(url)).test();
     let session: Value = client

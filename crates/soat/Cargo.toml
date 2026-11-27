@@ -14,6 +14,7 @@ soat-auth.workspace = true
 soat-tenancy.workspace = true
 soat-events.workspace = true
 soat-webhooks.workspace = true
+hickory-resolver = "0.25"
 soat-fields.workspace = true
 soat-files.workspace = true
 soat-catalog.workspace = true
