@@ -102,6 +102,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-loyalty` | Loyalty points and referrals, turned into store credit (feature `loyalty`) |
 | `crates/soat-analytics` | Storefront analytics without cookies: visitors, pages, sources, devices, conversion (feature `analytics`) |
 | `crates/soat-marketing` | Email campaigns to customers who agreed to news, with one-click unsubscribe (feature `marketing`) |
+| `crates/soat-subscriptions` | Subscriptions: plans on products, renewals placed as orders on schedule, pause, skip and cancel (feature `subscriptions`) |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |
 | `crates/soat-invoices` | Invoices and credit notes: gapless numbers, totals per VAT rate, reverse charge, immutable, printable |

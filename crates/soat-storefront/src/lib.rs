@@ -48,6 +48,9 @@ mod loyalty;
 #[cfg(feature = "marketing")]
 mod unsubscribe;
 
+#[cfg(feature = "subscriptions")]
+mod subscription;
+
 use i18n::{root_of, Lang};
 
 /// The cookie holding the buyer's cart: `<cart id>.<token>`.
@@ -90,6 +93,12 @@ impl Module for Storefront {
         let app = app.mount((wishlist::toggle, wishlist::page));
         #[cfg(feature = "loyalty")]
         let app = app.mount((loyalty::page, loyalty::redeem, loyalty::referral));
+        #[cfg(feature = "subscriptions")]
+        let app = app.mount((
+            subscription::subscribe,
+            subscription::page,
+            subscription::act,
+        ));
         #[cfg(feature = "marketing")]
         let app = app.mount((unsubscribe::page, unsubscribe::confirm));
         app.mount((
@@ -248,6 +257,7 @@ const NOINDEX: &[&str] = &[
     "account",
     "wishlist",
     "loyalty",
+    "subscriptions",
     "unsubscribe",
     "forgot",
     "access",
@@ -348,6 +358,7 @@ impl View {
                 "wishlists": cfg!(feature = "wishlists"),
                 "reviews": cfg!(feature = "reviews"),
                 "loyalty": cfg!(feature = "loyalty"),
+                "subscriptions": cfg!(feature = "subscriptions"),
             }),
         );
         #[cfg(feature = "apps")]
@@ -596,6 +607,8 @@ async fn product_page(
     }
     #[cfg(feature = "wishlists")]
     wishlist::on_product(&mut v, &shop, &p.id).await?;
+    #[cfg(feature = "subscriptions")]
+    subscription::on_product(&mut v, &shop, &p.id).await?;
     v.set("reviewed", json!(q.reviewed.is_some()));
     v.set("product_ld", ld);
     v.set("product", product);

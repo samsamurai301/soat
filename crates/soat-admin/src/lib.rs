@@ -51,6 +51,7 @@ mod products;
 mod reviews;
 mod samples;
 mod settings;
+mod subscriptions;
 mod theme;
 mod transfer;
 mod util;
@@ -189,6 +190,12 @@ impl Module for Admin {
             campaigns::create,
             campaigns::edit_page,
             campaigns::act,
+        ))
+        .mount((
+            subscriptions::list,
+            subscriptions::create_plan,
+            subscriptions::toggle_plan,
+            subscriptions::act,
         ))
         .mount((
             customers::adjust_points,

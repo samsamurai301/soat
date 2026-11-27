@@ -384,7 +384,7 @@ async fn load(
 
 async fn write(
     tx: &mut TenantTx,
-    tenant: &Tenant,
+    tenant: &impl Scope,
     id: &str,
     d: &DraftInput,
     insert: bool,
@@ -458,7 +458,7 @@ async fn write(
          WHERE tenant_id = $1 AND id = $2 AND status = 'open' RETURNING id"
     };
     let done: Option<(String,)> = sqlx::query_as(sql)
-        .bind(tenant.id())
+        .bind(tenant.tenant_id())
         .bind(id)
         .bind(customer)
         .bind(&email)
@@ -638,13 +638,27 @@ async fn complete_draft(
     Path(id): Path<String>,
     Valid(Json(c)): Valid<Json<CompleteDraft>>,
 ) -> Result<(StatusCode, Json<CompletedDraft>)> {
-    let mut tx = tenant.begin_for(&db, &ORDERS_WRITE).await?;
-    let r = row(&mut tx, &tenant, &id, true).await?;
+    let tx = tenant.begin_for(&db, &ORDERS_WRITE).await?;
+    let done = complete_in(&db, tx, &tenant, &taxes, &providers, &id, c).await?;
+    Ok((StatusCode::CREATED, Json(done)))
+}
+
+/// Places draft `id`'s order in `tx` and commits, then starts its payment.
+async fn complete_in(
+    db: &Db,
+    mut tx: TenantTx,
+    tenant: &impl Scope,
+    taxes: &TaxProviders,
+    providers: &Providers,
+    id: &str,
+    c: CompleteDraft,
+) -> Result<CompletedDraft> {
+    let r = row(&mut tx, tenant, id, true).await?;
     if r.status != "open" {
         return Err(completed());
     }
-    let (_, order) = work_out(&mut tx, &tenant, &taxes, r).await?;
-    let draft_id = DraftOrderId::parse(&id).map_err(|_| Error::not_found())?;
+    let (_, order) = work_out(&mut tx, tenant, taxes, r).await?;
+    let draft_id = DraftOrderId::parse(id).map_err(|_| Error::not_found())?;
     let mut missing = Vec::new();
     if order.lines.is_empty() {
         missing.push("lines");
@@ -668,7 +682,7 @@ async fn complete_draft(
     }
     let method = match (c.paid, c.payment_method_id.as_deref()) {
         (false, Some(m)) => Some(
-            soat_payments::active_method(&mut tx, &tenant, m)
+            soat_payments::active_method(&mut tx, tenant, m)
                 .await?
                 .ok_or_else(|| {
                     Error::unprocessable("choose one of the shop's payment methods")
@@ -677,12 +691,12 @@ async fn complete_draft(
         ),
         _ => None,
     };
-    let (mut placed, token) = soat_orders::place(&mut tx, &tenant, &order).await?;
-    hold(&mut tx, &tenant, &order.lines, &placed.id, true).await?;
+    let (mut placed, token) = soat_orders::place(&mut tx, tenant, &order).await?;
+    hold(&mut tx, tenant, &order.lines, &placed.id, true).await?;
     if c.paid && placed.total_minor > 0 {
         soat_payments::record(
             &mut tx,
-            &tenant,
+            tenant,
             &placed.id,
             "manual",
             &placed.id,
@@ -690,8 +704,8 @@ async fn complete_draft(
             placed.currency.as_str(),
         )
         .await?;
-        soat_orders::sync_payments(&mut tx, &tenant, &placed.id).await?;
-        placed = soat_orders::load(&mut tx, &tenant, &placed.id)
+        soat_orders::sync_payments(&mut tx, tenant, &placed.id).await?;
+        placed = soat_orders::load(&mut tx, tenant, &placed.id)
             .await?
             .ok_or_else(|| Error::internal("order vanished"))?;
     }
@@ -699,12 +713,12 @@ async fn complete_draft(
         "UPDATE draft_orders SET status = 'completed', order_id = $3, updated_at = now() \
          WHERE tenant_id = $1 AND id = $2",
     )
-    .bind(tenant.id())
+    .bind(tenant.tenant_id())
     .bind(draft_id.as_str())
     .bind(&placed.id)
     .execute(&mut *tx)
     .await?;
-    let draft = load(&mut tx, &tenant, &taxes, draft_id.as_str()).await?;
+    let draft = load(&mut tx, tenant, taxes, draft_id.as_str()).await?;
     tenant
         .publish(&mut tx, "draft_order.completed", &draft)
         .await?;
@@ -719,17 +733,67 @@ async fn complete_draft(
                     .map_err(|e| Error::internal(e.to_string()))?,
                 return_url: c.return_url,
             };
-            Some(soat_payments::start(&db, &providers, &tenant, &req).await?)
+            Some(soat_payments::start(db, providers, tenant, &req).await?)
         }
         None => None,
     };
-    Ok((
-        StatusCode::CREATED,
-        Json(CompletedDraft {
-            draft_order: draft,
-            order: placed,
-            order_token: token,
-            payment,
-        }),
-    ))
+    Ok(CompletedDraft {
+        draft_order: draft,
+        order: placed,
+        order_token: token,
+        payment,
+    })
+}
+
+/// Places an order as a completed draft, for modules that place orders by
+/// themselves (e.g. subscription renewals): `input` as for
+/// `POST /api/draft-orders`, `discount_bps` off the goods (hundredths of a
+/// percent), and a payment started with `payment_method_id` (none leaves
+/// the order unpaid). `tx` is the shop's transaction; it is committed.
+/// Publishes `draft_order.created`, `order.placed` and
+/// `draft_order.completed`.
+///
+/// # Errors
+///
+/// As `POST /api/draft-orders` and `POST /api/draft-orders/{id}/complete`.
+#[allow(clippy::too_many_arguments)]
+pub async fn place_order(
+    db: &Db,
+    mut tx: TenantTx,
+    scope: &impl Scope,
+    taxes: &TaxProviders,
+    providers: &Providers,
+    input: &DraftInput,
+    discount_bps: i64,
+    payment_method_id: Option<String>,
+) -> Result<CompletedDraft> {
+    let id = write(&mut tx, scope, DraftOrderId::new().as_str(), input, true)
+        .await?
+        .ok_or_else(|| Error::internal("insert returned nothing"))?;
+    if discount_bps > 0 {
+        let draft = load(&mut tx, scope, taxes, &id).await?;
+        let off = i64::try_from(
+            i128::from(draft.subtotal_minor) * i128::from(discount_bps.min(10_000)) / 10_000,
+        )
+        .unwrap_or(0);
+        sqlx::query(
+            "UPDATE draft_orders SET discount_minor = discount_minor + $3 \
+             WHERE tenant_id = $1 AND id = $2",
+        )
+        .bind(scope.tenant_id())
+        .bind(&id)
+        .bind(off)
+        .execute(&mut *tx)
+        .await?;
+    }
+    let draft = load(&mut tx, scope, taxes, &id).await?;
+    scope
+        .publish(&mut tx, "draft_order.created", &draft)
+        .await?;
+    let c = CompleteDraft {
+        paid: false,
+        payment_method_id,
+        return_url: None,
+    };
+    complete_in(db, tx, scope, taxes, providers, &id, c).await
 }

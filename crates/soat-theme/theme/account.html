@@ -1,6 +1,7 @@
 <h1>{{ t.hello }}{{#if customer.first_name }}, {{ customer.first_name }}{{/if}}</h1>
 {{#if features.wishlists }}<p><a href="{{ root }}/account/wishlist">{{ t.wishlist }}</a></p>{{/if}}
 {{#if features.loyalty }}<p><a href="{{ root }}/account/loyalty">{{ t.points }}</a></p>{{/if}}
+{{#if features.subscriptions }}<p><a href="{{ root }}/account/subscriptions">{{ t.subscriptions }}</a></p>{{/if}}
 {{#if saved }}<p class="notice" role="status">{{ t.saved }}</p>{{/if}}
 <div class="checkout">
 <section>

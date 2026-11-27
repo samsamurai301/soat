@@ -2268,6 +2268,7 @@ dependencies = [
  "soat-shipping",
  "soat-storefront",
  "soat-stripe",
+ "soat-subscriptions",
  "soat-tax",
  "soat-tenancy",
  "soat-testing",
@@ -2825,6 +2826,7 @@ dependencies = [
  "soat-pricing",
  "soat-reviews",
  "soat-shipping",
+ "soat-subscriptions",
  "soat-tenancy",
  "soat-theme",
  "soat-wishlists",
@@ -2845,6 +2847,24 @@ dependencies = [
  "soat-module",
  "soat-payments",
  "soat-tenancy",
+ "zapline",
+]
+
+[[package]]
+name = "soat-subscriptions"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-catalog",
+ "soat-checkout",
+ "soat-core",
+ "soat-customers",
+ "soat-module",
+ "soat-orders",
+ "soat-payments",
+ "soat-tenancy",
+ "sqlx",
  "zapline",
 ]
 

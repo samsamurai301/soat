@@ -1,0 +1,22 @@
+<h1>{{ t.subscriptions }}</h1>
+{{#if notice }}<p class="notice" role="status">{{ notice }}</p>{{/if}}
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#if items }}
+<table class="cart-lines">
+  <thead><tr><th>{{ t.product }}</th><th>{{ t.subscription_status }}</th><th>{{ t.next_delivery }}</th><th></th></tr></thead>
+  <tbody>
+  {{#each items }}<tr>
+    <td>{{ title }} × {{ quantity }}<br><small class="muted">{{ plan }}</small></td>
+    <td>{{ status }}</td>
+    <td>{{#if canceled }}{{else}}{{ next }}{{/if}}</td>
+    <td>{{#if active }}<form method="post" action="{{ root }}/account/subscriptions/{{ id }}/skip"><button class="link" type="submit">{{ t.skip_next }}</button></form>
+      <form method="post" action="{{ root }}/account/subscriptions/{{ id }}/pause"><button class="link" type="submit">{{ t.pause }}</button></form>{{/if}}
+      {{#if paused }}<form method="post" action="{{ root }}/account/subscriptions/{{ id }}/resume"><button class="link" type="submit">{{ t.resume }}</button></form>{{/if}}
+      {{#if canceled }}{{else}}<form method="post" action="{{ root }}/account/subscriptions/{{ id }}/cancel"><button class="link" type="submit">{{ t.cancel_subscription }}</button></form>{{/if}}</td>
+  </tr>{{/each}}
+  </tbody>
+</table>
+{{else}}
+<p class="empty">{{ t.subscriptions_empty }} <a href="{{ root }}/search">{{ t.start_shopping }}</a></p>
+{{/if}}
+<p><a href="{{ root }}/account">{{ t.account }}</a></p>
