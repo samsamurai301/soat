@@ -34,6 +34,7 @@ shops can store their own Anthropic key; it is kept encrypted with it.
 Set `SOAT_METRICS_TOKEN` for Prometheus to scrape `/metrics`; logs, metrics
 and health checks are described in [docs/operations.md](docs/operations.md).
 Backups, restores and upgrades: [docs/backups.md](docs/backups.md).
+Release builds and the container image: [docs/releases.md](docs/releases.md).
 
 ```sh
 TOKEN=$(curl -s -X POST localhost:8080/api/setup -H 'content-type: application/json' \
