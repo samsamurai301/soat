@@ -7,6 +7,7 @@
 //! that role owns. Each test then creates its own schema in it and the app
 //! connects with that schema as its search path.
 
+pub mod a11y;
 mod fake;
 
 use std::sync::atomic::{AtomicU64, Ordering};

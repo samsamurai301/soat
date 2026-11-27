@@ -108,3 +108,6 @@ main.wrap { padding-top: 24px; padding-bottom: 48px; min-height: 60vh; }
 .consent-actions .button { flex: 1 1 10rem; }
 .consent-form details { margin-top: .5rem; }
 .consent-form .choice { display: block; margin: .35rem 0; }
+
+/* Read by screen readers, not shown. */
+.visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

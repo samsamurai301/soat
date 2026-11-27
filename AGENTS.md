@@ -59,6 +59,9 @@ SOAT is built by Sohang with Claude. These are the rules for any agent working h
 - **Migrations are reversible:** each `*.up.sql` has a `*.down.sql`. Never edit a
   migration that has shipped; add a new one.
 - Handlers carry a doc comment: it becomes the OpenAPI description.
+- Pages are accessible: `tests/accessibility.rs` crawls the admin and the
+  storefront and fails on WCAG issues markup can show (`soat_testing::a11y`).
+  Link a new page from somewhere so the crawl reaches it.
 - Not open source: don't add third-party license headers or call it open source.
 
 ## Architecture

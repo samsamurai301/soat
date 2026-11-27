@@ -166,4 +166,4 @@ layer.
 
 - [x] J4 Data retention (feature `privacy`, guide `docs/privacy.md`): modules declare how long their old rows are kept (`Module::retention`: carts never checked out 90 days, expired sign-ins 30, sent emails 730, cookie choices 1095, the event log and closed privacy requests kept by default), shops change the days within each rule's minimum or keep the data (`/api/retention`, admin Privacy), and can erase customers with no order or sign-in for a time like by hand; an hourly task sweeps each shop once a day, and staff see what is due and sweep now; orders and invoices are never removed
 
-J5 accessibility checks in CI
+- [x] J5 Accessibility checks (guide `docs/accessibility.md`): `soat_testing::a11y` checks rendered HTML against the WCAG 2.1 criteria markup alone can break (image alt, field labels, link and button names, heading order, duplicate ids, lang, title, positive tabindex, zoom-blocking viewport, frame titles); a test crawls every admin, storefront, account, cart and checkout page reachable from a sample shop and fails on any issue, in `cargo test` and so in CI
