@@ -5,6 +5,7 @@
 //! order, and [`app`] wires them into one Zapline app.
 
 pub mod csp;
+mod dns;
 pub mod guard;
 pub mod ops;
 
@@ -72,6 +73,11 @@ pub struct Settings {
     /// (images to import): public `https://` only, unless
     /// `SOAT_ALLOW_PRIVATE_URLS=1`, for local development.
     pub url_policy: soat_webhooks::TargetPolicy,
+    /// How shops prove they own a domain before it serves them: a DNS TXT
+    /// record looked up with this, unless `SOAT_VERIFY_DOMAINS=0` (an
+    /// install for one shop, or whose operator adds the domains); none
+    /// serves a domain as soon as a shop adds it.
+    pub domain_proof: Option<std::sync::Arc<dyn soat_tenancy::domains::TxtLookup>>,
     /// Stripe, when configured.
     #[cfg(feature = "stripe")]
     pub stripe: Option<soat_stripe::StripeConfig>,
@@ -105,7 +111,8 @@ impl Settings {
     /// `SOAT_SECRET_KEY` (32 characters or more, kept across restarts) to
     /// seal the keys shops store; `SOAT_ANTHROPIC_API_BASE` to reach
     /// Anthropic's API elsewhere (a proxy); `SOAT_METRICS_TOKEN` for
-    /// Prometheus to scrape `/metrics`; `SOAT_ALLOW_PRIVATE_URLS=1` to let
+    /// Prometheus to scrape `/metrics`; `SOAT_VERIFY_DOMAINS=0` to serve a
+    /// domain as soon as a shop adds it; `SOAT_ALLOW_PRIVATE_URLS=1` to let
     /// webhooks and image imports reach this machine and private networks
     /// (development only); `SOAT_PLUGINS_DIR` for the
     /// WebAssembly plugins checkout runs (one folder each, see
@@ -139,6 +146,13 @@ impl Settings {
             metrics_token: std::env::var("SOAT_METRICS_TOKEN")
                 .ok()
                 .filter(|v| !v.trim().is_empty()),
+            domain_proof: if std::env::var("SOAT_VERIFY_DOMAINS").as_deref() == Ok("0") {
+                None
+            } else {
+                Some(std::sync::Arc::new(
+                    dns::SystemDns::new().map_err(zapline::Error::internal)?,
+                ))
+            },
             url_policy: if std::env::var("SOAT_ALLOW_PRIVATE_URLS").as_deref() == Ok("1") {
                 soat_webhooks::TargetPolicy::Any
             } else {
@@ -171,6 +185,7 @@ impl Settings {
             anthropic_api: "http://127.0.0.1:9".to_owned(),
             metrics_token: None,
             url_policy: soat_webhooks::TargetPolicy::PublicHttps,
+            domain_proof: None,
             #[cfg(feature = "stripe")]
             stripe: None,
             #[cfg(feature = "mollie")]
@@ -236,7 +251,10 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
     let modules = Modules::new()
         .with(settings.auth)
         .with(events)
-        .with(Tenancy)
+        .with(match settings.domain_proof.clone() {
+            Some(lookup) => Tenancy::new().with_domain_proof(lookup),
+            None => Tenancy::new(),
+        })
         .with(match settings.url_policy {
             soat_webhooks::TargetPolicy::Any => Webhooks::new().allow_private_targets(),
             soat_webhooks::TargetPolicy::PublicHttps => Webhooks::new(),

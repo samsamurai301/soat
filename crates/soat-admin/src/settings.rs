@@ -544,6 +544,9 @@ async fn run(mut cx: Ctx, area: &str, action: &str, item: Option<&str>, f: Field
             "/api/domains".into(),
             Some(json!({ "domain": f.get("domain") })),
         ),
+        ("general", "verify-domain", Some(d)) => {
+            Call::Plain(Method::POST, format!("/api/domains/{d}/verify"), None)
+        }
         ("general", "remove-domain", Some(d)) => {
             Call::Plain(Method::DELETE, format!("/api/domains/{d}"), None)
         }

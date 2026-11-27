@@ -48,7 +48,25 @@ pub const STAFF_MANAGE: Permission = Permission::new(
 );
 
 /// The tenancy module. List it before any module that owns tenant data.
-pub struct Tenancy;
+#[derive(Default)]
+pub struct Tenancy {
+    proof: domains::DomainProof,
+}
+
+impl Tenancy {
+    /// Domains serve a shop as soon as it adds them: for installs that
+    /// serve one shop, or whose operator adds the domains.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A shop must show it owns a domain before it serves the shop: a DNS
+    /// TXT record, looked up with `lookup` (see [`domains`]).
+    pub fn with_domain_proof(mut self, lookup: std::sync::Arc<dyn domains::TxtLookup>) -> Self {
+        self.proof = domains::DomainProof::Dns(lookup);
+        self
+    }
+}
 
 impl Module for Tenancy {
     fn name(&self) -> &'static str {
@@ -79,6 +97,7 @@ impl Module for Tenancy {
         app.plugin(routes::mount)
             .plugin(staff::mount)
             .plugin(api_keys::mount)
+            .state(self.proof.clone())
             .plugin(domains::mount)
             .plugin(event_log::mount)
             .plugin(shop::mount)

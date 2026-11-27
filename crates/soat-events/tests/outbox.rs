@@ -121,7 +121,7 @@ async fn app(recorders: Vec<Arc<Recorder>>) -> (TestClient, String, String) {
     let modules = Modules::new()
         .with(Auth::with_setup_token("t"))
         .with(Events::manual())
-        .with(Tenancy)
+        .with(Tenancy::new())
         .with(Probe(recorders));
     let client = modules
         .build(App::new(), Database::postgres(url.clone()))

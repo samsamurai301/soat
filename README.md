@@ -31,6 +31,8 @@ from `MAIL_FROM`, shown with each shop's name. Without `SMTP_URL` a debug build
 keeps mail in a dev inbox at `/_dev/mail`; a release build refuses to start.
 Set `SOAT_SECRET_KEY` (32 characters or more, the same on every restart) so
 shops can store their own Anthropic key; it is kept encrypted with it.
+Shops prove they own a domain with a DNS TXT record before it serves
+them; `SOAT_VERIFY_DOMAINS=0` skips that on an install for one shop.
 Webhooks and imported images only reach public `https://` addresses;
 `SOAT_ALLOW_PRIVATE_URLS=1` lifts that for local development.
 Set `SOAT_METRICS_TOKEN` for Prometheus to scrape `/metrics`; logs, metrics

@@ -10,7 +10,9 @@
 </section>
 <section class="panel">
   <h2>Domains</h2>
-  {{#if domains }}<table class="table"><tbody>{{#each domains }}<tr><td>{{ domain }}</td><td class="num"><form method="post" action="{{ base }}/settings/general/remove-domain/{{ domain }}" hx-confirm="Remove {{ domain }}?"><button class="link">Remove</button></form></td></tr>{{/each}}</tbody></table>
+  {{#if domains }}<table class="table"><tbody>{{#each domains }}<tr><td>{{ domain }}{{#if verified }}{{else}}
+    <p class="muted">Not serving the shop yet. Prove it is yours: add a TXT record named <code>{{ txt_name }}</code> with the value <code>{{ txt_value }}</code> at your DNS provider, then verify.</p>
+    <form method="post" action="{{ base }}/settings/general/verify-domain/{{ domain }}" class="inline"><button class="button">Verify {{ domain }}</button></form>{{/if}}</td><td class="num"><form method="post" action="{{ base }}/settings/general/remove-domain/{{ domain }}" hx-confirm="Remove {{ domain }}?"><button class="link">Remove</button></form></td></tr>{{/each}}</tbody></table>
   {{else}}<p class="muted">No domains yet. Point a domain's DNS at this server, then add it here.</p>{{/if}}
   <form method="post" action="{{ base }}/settings/general/domains" class="inline">
     <label>Domain <input name="domain" placeholder="shop.example.com" required></label>
