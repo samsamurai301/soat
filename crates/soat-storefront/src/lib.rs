@@ -45,6 +45,9 @@ mod wishlist;
 #[cfg(feature = "loyalty")]
 mod loyalty;
 
+#[cfg(feature = "marketing")]
+mod unsubscribe;
+
 use i18n::{root_of, Lang};
 
 /// The cookie holding the buyer's cart: `<cart id>.<token>`.
@@ -87,6 +90,8 @@ impl Module for Storefront {
         let app = app.mount((wishlist::toggle, wishlist::page));
         #[cfg(feature = "loyalty")]
         let app = app.mount((loyalty::page, loyalty::redeem, loyalty::referral));
+        #[cfg(feature = "marketing")]
+        let app = app.mount((unsubscribe::page, unsubscribe::confirm));
         app.mount((
             home,
             product_page,
@@ -243,6 +248,7 @@ const NOINDEX: &[&str] = &[
     "account",
     "wishlist",
     "loyalty",
+    "unsubscribe",
     "forgot",
     "access",
     "search",

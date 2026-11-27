@@ -1,0 +1,18 @@
+<div class="head"><h1>Campaigns</h1> <a href="{{ base }}/customers">Customers</a></div>
+{{#if missing}}<p class="muted">Email campaigns are not part of this build of SOAT.</p>{{else}}
+{{#if campaigns }}<table class="table">
+  <thead><tr><th>Campaign</th><th>Status</th><th class="num">Recipients</th><th class="num">Sent</th><th class="num">Unsubscribed</th></tr></thead>
+  <tbody>{{#each campaigns }}<tr><td><a href="{{ base }}/campaigns/{{ id }}">{{ name }}</a></td><td>{{ status }}</td><td class="num">{{ recipients }}</td><td class="num">{{ sent }}</td><td class="num">{{ unsubscribed }}</td></tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No campaigns yet. A campaign goes to the customers who agreed to news, and every email has a link to unsubscribe.</p>{{/if}}
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/campaigns" class="form">
+  <fieldset><legend>New campaign</legend>
+    <label>Name (for you) <input name="name" value="{{ typed.name }}" maxlength="200" required></label>
+    <label>Subject <input name="subject" value="{{ typed.subject }}" maxlength="300" required></label>
+    <label>Text <textarea name="text_body" rows="10" required>{{ typed.text_body }}</textarea></label>
+    <p class="muted">Write <code>&#123;&#123; first_name &#125;&#125;</code> for the customer's first name. An unsubscribe link is added at the end.</p>
+    <label>Only customers tagged <input name="audience_tag" value="{{ typed.audience_tag }}" maxlength="100"></label>
+  </fieldset>
+  <button class="button">Write campaign</button>
+</form>
+{{/if}}

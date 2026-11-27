@@ -1,0 +1,15 @@
+<div class="auth">
+<section>
+  <h1>{{ t.unsubscribe }}</h1>
+  {{#if done }}<p class="notice" role="status">{{ t.unsubscribed }}</p>
+  {{else}}{{#if invalid }}<p class="notice" role="alert">{{ t.unsubscribe_invalid }}</p>
+  {{else}}
+  <p>{{ t.unsubscribe_ask }}</p>
+  <form method="post" action="{{ root }}/unsubscribe">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button class="button" type="submit">{{ t.unsubscribe_button }}</button>
+  </form>
+  {{/if}}{{/if}}
+  <p><a href="{{ root }}/">{{ t.keep_shopping }}</a></p>
+</section>
+</div>

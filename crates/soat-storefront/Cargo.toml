@@ -18,6 +18,8 @@ wishlists = ["dep:soat-wishlists"]
 loyalty = ["dep:soat-loyalty"]
 # Counts the pages shown for storefront analytics.
 analytics = ["dep:soat-analytics"]
+# The unsubscribe page of campaign emails.
+marketing = ["dep:soat-marketing"]
 
 [dependencies]
 soat-core.workspace = true
@@ -40,6 +42,7 @@ soat-reviews = { workspace = true, optional = true }
 soat-wishlists = { workspace = true, optional = true }
 soat-loyalty = { workspace = true, optional = true }
 soat-analytics = { workspace = true, optional = true }
+soat-marketing = { workspace = true, optional = true }
 zapline = { workspace = true, features = ["storage"] }
 serde.workspace = true
 serde_json.workspace = true

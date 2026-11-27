@@ -32,6 +32,8 @@ const FILES: &[(&str, &str)] = &[
     ("giftcards", include_str!("../admin/giftcards.html")),
     ("reviews", include_str!("../admin/reviews.html")),
     ("analytics", include_str!("../admin/analytics.html")),
+    ("campaigns", include_str!("../admin/campaigns.html")),
+    ("campaign", include_str!("../admin/campaign.html")),
     ("blog", include_str!("../admin/blog.html")),
     ("post", include_str!("../admin/post.html")),
     ("giftcard", include_str!("../admin/giftcard.html")),

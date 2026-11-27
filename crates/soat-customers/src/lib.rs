@@ -13,7 +13,7 @@ use soat_auth::normalize_email;
 use soat_core::tags::normalize_tags;
 use soat_core::{id_kind, Permission};
 use soat_module::Module;
-use soat_tenancy::{Tenant, TenantListing, TenantTx};
+use soat_tenancy::{Scope, Tenant, TenantListing, TenantTx};
 use zapline::db::{sqlx, Db, ListParams, Paged};
 use zapline::embed::Dir;
 use zapline::prelude::*;
@@ -206,6 +206,31 @@ async fn get_customer(db: Db, tenant: Tenant, Path(id): Path<String>) -> Result<
     let customer = load(&mut tx, &tenant, &id).await?;
     tx.commit().await?;
     Ok(Json(customer))
+}
+
+/// Stops marketing email to customer `id`, who asked for it (e.g. with an
+/// unsubscribe link), in the caller's transaction. Publishes
+/// `customer.updated` when it changed anything; answers whether it did.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn unsubscribe(tx: &mut TenantTx, scope: &impl Scope, id: &str) -> Result<bool> {
+    let changed: Option<Customer> = sqlx::query_as(&format!(
+        "UPDATE customers SET accepts_marketing = FALSE, marketing_consent_at = NULL \
+         WHERE tenant_id = $1 AND id = $2 AND accepts_marketing RETURNING {COLUMNS}"
+    ))
+    .bind(scope.tenant_id())
+    .bind(id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    match changed {
+        Some(c) => {
+            scope.publish(tx, "customer.updated", &c).await?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }
 
 /// Change a customer (`customers:write`). Turning marketing on records the

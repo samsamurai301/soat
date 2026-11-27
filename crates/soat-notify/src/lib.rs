@@ -50,9 +50,10 @@ pub const NOTIFICATIONS_MANAGE: Permission = Permission::new(
 )
 .for_staff();
 
-/// The platform's sending address, `MAIL_FROM`.
+/// The platform's sending address, `MAIL_FROM`; in the app's state and
+/// resources.
 #[derive(Clone)]
-struct MailFrom(String);
+pub struct MailFrom(pub String);
 
 /// The notifications module.
 pub struct Notify {
@@ -546,6 +547,23 @@ async fn resend_message(
                 .with_code("mail_failed"),
         ),
     }
+}
+
+/// Who shop `scope`'s email comes from (`"Shop name" <address>`, with the
+/// platform's sending `address`) and where replies go, for modules that
+/// send email of their own.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn shop_sender(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    address: &str,
+) -> Result<(String, Option<String>)> {
+    let s = settings(conn, scope).await?;
+    let shop = shop_name(conn, scope).await?;
+    Ok((sender(&s, &shop, address), s.reply_to))
 }
 
 /// `"Shop name" <platform address>`.
