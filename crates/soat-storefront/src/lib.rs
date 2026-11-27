@@ -54,6 +54,8 @@ mod subscription;
 #[cfg(feature = "b2b")]
 mod b2b;
 #[cfg(feature = "privacy")]
+mod consent;
+#[cfg(feature = "privacy")]
 mod privacy;
 
 use i18n::{root_of, Lang};
@@ -97,7 +99,12 @@ impl Module for Storefront {
         #[cfg(feature = "wishlists")]
         let app = app.mount((wishlist::toggle, wishlist::page));
         #[cfg(feature = "privacy")]
-        let app = app.mount((privacy::download, privacy::ask));
+        let app = app.mount((
+            privacy::download,
+            privacy::ask,
+            consent::choose,
+            consent::page,
+        ));
         #[cfg(feature = "loyalty")]
         let app = app.mount((loyalty::page, loyalty::redeem, loyalty::referral));
         #[cfg(feature = "subscriptions")]
@@ -132,6 +139,7 @@ impl Module for Storefront {
             checkout_complete,
             order_page,
             theme_css,
+            htmx_js,
         ))
         .mount((
             account::login_page,
@@ -283,6 +291,7 @@ const NOINDEX: &[&str] = &[
     "access",
     "search",
     "not_found",
+    "consent",
 ];
 
 /// The blocks of installed apps the shop turned on: each script once
@@ -385,6 +394,8 @@ impl View {
         );
         #[cfg(feature = "apps")]
         app_blocks(&mut tx, &mut data).await?;
+        #[cfg(feature = "privacy")]
+        consent::apply(&mut tx, shop, headers, &mut data).await?;
         let mut customer = None;
         if let Some(token) = cookie(headers, account::CUSTOMER_COOKIE) {
             let session = SignedIn::new(shop.clone(), &token);
@@ -1733,6 +1744,21 @@ async fn choose_country(
         put_cookie(&mut res, i18n::COUNTRY_COOKIE, "", 0, conn.secure);
     }
     Ok(res)
+}
+
+/// htmx, served by the shop itself rather than a third party.
+#[get("/assets/htmx-1.9.12.min.js", tag = "storefront")]
+async fn htmx_js() -> Response {
+    let mut res = soat_core::assets::HTMX_JS.into_response();
+    res.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/javascript; charset=utf-8"),
+    );
+    res.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(soat_core::assets::IMMUTABLE),
+    );
+    res
 }
 
 /// The theme's stylesheet.

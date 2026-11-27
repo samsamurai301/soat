@@ -124,6 +124,7 @@ impl Module for Admin {
             dashboard::home,
             palette::search,
             styles,
+            htmx_js,
         ))
         .mount((
             onboarding::setup_page,
@@ -218,6 +219,7 @@ impl Module for Admin {
             privacy::erase,
             privacy::requests,
             privacy::decline,
+            privacy::consent,
         ))
         .mount((
             pos::registers,
@@ -598,6 +600,21 @@ async fn shop_list(
         &json!({ "page_title": "Your shops", "shops": list, "can_create": admin }),
         StatusCode::OK,
     ))
+}
+
+/// htmx, served by SOAT itself rather than a third party.
+#[get("/admin/htmx-1.9.12.min.js", tag = "admin")]
+async fn htmx_js() -> Response {
+    let mut res = soat_core::assets::HTMX_JS.into_response();
+    res.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/javascript; charset=utf-8"),
+    );
+    res.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(soat_core::assets::IMMUTABLE),
+    );
+    res
 }
 
 /// The admin's stylesheet.

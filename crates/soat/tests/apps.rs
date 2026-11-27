@@ -818,6 +818,43 @@ async fn shops_turn_on_storefront_blocks_from_apps() {
     );
     assert!(!product("globex").await.contains("stars.js"));
 
+    // With the cookie banner on, apps' scripts wait for consent to apps.
+    #[cfg(feature = "privacy")]
+    {
+        call(
+            &client,
+            Some(&t),
+            Some("acme"),
+            "PUT",
+            "/api/consent",
+            json!({ "enabled": true }),
+            200,
+        )
+        .await;
+        assert!(!product("acme").await.contains("stars.js"));
+        for (given, shown) in [("1.am", false), ("1.x", true)] {
+            let html = client
+                .get("/products/trail-shoe")
+                .header("x-soat-tenant", "acme")
+                .header("cookie", &format!("soat_consent={given}"))
+                .send()
+                .await
+                .text();
+            assert_eq!(html.contains("stars.js"), shown, "{given}: {html}");
+        }
+        call(
+            &client,
+            Some(&t),
+            Some("acme"),
+            "PUT",
+            "/api/consent",
+            json!({ "enabled": false }),
+            200,
+        )
+        .await;
+        assert!(product("acme").await.contains("stars.js"));
+    }
+
     // Uninstalling takes the blocks off.
     call(
         &client,

@@ -4,6 +4,7 @@
 //! the server, plugins and SDKs alike.
 
 pub mod address;
+pub mod assets;
 pub mod content;
 pub mod content_types;
 pub mod csv;
