@@ -307,21 +307,28 @@ async fn returned_units_are_restocked_and_refunded() {
     )
     .await;
     assert_eq!(p["refunded_minor"], 1190);
-    for _ in 0..3 {
+    // The order hears of the refund through an event; the background
+    // dispatcher may be the one to deliver it, so wait for it.
+    let mut o = Value::Null;
+    for _ in 0..50 {
         soat_events::dispatch_resources(&client.resources().await)
             .await
             .unwrap();
+        o = send(
+            &client,
+            "acme",
+            t,
+            "GET",
+            &format!("/api/orders/{order}"),
+            Value::Null,
+            200,
+        )
+        .await;
+        if o["financial_status"] == "partially_refunded" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    let o = send(
-        &client,
-        "acme",
-        t,
-        "GET",
-        &format!("/api/orders/{order}"),
-        Value::Null,
-        200,
-    )
-    .await;
     assert_eq!(o["financial_status"], "partially_refunded");
 
     // A goodwill refund, and no more than what is left.

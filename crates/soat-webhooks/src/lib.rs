@@ -24,7 +24,7 @@ use zapline::prelude::App;
 use zapline::tasks::Schedule;
 use zapline::Resources;
 
-pub use send::{send_due, send_resources};
+pub use send::{backlog, send_due, send_resources};
 pub use sign::{sign, verify};
 pub use target::{check_target, TargetPolicy};
 
