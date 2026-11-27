@@ -42,6 +42,7 @@ mod content;
 mod customers;
 mod dashboard;
 mod discounts;
+mod feeds;
 mod giftcards;
 mod launch;
 mod onboarding;
@@ -207,6 +208,7 @@ impl Module for Admin {
             b2b::quote,
             b2b::quote_act,
         ))
+        .mount((feeds::list, feeds::create, feeds::act))
         .mount((
             customers::adjust_points,
             giftcards::list,
