@@ -42,7 +42,7 @@
   </main>
 </div>
 <dialog class="palette" id="palette" aria-label="Search and go to" data-base="{{ base }}">
-  <input type="search" name="q" placeholder="Pages, products, order numbers, customers" autocomplete="off"
+  <input type="search" name="q" aria-label="Search and go to" placeholder="Pages, products, order numbers, customers" autocomplete="off"
     hx-get="{{ base }}/palette" hx-trigger="input changed delay:150ms, focus once" hx-target="#palette-results">
   <div id="palette-results"></div>
   <p class="muted small">↑ ↓ to choose, Enter to go, Esc to close. Shortcuts: g then h, o, p, c or s for home, orders, products, customers, settings.</p>

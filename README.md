@@ -117,7 +117,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-storefront` | The storefront: server-rendered pages from the theme, cart in a cookie, checkout, order and account pages, htmx |
 | `crates/soat-mcp` | MCP server at `/mcp`: Claude runs a shop through a tool per API operation, scoped by API key, changes held for approval; the admin's chat with Claude on the shop's own key |
 | `crates/soat` | The server binary: lists the modules, end-to-end tests |
-| `crates/soat-testing` | Test helpers: a fresh Postgres schema per test |
+| `crates/soat-testing` | Test helpers: a fresh Postgres schema per test, and accessibility checks of rendered pages (`a11y`, guide `docs/accessibility.md`) |
 
 The full module map and milestones are in [docs/roadmap.md](docs/roadmap.md).
 
