@@ -9,6 +9,7 @@ pub mod content_types;
 pub mod csv;
 pub mod discount;
 mod domain;
+pub mod feeds;
 pub mod fields;
 pub mod handle;
 pub mod hooks;

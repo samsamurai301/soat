@@ -46,6 +46,8 @@ fn module_list_is_valid_and_ordered() {
     expected.push("subscriptions");
     #[cfg(feature = "b2b")]
     expected.push("b2b");
+    #[cfg(feature = "feeds")]
+    expected.push("channels");
     expected.push("storefront");
     #[cfg(feature = "shopify-sync")]
     expected.push("import");

@@ -1,0 +1,27 @@
+<div class="head"><h1>Feeds</h1> <a href="{{ base }}/products">Products</a></div>
+{{#if missing}}<p class="muted">Product feeds are not part of this build of SOAT.</p>{{else}}
+<p class="muted">Give a feed's address to Google Merchant Center (as a scheduled fetch) or to a Meta catalog (as a data feed). They fetch it by themselves, so prices and stock stay current. Brand, GTIN and MPN come from the product custom fields <code>brand</code>, <code>gtin</code> and <code>mpn</code> when you define them.</p>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+{{#each feeds }}
+<section class="card">
+  <h2>{{ name }} <small class="muted">{{#if meta }}Meta CSV{{else}}Google XML{{/if}} · {{ currency }}{{#if collection_handle }} · {{ collection_handle }}{{/if}}{{#if active}}{{else}} · off{{/if}}</small></h2>
+  <p><input readonly value="{{ url }}" size="70" aria-label="Feed address"></p>
+  <p>{{ count }} items · {{ errors }} problems the channel rejects · {{ warnings }} warnings{{#if fetched_at }} · last fetched {{ fetched_at }}{{/if}}</p>
+  {{#if problems }}<ul>{{#each problems }}<li>{{#if error }}<strong>{{ title }}</strong>{{else}}{{ title }}{{/if}}: {{ what }}</li>{{/each}}</ul>{{/if}}
+  <form method="post" action="{{ base }}/feeds/{{ id }}/{{#if active}}off{{else}}on{{/if}}" class="inline"><button class="link">{{#if active}}Turn off{{else}}Turn on{{/if}}</button></form>
+  <form method="post" action="{{ base }}/feeds/{{ id }}/token" class="inline"><button class="link">New address</button></form>
+  <form method="post" action="{{ base }}/feeds/{{ id }}/delete" class="inline"><button class="link">Delete</button></form>
+</section>
+{{/each}}
+<form method="post" action="{{ base }}/feeds" class="form">
+  <fieldset><legend>New feed</legend>
+    <label>Name <input name="name" maxlength="100" placeholder="Google Shopping DE" required></label>
+    <label>For <select name="format"><option value="google">Google Merchant Center (XML)</option><option value="meta">Meta catalog: Facebook and Instagram (CSV)</option></select></label>
+    <label>Currency <input name="currency" maxlength="3" placeholder="the shop's"></label>
+    <label>Brand <input name="brand" maxlength="100" placeholder="the shop's name"></label>
+    <label>Only the collection (handle) <input name="collection_handle"></label>
+    <label><input type="checkbox" name="skip_out_of_stock"> Leave out what is out of stock</label>
+  </fieldset>
+  <button class="button">Make feed</button>
+</form>
+{{/if}}

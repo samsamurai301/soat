@@ -2239,6 +2239,7 @@ dependencies = [
  "soat-b2b",
  "soat-cart",
  "soat-catalog",
+ "soat-channels",
  "soat-checkout",
  "soat-cli",
  "soat-cms",
@@ -2379,6 +2380,23 @@ dependencies = [
  "soat-fields",
  "soat-files",
  "soat-module",
+ "soat-tenancy",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-channels"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-catalog",
+ "soat-core",
+ "soat-files",
+ "soat-inventory",
+ "soat-module",
+ "soat-pricing",
  "soat-tenancy",
  "sqlx",
  "zapline",

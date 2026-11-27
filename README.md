@@ -102,6 +102,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-loyalty` | Loyalty points and referrals, turned into store credit (feature `loyalty`) |
 | `crates/soat-analytics` | Storefront analytics without cookies: visitors, pages, sources, devices, conversion (feature `analytics`) |
 | `crates/soat-marketing` | Email campaigns to customers who agreed to news, with one-click unsubscribe (feature `marketing`) |
+| `crates/soat-channels` | Sales channels: product feeds for Google Merchant Center and Meta catalogs, with a problems preview (feature `feeds`) |
 | `crates/soat-b2b` | B2B: companies with shared prices, payment terms and a credit limit, quotes answered with draft orders, quick order by SKU (feature `b2b`) |
 | `crates/soat-subscriptions` | Subscriptions: plans on products, renewals placed as orders on schedule, pause, skip and cancel (feature `subscriptions`) |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
