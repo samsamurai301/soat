@@ -22,6 +22,24 @@
   <button class="button">Save banner</button>
 </form>
 {{#if stats.choices }}<p>Last 30 days: {{ stats.choices }} choices · {{ stats.accepted_all }} accepted all · {{ stats.rejected_all }} rejected all · {{ stats.analytics }} analytics · {{ stats.marketing }} marketing · {{ stats.apps }} apps</p>{{/if}}
+{{#if retention }}
+<h2>How long data is kept</h2>
+{{#if swept }}<p class="notice" role="status">{{ swept }}</p>{{/if}}
+<p class="muted">Keep personal data no longer than you need it. Once a day, SOAT removes what is older than you set here. Leave a field empty to keep that data. Orders and invoices are always kept, because tax law requires it.</p>
+<form method="post" action="{{ base }}/privacy/retention" class="form">
+<table class="table"><thead><tr><th>Data</th><th>Keep for (days)</th><th class="num">Due now</th></tr></thead><tbody>
+{{#each retention.rules }}<tr>
+  <td><label for="days_{{ key }}">{{ label }}</label></td>
+  <td><input id="days_{{ key }}" name="days_{{ key }}" value="{{ days }}" inputmode="numeric" placeholder="keep" size="6"> <span class="muted">at least {{ min_days }}</span></td>
+  <td class="num">{{ due }}</td>
+</tr>{{/each}}
+</tbody></table>
+<button class="button">Save</button>
+</form>
+<form method="post" action="{{ base }}/privacy/retention/sweep" class="inline" hx-confirm="Remove everything that is due now? This cannot be undone.">
+  <button class="link">Remove what is due now</button>{{#if retention.last_run_at }} <span class="muted">Last run {{ retention.last_run_at }}</span>{{/if}}
+</form>
+{{/if}}
 <h2>Requests</h2>
 <p class="muted">Customers can download their own data and ask to be erased from their account page. Under the GDPR you answer within a month. Erase a customer from their page, or decline with the reason, for example an unpaid order still owed.</p>
 {{#if requests }}

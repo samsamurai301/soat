@@ -58,3 +58,55 @@ impl PersonalDataMap {
         self.0.iter().any(|(_, d)| d.table == table)
     }
 }
+
+/// How long a shop keeps a table's old rows before a daily sweep deletes
+/// them (GDPR art. 5(1)(e): no longer than needed). Each shop can change
+/// the days, within `min_days`, or keep the rows forever.
+///
+/// `expired` is an SQL condition true for rows older than `$2` days (an
+/// `integer`, e.g. `updated_at < now() - make_interval(days => $2)`); the
+/// tenant filter (`tenant_id = $1`) is added. Every
+/// name here is written by the module, never taken from a request.
+///
+/// ```
+/// use soat_module::Retention;
+/// const CARTS: Retention = Retention {
+///     key: "abandoned_carts",
+///     label: "Carts never checked out",
+///     table: "carts",
+///     expired: "status = 'open' AND updated_at < now() - make_interval(days => $2)",
+///     default_days: Some(90),
+///     min_days: 7,
+/// };
+/// assert_eq!(CARTS.default_days, Some(90));
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Retention {
+    /// Unique across modules, lowercase with underscores.
+    pub key: &'static str,
+    /// What the rows are, for staff.
+    pub label: &'static str,
+    pub table: &'static str,
+    pub expired: &'static str,
+    /// `None`: kept until the shop sets a time.
+    pub default_days: Option<i32>,
+    /// The shortest time a shop may choose.
+    pub min_days: i32,
+}
+
+/// Every module's retention rules, in module order, available to handlers
+/// as `State<RetentionMap>`.
+#[derive(Clone, Debug, Default)]
+pub struct RetentionMap(pub std::sync::Arc<Vec<(&'static str, Retention)>>);
+
+impl RetentionMap {
+    /// `(module, rule)` pairs, in module order.
+    pub fn all(&self) -> &[(&'static str, Retention)] {
+        &self.0
+    }
+
+    /// The rule called `key`.
+    pub fn get(&self, key: &str) -> Option<&Retention> {
+        self.0.iter().map(|(_, r)| r).find(|r| r.key == key)
+    }
+}

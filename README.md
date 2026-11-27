@@ -106,7 +106,7 @@ tools, and shows proposed changes in the chat to approve. The chat API is
 | `crates/soat-b2b` | B2B: companies with shared prices, payment terms and a credit limit, quotes answered with draft orders, quick order by SKU (feature `b2b`) |
 | `crates/soat-marketplaces` | Selling on marketplaces (Amazon, eBay, Otto, Kaufland and more): offers with a markup and a stock buffer, orders brought in, shipments and cancellations reported back (feature `marketplaces`, guide `docs/marketplaces.md`) |
 | `crates/soat-pos` | Point of sale: registers at a location, sessions with a cash count, counter sales paid in cash or card with change, receipts (feature `pos`) |
-| `crates/soat-compliance` | GDPR: a customer's data exported or erased across every module's declared tables, customers' requests, and the cookie banner that holds tracking and apps' scripts until consent (feature `privacy`, guide `docs/privacy.md`) |
+| `crates/soat-compliance` | GDPR: a customer's data exported or erased across every module's declared tables, customers' requests, the cookie banner that holds tracking and apps' scripts until consent, and how long each kind of data is kept, swept daily (feature `privacy`, guide `docs/privacy.md`) |
 | `crates/soat-subscriptions` | Subscriptions: plans on products, renewals placed as orders on schedule, pause, skip and cancel (feature `subscriptions`) |
 | `crates/soat-orders` | Orders: snapshots, numbering, payment status, fulfillments, returns and refunds, cancellation, buyer views |
 | `crates/soat-checkout` | Checkout: cart to order with shipping, tax, held stock and a payment |

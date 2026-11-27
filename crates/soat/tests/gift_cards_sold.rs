@@ -155,11 +155,19 @@ async fn a_bought_gift_card_is_issued_and_emailed() {
         200,
     )
     .await;
-    let mails: Vec<Email> = sent(c, before + 2)
-        .await
-        .into_iter()
-        .filter(|m| m.subject.contains("gift card"))
-        .collect();
+    // Other mails (the payment's) may arrive in between: wait for both
+    // gift cards' own.
+    let mut mails: Vec<Email> = Vec::new();
+    for n in before + 2..before + 10 {
+        mails = sent(c, n)
+            .await
+            .into_iter()
+            .filter(|m| m.subject.contains("gift card"))
+            .collect();
+        if mails.len() >= 2 {
+            break;
+        }
+    }
     assert_eq!(mails.len(), 2, "{mails:?}");
     assert_eq!(mails[0].to, ["ada@example.com"]);
     assert!(mails[0].subject.contains("50.00"), "{:?}", mails[0]);

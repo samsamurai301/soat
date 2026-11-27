@@ -109,6 +109,17 @@ impl Module for Notify {
         }]
     }
 
+    fn retention(&self) -> &'static [soat_module::Retention] {
+        &[soat_module::Retention {
+            key: "sent_emails",
+            label: "Emails sent to customers (their copies)",
+            table: "email_messages",
+            expired: "status <> 'pending' AND created_at < now() - make_interval(days => $2)",
+            default_days: Some(730),
+            min_days: 30,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         app.mailer(self.mailer.clone())
             .state(MailFrom(self.from.clone()))

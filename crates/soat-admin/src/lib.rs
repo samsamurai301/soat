@@ -220,6 +220,8 @@ impl Module for Admin {
             privacy::requests,
             privacy::decline,
             privacy::consent,
+            privacy::retention_settings,
+            privacy::retention_sweep,
         ))
         .mount((
             pos::registers,

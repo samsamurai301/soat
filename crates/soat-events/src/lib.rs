@@ -97,6 +97,18 @@ impl Module for Events {
         Some(zapline::embed!("migrations"))
     }
 
+    fn retention(&self) -> &'static [soat_module::Retention] {
+        &[soat_module::Retention {
+            key: "events",
+            label: "The event log, which is also the audit log, once delivered",
+            table: "events",
+            expired: "occurred_at < now() - make_interval(days => $2) AND fanned_out AND NOT EXISTS (SELECT 1 FROM event_deliveries d \
+                      WHERE d.event_id = events.id AND d.delivered_at IS NULL AND d.failed_at IS NULL)",
+            default_days: None,
+            min_days: 90,
+        }]
+    }
+
     fn mount(&self, app: App) -> App {
         match self.poll {
             Some(every) => app.schedule(

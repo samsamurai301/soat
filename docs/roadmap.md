@@ -164,4 +164,6 @@ layer.
 
 - [x] J3 E-invoices (crate `soat-invoices`, logic in `soat_core::einvoice`, guide `docs/e-invoices.md`): every invoice and credit note downloads as an EN 16931 e-invoice in XRechnung 3.0 (CII), the XML of ZUGFeRD / Factur-X (profile EN 16931) or Peppol BIS Billing 3.0 (UBL), for staff and for the buyer holding the order's token, with the buyer's reference (Leitweg-ID), VAT categories S, Z, AE (reverse charge) and G (export), the IBAN from the bank details and what was paid; a check names by rule what a receiver's validator would reject (seller phone and email for XRechnung, VAT IDs for reverse charge, totals that do not add up), shown on the admin order page beside the downloads
 
-J4 data retention · J5 accessibility checks in CI
+- [x] J4 Data retention (feature `privacy`, guide `docs/privacy.md`): modules declare how long their old rows are kept (`Module::retention`: carts never checked out 90 days, expired sign-ins 30, sent emails 730, cookie choices 1095, the event log and closed privacy requests kept by default), shops change the days within each rule's minimum or keep the data (`/api/retention`, admin Privacy), and can erase customers with no order or sign-in for a time like by hand; an hourly task sweeps each shop once a day, and staff see what is due and sweep now; orders and invoices are never removed
+
+J5 accessibility checks in CI

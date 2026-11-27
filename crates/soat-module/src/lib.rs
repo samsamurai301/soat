@@ -38,7 +38,7 @@ use zapline::prelude::App;
 
 pub use events::{Event, HandlerFuture, Subscriber, Subscribers};
 pub use migrations::merge_migrations;
-pub use privacy::{Erase, PersonalData, PersonalDataMap};
+pub use privacy::{Erase, PersonalData, PersonalDataMap, Retention, RetentionMap};
 
 /// One SOAT module.
 ///
@@ -72,6 +72,11 @@ pub trait Module: Send + Sync + 'static {
     /// The tables in which this module keeps data about customers, for
     /// exporting and erasing it.
     fn personal_data(&self) -> &'static [PersonalData] {
+        &[]
+    }
+
+    /// How long old rows of this module's tables are kept.
+    fn retention(&self) -> &'static [Retention] {
         &[]
     }
 
@@ -127,6 +132,12 @@ pub enum ModuleError {
         module: &'static str,
         permission: &'static str,
     },
+    /// A retention rule's key is malformed or declared twice, or its days
+    /// are below its minimum.
+    BadRetention {
+        module: &'static str,
+        key: &'static str,
+    },
 }
 
 impl fmt::Display for ModuleError {
@@ -152,6 +163,12 @@ impl fmt::Display for ModuleError {
                 f,
                 "module `{module}` declares `{permission}`, which is malformed \
                  (use resource:action) or already declared"
+            ),
+            Self::BadRetention { module, key } => write!(
+                f,
+                "module `{module}` declares the retention rule `{key}`, which is \
+                 malformed (lowercase_with_underscores, default at least the minimum, \
+                 minimum at least a day) or already declared"
             ),
         }
     }
@@ -208,6 +225,21 @@ impl Modules {
                 }
             }
         }
+        let mut keys = HashSet::new();
+        for module in &self.0 {
+            for r in module.retention() {
+                let well_formed = !r.key.is_empty()
+                    && r.key.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+                    && r.min_days >= 1
+                    && r.default_days.is_none_or(|d| d >= r.min_days);
+                if !well_formed || !keys.insert(r.key) {
+                    return Err(ModuleError::BadRetention {
+                        module: module.name(),
+                        key: r.key,
+                    });
+                }
+            }
+        }
         let mut subscribers = HashSet::new();
         for module in &self.0 {
             for sub in module.subscribers() {
@@ -235,6 +267,16 @@ impl Modules {
             self.0
                 .iter()
                 .flat_map(|m| m.personal_data().iter().map(|d| (m.name(), *d)))
+                .collect(),
+        ))
+    }
+
+    /// Every module's retention rules, in module order.
+    pub fn retention(&self) -> RetentionMap {
+        RetentionMap(std::sync::Arc::new(
+            self.0
+                .iter()
+                .flat_map(|m| m.retention().iter().map(|r| (m.name(), *r)))
                 .collect(),
         ))
     }
@@ -273,12 +315,13 @@ impl Modules {
 
     /// Mounts every module on `app`, in order, and makes the permission and
     /// subscriber lists available as `State<Permissions>`,
-    /// `State<Subscribers>` and `State<PersonalDataMap>`.
+    /// `State<Subscribers>`, `State<PersonalDataMap>` and `State<RetentionMap>`.
     pub fn install(&self, app: App) -> App {
         let app = app
             .state(self.permissions())
             .state(self.subscribers())
-            .state(self.personal_data());
+            .state(self.personal_data())
+            .state(self.retention());
         self.0.iter().fold(app, |app, module| module.mount(app))
     }
 }
