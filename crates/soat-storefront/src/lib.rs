@@ -51,6 +51,9 @@ mod unsubscribe;
 #[cfg(feature = "subscriptions")]
 mod subscription;
 
+#[cfg(feature = "b2b")]
+mod b2b;
+
 use i18n::{root_of, Lang};
 
 /// The cookie holding the buyer's cart: `<cart id>.<token>`.
@@ -98,6 +101,15 @@ impl Module for Storefront {
             subscription::subscribe,
             subscription::page,
             subscription::act,
+        ));
+        #[cfg(feature = "b2b")]
+        let app = app.mount((
+            b2b::quick_order,
+            b2b::quick_order_post,
+            b2b::quotes,
+            b2b::quote,
+            b2b::quote_act,
+            b2b::company,
         ));
         #[cfg(feature = "marketing")]
         let app = app.mount((unsubscribe::page, unsubscribe::confirm));
@@ -258,6 +270,10 @@ const NOINDEX: &[&str] = &[
     "wishlist",
     "loyalty",
     "subscriptions",
+    "quick_order",
+    "quotes",
+    "quote",
+    "company",
     "unsubscribe",
     "forgot",
     "access",
@@ -359,6 +375,7 @@ impl View {
                 "reviews": cfg!(feature = "reviews"),
                 "loyalty": cfg!(feature = "loyalty"),
                 "subscriptions": cfg!(feature = "subscriptions"),
+                "b2b": cfg!(feature = "b2b"),
             }),
         );
         #[cfg(feature = "apps")]

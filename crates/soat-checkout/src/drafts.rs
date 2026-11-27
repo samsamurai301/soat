@@ -643,8 +643,14 @@ async fn complete_draft(
     Ok((StatusCode::CREATED, Json(done)))
 }
 
-/// Places draft `id`'s order in `tx` and commits, then starts its payment.
-async fn complete_in(
+/// Places draft `id`'s order in `tx` and commits, then starts its payment,
+/// for modules that complete drafts (e.g. an accepted quote). Publishes
+/// `order.placed` and `draft_order.completed`.
+///
+/// # Errors
+///
+/// As `POST /api/draft-orders/{id}/complete`.
+pub async fn complete_in(
     db: &Db,
     mut tx: TenantTx,
     tenant: &impl Scope,
@@ -743,6 +749,66 @@ async fn complete_in(
         order_token: token,
         payment,
     })
+}
+
+/// Customer `customer`'s default saved address (else their first) as an
+/// order address; none when they saved none.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn saved_address(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    customer: &str,
+) -> Result<Option<PostalAddress>> {
+    let row: Option<(SqlJson<PostalAddress>,)> = sqlx::query_as(
+        "SELECT json_build_object('first_name', first_name, 'last_name', last_name, \
+         'company', company, 'line1', line1, 'line2', line2, 'postal_code', postal_code, \
+         'city', city, 'region', region, 'country', country, 'phone', phone) \
+         FROM customer_addresses WHERE tenant_id = $1 AND customer_id = $2 \
+         ORDER BY is_default DESC, id LIMIT 1",
+    )
+    .bind(scope.tenant_id())
+    .bind(customer)
+    .fetch_optional(conn)
+    .await?;
+    Ok(row.map(|(a,)| a.0))
+}
+
+/// Starts a draft order in `tx`, for modules that make drafts (e.g. a
+/// quote's offer): `input` as for `POST /api/draft-orders`. Publishes
+/// `draft_order.created`.
+///
+/// # Errors
+///
+/// As `POST /api/draft-orders`.
+pub async fn create(
+    tx: &mut TenantTx,
+    scope: &impl Scope,
+    taxes: &TaxProviders,
+    input: &DraftInput,
+) -> Result<DraftOrder> {
+    let id = write(tx, scope, DraftOrderId::new().as_str(), input, true)
+        .await?
+        .ok_or_else(|| Error::internal("insert returned nothing"))?;
+    let draft = load(tx, scope, taxes, &id).await?;
+    scope.publish(tx, "draft_order.created", &draft).await?;
+    Ok(draft)
+}
+
+/// Draft order `id` with today's totals.
+///
+/// # Errors
+///
+/// 404 for an unknown draft; database errors.
+pub async fn get(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    taxes: &TaxProviders,
+    id: &str,
+) -> Result<DraftOrder> {
+    load(conn, scope, taxes, id).await
 }
 
 /// Places an order as a completed draft, for modules that place orders by

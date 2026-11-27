@@ -1,0 +1,10 @@
+<h1>{{ t.quick_order }}</h1>
+<p>{{ t.quick_order_intro }}</p>
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ root }}/account/quick-order" class="checkout">
+  <label>{{ t.quick_order_lines }}<br><textarea name="lines" rows="12" cols="40" placeholder="TEE-M 3&#10;MUG 12" required>{{ typed }}</textarea></label>
+  <label>{{ t.quote_note }}<br><textarea name="note" rows="3" cols="40"></textarea></label>
+  <p><button class="button" type="submit" name="action" value="cart">{{ t.add_to_cart }}</button>
+     <button class="button secondary" type="submit" name="action" value="quote">{{ t.ask_for_quote }}</button></p>
+</form>
+<p><a href="{{ root }}/account">{{ t.account }}</a></p>

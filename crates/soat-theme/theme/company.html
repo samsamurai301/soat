@@ -1,0 +1,14 @@
+<h1>{{ company.name }}</h1>
+{{#if company.on_hold }}<p class="notice" role="alert">{{ t.company_on_hold }}</p>{{/if}}
+<p>{{#if company.vat_number }}{{ t.vat_number }}: {{ company.vat_number }} · {{/if}}{{#if company.terms }}{{ t.payment_terms }}: {{ company.terms }} {{ t.days }}{{else}}{{ t.pay_when_ordering }}{{/if}}</p>
+{{#if company.balance }}
+<p>{{ t.balance_open }}: <strong>{{ company.balance.open }}</strong>{{#if company.balance.overdue }} · {{ t.balance_overdue }}: <strong>{{ company.balance.overdue }}</strong>{{/if}}{{#if company.balance.limit }} · {{ t.credit_left }}: {{ company.balance.available }} / {{ company.balance.limit }}{{/if}}</p>
+{{#if company.balance.orders }}
+<table class="cart-lines">
+  <tbody>
+  {{#each company.balance.orders }}<tr><td>#{{ number }}</td><td>{{ placed }}</td><td>{{ total }}</td><td>{{ t.due }} {{ due }}</td><td>{{#if overdue }}<strong>{{ state }}</strong>{{else}}{{ state }}{{/if}}</td></tr>{{/each}}
+  </tbody>
+</table>
+{{/if}}
+{{/if}}
+<p><a href="{{ root }}/account">{{ t.account }}</a></p>

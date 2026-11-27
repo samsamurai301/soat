@@ -1,0 +1,19 @@
+<div class="head"><h1>Companies</h1> <a href="{{ base }}/quotes">Quotes{{#if waiting }} ({{ waiting }} waiting){{/if}}</a></div>
+{{#if missing}}<p class="muted">B2B is not part of this build of SOAT.</p>{{else}}
+{{#if companies }}<table class="table">
+  <thead><tr><th>Company</th><th>VAT number</th><th>Price group</th><th class="num">Terms</th><th class="num">People</th><th>Status</th></tr></thead>
+  <tbody>{{#each companies }}<tr><td><a href="{{ base }}/companies/{{ id }}">{{ name }}</a></td><td>{{ vat_number }}</td><td>{{ price_tag }}</td><td class="num">{{ payment_terms_days }} days</td><td class="num">{{ members }}</td><td>{{ status }}</td></tr>{{/each}}</tbody>
+</table>{{else}}<p class="muted">No companies yet. A company groups the customers who buy for a business: they share its prices (give it a price group and a price list for that customer tag), its payment terms and its credit limit.</p>{{/if}}
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+<form method="post" action="{{ base }}/companies" class="form">
+  <fieldset><legend>New company</legend>
+    <label>Name <input name="name" value="{{ typed.name }}" maxlength="200" required></label>
+    <label>VAT number <input name="vat_number" maxlength="20"></label>
+    <label>Price group (customer tag) <input name="price_tag" maxlength="100" placeholder="wholesale"></label>
+    <label>Payment terms (days) <input name="payment_terms_days" type="number" min="0" max="180" value="30"></label>
+    <label>Currency <input name="currency" maxlength="3" value="EUR"></label>
+    <label>Credit limit <input name="credit_limit" inputmode="decimal" placeholder="no limit"></label>
+  </fieldset>
+  <button class="button">Add company</button>
+</form>
+{{/if}}

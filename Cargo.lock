@@ -2236,6 +2236,7 @@ dependencies = [
  "soat-analytics",
  "soat-apps",
  "soat-auth",
+ "soat-b2b",
  "soat-cart",
  "soat-catalog",
  "soat-checkout",
@@ -2327,6 +2328,24 @@ dependencies = [
  "serde",
  "soat-core",
  "soat-module",
+ "sqlx",
+ "zapline",
+]
+
+[[package]]
+name = "soat-b2b"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-catalog",
+ "soat-checkout",
+ "soat-core",
+ "soat-customers",
+ "soat-module",
+ "soat-orders",
+ "soat-payments",
+ "soat-tenancy",
  "sqlx",
  "zapline",
 ]
@@ -2810,6 +2829,7 @@ dependencies = [
  "serde_urlencoded",
  "soat-analytics",
  "soat-apps",
+ "soat-b2b",
  "soat-cart",
  "soat-catalog",
  "soat-checkout",
