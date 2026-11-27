@@ -1,0 +1,30 @@
+<div class="head"><h1>{{ campaign.name }}</h1> <a href="{{ base }}/campaigns">Campaigns</a></div>
+{{#if notice }}<p class="notice" role="status">{{ notice }}</p>{{/if}}
+{{#if error }}<p class="notice" role="alert">{{ error }}</p>{{/if}}
+<div class="cards">
+  <div class="card"><strong class="figure">{{ campaign.recipients }}</strong> recipients</div>
+  <div class="card"><strong class="figure">{{ campaign.sent }}</strong> sent{{#if campaign.failed }}, {{ campaign.failed }} failed{{/if}}</div>
+  <div class="card"><strong class="figure">{{ campaign.unsubscribed }}</strong> unsubscribed</div>
+</div>
+<p class="muted">Status: {{ campaign.status }}{{#if campaign.finished_at }} · finished {{ campaign.finished_at }}{{/if}}</p>
+{{#if campaign.draft }}
+<form method="post" action="{{ base }}/campaigns/{{ campaign.id }}/save" class="form">
+  <label>Name (for you) <input name="name" value="{{ campaign.name }}" maxlength="200" required></label>
+  <label>Subject <input name="subject" value="{{ campaign.subject }}" maxlength="300" required></label>
+  <label>Text <textarea name="text_body" rows="12" required>{{ campaign.text_body }}</textarea></label>
+  <label>HTML (optional) <textarea name="html_body" rows="6">{{ campaign.html_body }}</textarea></label>
+  <label>Only customers tagged <input name="audience_tag" value="{{ campaign.audience_tag }}" maxlength="100"></label>
+  <button class="button">Save</button>
+</form>
+<form method="post" action="{{ base }}/campaigns/{{ campaign.id }}/test" class="form">
+  <label>Send a test to <input type="email" name="email" required></label>
+  <button class="button">Send test</button>
+</form>
+<form method="post" action="{{ base }}/campaigns/{{ campaign.id }}/send" hx-confirm="Send this campaign to {{ campaign.recipients }} customers now?">
+  <button class="button">Send to {{ campaign.recipients }} customers</button>
+</form>
+{{else}}
+<section class="panel"><h2>{{ campaign.subject }}</h2><pre>{{ campaign.text_body }}</pre></section>
+{{/if}}
+{{#if campaign.sending }}<form method="post" action="{{ base }}/campaigns/{{ campaign.id }}/cancel"><button class="button">Stop sending</button></form>
+{{else}}<form method="post" action="{{ base }}/campaigns/{{ campaign.id }}/delete" class="danger" hx-confirm="Delete this campaign?"><button class="link">Delete</button></form>{{/if}}

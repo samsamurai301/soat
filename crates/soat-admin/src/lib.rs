@@ -35,6 +35,7 @@ mod apps;
 mod assistant;
 mod blog;
 mod builder;
+mod campaigns;
 mod collections;
 mod content;
 mod customers;
@@ -183,6 +184,12 @@ impl Module for Admin {
         ))
         .mount((reviews::list, reviews::act))
         .mount((analytics::page,))
+        .mount((
+            campaigns::list,
+            campaigns::create,
+            campaigns::edit_page,
+            campaigns::act,
+        ))
         .mount((
             customers::adjust_points,
             giftcards::list,

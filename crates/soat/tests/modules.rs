@@ -40,6 +40,8 @@ fn module_list_is_valid_and_ordered() {
     expected.push("loyalty");
     #[cfg(feature = "analytics")]
     expected.push("analytics");
+    #[cfg(feature = "marketing")]
+    expected.push("marketing");
     expected.push("storefront");
     #[cfg(feature = "shopify-sync")]
     expected.push("import");
