@@ -91,6 +91,7 @@ marketplaces = ["dep:soat-marketplaces"]
 privacy = ["dep:soat-compliance", "soat-storefront/privacy"]
 
 [dev-dependencies]
+flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 soat-testing.workspace = true
 serde = { workspace = true }

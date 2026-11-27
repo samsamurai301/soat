@@ -81,7 +81,8 @@
     <tbody>{{#each invoices }}<tr><td>{{ number }} <span class="muted">{{ kind }}</span></td><td>{{ issued }}</td><td class="n">{{ total }}</td><td>
       <a href="{{ base }}/invoices/{{ id }}/document" target="_blank" rel="noopener">Print</a> ·
       <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=xrechnung">XRechnung</a> ·
-      <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=cii">ZUGFeRD / Factur-X XML</a> ·
+      <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=pdf">ZUGFeRD / Factur-X PDF</a> ·
+      <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=cii">its XML</a> ·
       <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=peppol">Peppol</a>
       {{#if problems }}<ul class="muted">{{#each problems }}<li>XRechnung {{ rule }}: {{ message }}</li>{{/each}}</ul>{{/if}}
     </td></tr>{{/each}}</tbody>

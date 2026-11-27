@@ -592,7 +592,10 @@ async fn e_invoices_in_xrechnung_zugferd_and_peppol() {
     let cii = s.staff("GET", &check("zugferd"), Value::Null, 200).await;
     assert_eq!(cii["format"], "cii");
     assert_eq!(cii["ready"], true, "{cii}");
-    s.staff("GET", &check("pdf"), Value::Null, 422).await;
+    // The PDF holds the CII XML, so it is checked as that.
+    let pdf = s.staff("GET", &check("pdf"), Value::Null, 200).await;
+    assert_eq!(pdf["format"], "cii");
+    s.staff("GET", &check("docx"), Value::Null, 422).await;
 
     s.staff(
         "PUT",
@@ -756,4 +759,100 @@ async fn e_invoices_in_xrechnung_zugferd_and_peppol() {
     let (status, html) = admin(format!("/admin/acme/invoices/{inv2_id}/document")).await;
     assert_eq!(status, 200);
     assert!(html.contains("Invoice "));
+}
+
+#[tokio::test]
+async fn zugferd_pdfs_carry_the_xml_inside() {
+    use std::io::Read as _;
+
+    let s = shop().await;
+    s.settings("paid").await;
+    let (order, token) = s.order(berlin(), None).await;
+    let id = order["id"].as_str().unwrap();
+    s.pay(id).await;
+    let inv = s.issued(id, 1).await[0].clone();
+    let inv_id = inv["id"].as_str().unwrap();
+    let number = inv["number"].as_str().unwrap();
+
+    let res = s
+        .client
+        .get(&format!("/api/invoices/{inv_id}/e-invoice?format=pdf"))
+        .header("x-soat-tenant", "acme")
+        .bearer(&s.admin)
+        .send()
+        .await;
+    res.assert_status(200);
+    assert_eq!(res.header("content-type"), Some("application/pdf"));
+    assert_eq!(
+        res.header("content-disposition"),
+        Some(format!("attachment; filename=\"{number}.pdf\"").as_str())
+    );
+    let pdf = res.bytes().to_vec();
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(text.starts_with("%PDF-1.7"));
+    for part in [
+        "<pdfaid:part>3</pdfaid:part>",
+        "/AFRelationship /Alternative",
+        "/EmbeddedFiles << /Names [(factur-x.xml)",
+        "<fx:ConformanceLevel>EN 16931</fx:ConformanceLevel>",
+    ] {
+        assert!(text.contains(part), "{part}");
+    }
+
+    // The attached XML is the invoice's CII, byte for byte.
+    let (_, _, _, cii) = fetch(
+        &s,
+        &format!("/api/invoices/{inv_id}/e-invoice?format=cii"),
+        &[],
+    )
+    .await;
+    // Byte offsets: the lossy text's offsets drift past binary streams.
+    let find = |needle: &[u8], from: usize| {
+        pdf[from..]
+            .windows(needle.len())
+            .position(|w| w == needle)
+            .map(|i| from + i)
+    };
+    let at = find(b"/Type /EmbeddedFile", 0).expect("an embedded file");
+    let start = find(b"stream\n", at).unwrap() + b"stream\n".len();
+    let end = find(b"\nendstream", start).unwrap();
+    let mut xml = String::new();
+    flate2::read::ZlibDecoder::new(&pdf[start..end])
+        .read_to_string(&mut xml)
+        .unwrap();
+    assert_eq!(xml, cii);
+
+    // The buyer gets it with the order's token; staff through the admin.
+    let mine = format!("/api/storefront/orders/{id}/invoices/{inv_id}/e-invoice?format=pdf");
+    let (status, content_type, ..) = fetch(&s, &mine, &[("x-soat-order-token", &token)]).await;
+    assert_eq!((status, content_type.as_str()), (200, "application/pdf"));
+    let res = s
+        .client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let staff = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let res = s
+        .client
+        .get(&format!(
+            "/admin/acme/invoices/{inv_id}/e-invoice?format=pdf"
+        ))
+        .header("cookie", &staff)
+        .send()
+        .await;
+    res.assert_status(200);
+    assert_eq!(res.header("content-type"), Some("application/pdf"));
+    assert_eq!(res.bytes().to_vec(), pdf);
+    let order_page = s
+        .client
+        .get(&format!("/admin/acme/orders/{id}"))
+        .header("cookie", &staff)
+        .send()
+        .await
+        .text();
+    assert!(
+        order_page.contains("e-invoice?format=pdf"),
+        "the order links it"
+    );
 }
