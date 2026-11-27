@@ -100,6 +100,22 @@ impl Module for Invoices {
     }
 }
 
+/// An issued invoice or credit note and the e-invoice document it makes
+/// (see `soat_core::einvoice`), for modules that send it on, such as over
+/// Peppol; `None` for an id the shop does not have.
+pub async fn e_invoice(
+    conn: &mut PgConnection,
+    scope: &impl Scope,
+    id: &str,
+    buyer_reference: Option<&str>,
+) -> Result<Option<(Invoice, soat_core::einvoice::Document)>> {
+    let Some(inv) = get(conn, scope, id).await? else {
+        return Ok(None);
+    };
+    let doc = einvoice::document(conn, scope, &inv, buyer_reference).await?;
+    Ok(Some((inv, doc)))
+}
+
 /// Who issues the shop's invoices, and how.
 #[model]
 #[derive(sqlx::FromRow)]

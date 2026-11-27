@@ -2265,6 +2265,7 @@ dependencies = [
  "soat-orders",
  "soat-payments",
  "soat-paypal",
+ "soat-peppol",
  "soat-plugin-host",
  "soat-pos",
  "soat-pricing",
@@ -2786,6 +2787,22 @@ dependencies = [
  "soat-payments",
  "soat-tenancy",
  "tokio",
+ "zapline",
+]
+
+[[package]]
+name = "soat-peppol"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "soat-core",
+ "soat-http",
+ "soat-invoices",
+ "soat-module",
+ "soat-tenancy",
+ "soat-webhooks",
+ "sqlx",
  "zapline",
 ]
 

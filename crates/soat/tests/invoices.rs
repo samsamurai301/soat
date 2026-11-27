@@ -856,3 +856,189 @@ async fn zugferd_pdfs_carry_the_xml_inside() {
         "the order links it"
     );
 }
+
+#[cfg(feature = "peppol")]
+#[tokio::test]
+async fn invoices_go_over_peppol_through_the_shops_access_point() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    const SECRET: &str = "the access point bridge's secret";
+    const SENDER: &str = "0208:0123456749";
+    const BUYER: &str = "0208:0987654394";
+    let down = Arc::new(AtomicBool::new(true));
+    let flag = down.clone();
+    let (base, log) = soat_testing::fake_api(move |r| {
+        let signed = r
+            .header("soat-signature")
+            .is_some_and(|s| soat_webhooks::verify(SECRET, s, r.body.as_bytes()));
+        if !signed {
+            return (401, json!({ "error": "unsigned" }));
+        }
+        if flag.load(Ordering::SeqCst) {
+            return (503, json!({ "error": "down for maintenance" }));
+        }
+        (202, json!({ "id": "ap-msg-1" }))
+    })
+    .await;
+
+    let s = shop().await;
+    s.settings("paid").await;
+    let (order, _) = s.order(berlin(), None).await;
+    let id = order["id"].as_str().unwrap();
+    s.pay(id).await;
+    let inv = s.issued(id, 1).await[0].clone();
+    let inv_id = inv["id"].as_str().unwrap();
+    let send = format!("/api/invoices/{inv_id}/peppol");
+
+    // Nothing goes out before the shop chooses an access point.
+    let e = s
+        .staff("POST", &send, json!({ "receiver_id": BUYER }), 409)
+        .await;
+    assert_eq!(e["code"], "no_access_point");
+    s.staff("GET", "/api/peppol/access-point", Value::Null, 404)
+        .await;
+    let kinds = s
+        .staff("GET", "/api/peppol/access-points", Value::Null, 200)
+        .await;
+    assert_eq!(kinds[0]["name"], "http");
+    let url = format!("{base}/send");
+    for (sender, code) in [
+        ("0208:0123456789", "invalid_peppol_id"),
+        ("DE123", "invalid_peppol_id"),
+    ] {
+        let e = s
+            .staff(
+                "PUT",
+                "/api/peppol/access-point",
+                json!({ "provider": "http", "sender_id": sender,
+                        "settings": { "url": url }, "credentials": { "secret": SECRET } }),
+                422,
+            )
+            .await;
+        assert_eq!(e["code"], code, "{sender}");
+    }
+    let ap = s
+        .staff(
+            "PUT",
+            "/api/peppol/access-point",
+            json!({ "provider": "http", "sender_id": SENDER,
+                    "settings": { "url": url }, "credentials": { "secret": SECRET } }),
+            200,
+        )
+        .await;
+    assert_eq!(ap["sender_id"], SENDER);
+    assert!(!ap.to_string().contains(SECRET));
+
+    // A bad id is refused before anything is sent.
+    let e = s
+        .staff("POST", &send, json!({ "receiver_id": "0208:1" }), 422)
+        .await;
+    assert_eq!(e["code"], "invalid_peppol_id");
+    assert!(log.lock().unwrap().is_empty());
+
+    // The access point is down: the try is kept, with why.
+    let e = s
+        .staff("POST", &send, json!({ "receiver_id": BUYER }), 502)
+        .await;
+    assert_eq!(e["code"], "access_point_failed");
+    let tries = s.staff("GET", &send, Value::Null, 200).await;
+    assert_eq!(tries.as_array().unwrap().len(), 1);
+    assert_eq!(tries[0]["status"], "failed");
+    assert!(tries[0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("down for maintenance"));
+
+    // Up again: it goes, as Peppol BIS with both Peppol ids.
+    down.store(false, Ordering::SeqCst);
+    let sent = s
+        .staff("POST", &send, json!({ "receiver_id": BUYER }), 201)
+        .await;
+    assert_eq!(sent["status"], "sent");
+    assert_eq!(sent["reference"], "ap-msg-1");
+    assert_eq!(sent["receiver_id"], BUYER);
+    let body = log.lock().unwrap().last().unwrap().json();
+    assert_eq!(body["sender"], "iso6523-actorid-upis::0208:0123456749");
+    assert_eq!(body["receiver"], "iso6523-actorid-upis::0208:0987654394");
+    assert_eq!(body["number"], inv["number"]);
+    assert!(body["document_type"].as_str().unwrap().starts_with(
+        "busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##"
+    ));
+    assert_eq!(
+        body["process"],
+        "cenbii-procid-ubl::urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
+    );
+    let xml = body["document"].as_str().unwrap();
+    assert!(xml.contains("<cbc:EndpointID schemeID=\"0208\">0123456749</cbc:EndpointID>"));
+    assert!(xml.contains("<cbc:EndpointID schemeID=\"0208\">0987654394</cbc:EndpointID>"));
+
+    // Once per buyer; the tries are listed newest first.
+    let e = s
+        .staff("POST", &send, json!({ "receiver_id": BUYER }), 409)
+        .await;
+    assert_eq!(e["code"], "already_sent");
+    let tries = s.staff("GET", &send, Value::Null, 200).await;
+    let statuses: Vec<&str> = tries
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["status"].as_str().unwrap())
+        .collect();
+    assert_eq!(statuses, ["sent", "failed"]);
+    let events = s
+        .staff(
+            "GET",
+            "/api/events?kind=invoice.peppol_sent",
+            Value::Null,
+            200,
+        )
+        .await;
+    assert_eq!(events["items"].as_array().unwrap().len(), 1);
+    assert!(!events.to_string().contains(SECRET));
+
+    // Another shop sees neither the invoice nor its tries.
+    let (other, _) = call(
+        &s.client,
+        "other",
+        "GET",
+        &send,
+        Some(&s.admin),
+        &[],
+        Value::Null,
+        404,
+    )
+    .await;
+    assert!(other.to_string().len() < 200);
+    call(
+        &s.client,
+        "other",
+        "POST",
+        &send,
+        Some(&s.admin),
+        &[],
+        json!({ "receiver_id": BUYER }),
+        404,
+    )
+    .await;
+
+    // The admin's order page lists the tries and sends.
+    let res = s
+        .client
+        .post("/admin/login")
+        .form(&json!({ "email": common::ADMIN_EMAIL, "password": common::ADMIN_PASSWORD }))
+        .send()
+        .await;
+    let staff = format!("soat_admin={}", res.cookie("soat_admin").unwrap().value());
+    let page = s
+        .client
+        .get(&format!("/admin/acme/orders/{id}"))
+        .header("cookie", &staff)
+        .send()
+        .await
+        .assert_status(200)
+        .text();
+    assert!(page.contains("Send over Peppol"), "{page}");
+    assert!(page.contains("sent (ap-msg-1)"));
+    assert!(page.contains("failed: "));
+}

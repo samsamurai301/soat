@@ -273,6 +273,8 @@ fn shop_modules(settings: Settings, events: Events) -> Modules {
     let modules = modules.with(soat_channels::Channels);
     #[cfg(feature = "pos")]
     let modules = modules.with(soat_pos::Pos);
+    #[cfg(feature = "peppol")]
+    let modules = modules.with(soat_peppol::Peppol::new().with_sealer(settings.sealer.clone()));
     #[cfg(feature = "marketplaces")]
     let modules = modules.with(soat_marketplaces::Marketplaces);
     #[cfg(feature = "privacy")]

@@ -101,6 +101,7 @@ fn party(p: &Party) -> einvoice::Party {
         vat_number: p.vat_number.clone(),
         tax_number: p.tax_number.clone(),
         email: p.email.clone(),
+        endpoint: None,
         phone: Some(a.phone).filter(|s| !s.trim().is_empty()),
         contact: if person == p.name.trim() {
             String::new()

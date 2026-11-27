@@ -29,6 +29,7 @@ pub mod options;
 pub mod order;
 pub mod payment;
 pub mod pdf;
+pub mod peppol;
 mod permission;
 pub mod privacy;
 pub mod rules;

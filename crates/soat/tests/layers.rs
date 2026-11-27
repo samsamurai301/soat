@@ -48,6 +48,7 @@ const RANKS: &[(&str, u32)] = &[
     ("soat-sendcloud", 22),
     ("soat-checkout", 23),
     ("soat-invoices", 23),
+    ("soat-peppol", 24),
     ("soat-notify", 24),
     // Content.
     ("soat-cms", 30),
