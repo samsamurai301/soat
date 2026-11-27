@@ -11,11 +11,14 @@
 //! (holding the order's token) can open a printable document of each.
 
 mod document;
+mod einvoice;
 
 use std::sync::Arc;
 
 use soat_core::invoice::{breakdown, credit_split, number, total, Amounts, RateTotal};
 use soat_core::{id_kind, Permission};
+
+pub use einvoice::{EInvoiceCheck, EInvoiceProblem, EInvoiceQuery};
 use soat_module::{Event, HandlerFuture, Module, Subscriber};
 use soat_orders::{Order, OrderToken, PostalAddress};
 use soat_tenancy::{Scope, Tenant, TenantListing, TenantTx};
@@ -90,6 +93,9 @@ impl Module for Invoices {
             issue_credit_note,
             buyer_invoices,
             buyer_document,
+            invoice_xml,
+            check_invoice_xml,
+            buyer_invoice_xml,
         ))
     }
 }
@@ -825,6 +831,76 @@ async fn buyer_document(
     let page = document::page(&mut tx, &holder.shop, &inv).await?;
     tx.commit().await?;
     Ok(Html(page))
+}
+
+/// The invoice as an electronic invoice to download (`invoices:read`):
+/// `?format=xrechnung` (default; XRechnung 3.0, CII), `cii` (the XML of
+/// Factur-X / ZUGFeRD, profile EN 16931) or `peppol` (Peppol BIS Billing
+/// 3.0, UBL). `?buyer_reference=` sets BT-10, such as a Leitweg-ID (default:
+/// the order number). See `/e-invoice/check` for what a receiver would
+/// reject.
+#[get("/api/invoices/{id}/e-invoice", tag = "invoices")]
+async fn invoice_xml(
+    db: Db,
+    tenant: Tenant,
+    Path(id): Path<String>,
+    Valid(Query(q)): Valid<Query<EInvoiceQuery>>,
+) -> Result<Response> {
+    let format = q.format()?;
+    let mut tx = tenant.begin_for(&db, &INVOICES_READ).await?;
+    let inv = get(&mut tx, &tenant, &id)
+        .await?
+        .ok_or_else(Error::not_found)?;
+    let doc = einvoice::document(&mut tx, &tenant, &inv, q.buyer_reference.as_deref()).await?;
+    tx.commit().await?;
+    Ok(einvoice::download(&doc, format))
+}
+
+/// What a receiver's validator would reject in the invoice as an
+/// e-invoice in `?format=`, by rule (EN 16931, XRechnung, Peppol), such as
+/// a missing seller phone for XRechnung (`invoices:read`).
+#[get("/api/invoices/{id}/e-invoice/check", tag = "invoices")]
+async fn check_invoice_xml(
+    db: Db,
+    tenant: Tenant,
+    Path(id): Path<String>,
+    Valid(Query(q)): Valid<Query<EInvoiceQuery>>,
+) -> Result<Json<EInvoiceCheck>> {
+    let format = q.format()?;
+    let mut tx = tenant.begin_for(&db, &INVOICES_READ).await?;
+    let inv = get(&mut tx, &tenant, &id)
+        .await?
+        .ok_or_else(Error::not_found)?;
+    let doc = einvoice::document(&mut tx, &tenant, &inv, q.buyer_reference.as_deref()).await?;
+    tx.commit().await?;
+    Ok(Json(EInvoiceCheck::new(
+        format,
+        soat_core::einvoice::check(&doc, format),
+    )))
+}
+
+/// One of an order's invoices as an electronic invoice, for the buyer
+/// holding the order's token; `?format=` and `?buyer_reference=` as for
+/// staff.
+#[get(
+    "/api/storefront/orders/{id}/invoices/{invoice_id}/e-invoice",
+    tag = "storefront"
+)]
+async fn buyer_invoice_xml(
+    db: Db,
+    holder: OrderToken,
+    Path((id, invoice_id)): Path<(String, String)>,
+    Valid(Query(q)): Valid<Query<EInvoiceQuery>>,
+) -> Result<Response> {
+    let format = q.format()?;
+    let (mut tx, id) = holder.open(&db, &id).await?;
+    let inv = get(&mut tx, &holder.shop, &invoice_id)
+        .await?
+        .filter(|i| i.order_id == id)
+        .ok_or_else(Error::not_found)?;
+    let doc = einvoice::document(&mut tx, &holder.shop, &inv, q.buyer_reference.as_deref()).await?;
+    tx.commit().await?;
+    Ok(einvoice::download(&doc, format))
 }
 
 /// The shop an event belongs to; the system acts.

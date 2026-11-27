@@ -73,6 +73,22 @@
   {{/if}}
 </section>
 
+{{#if invoices }}
+<section class="panel">
+  <h2>Invoices</h2>
+  <table>
+    <thead><tr><th>Number</th><th>Issued</th><th class="n">Total</th><th>Download</th></tr></thead>
+    <tbody>{{#each invoices }}<tr><td>{{ number }} <span class="muted">{{ kind }}</span></td><td>{{ issued }}</td><td class="n">{{ total }}</td><td>
+      <a href="{{ base }}/invoices/{{ id }}/document" target="_blank" rel="noopener">Print</a> ·
+      <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=xrechnung">XRechnung</a> ·
+      <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=cii">ZUGFeRD / Factur-X XML</a> ·
+      <a href="{{ base }}/invoices/{{ id }}/e-invoice?format=peppol">Peppol</a>
+      {{#if problems }}<ul class="muted">{{#each problems }}<li>XRechnung {{ rule }}: {{ message }}</li>{{/each}}</ul>{{/if}}
+    </td></tr>{{/each}}</tbody>
+  </table>
+</section>
+{{/if}}
+
 {{#if order.can_cancel }}
 <form method="post" action="{{ base }}/orders/{{ order.id }}/cancel" class="danger inline" hx-confirm="Cancel this order? Payments are not refunded by this.">
   <label>Reason <input name="reason" maxlength="500"></label>

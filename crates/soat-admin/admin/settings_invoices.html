@@ -14,7 +14,9 @@
     <label>VAT number <input name="vat_number" value="{{ invoice.vat_number }}"></label>
     <label>Tax number <input name="tax_number" value="{{ invoice.tax_number }}"></label>
     <label>Email <input type="email" name="email" value="{{ invoice.email }}"></label>
+    <label>Phone <input type="tel" name="phone" value="{{ invoice.address.phone }}" maxlength="40"></label>
   </div>
+  <p class="muted">XRechnung needs the email and the phone; an IBAN in the bank details lets e-invoices carry it.</p>
   <label>Bank details <textarea name="bank_details" rows="2">{{ invoice.bank_details }}</textarea></label>
   <label>Footer <span class="muted">(e.g. the company register entry)</span> <textarea name="footer" rows="2">{{ invoice.footer }}</textarea></label>
   <div class="row">
