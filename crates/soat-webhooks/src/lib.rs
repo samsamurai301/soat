@@ -24,9 +24,9 @@ use zapline::prelude::App;
 use zapline::tasks::Schedule;
 use zapline::Resources;
 
-pub use send::{backlog, send_due, send_resources};
+pub use send::{backlog, innermost, send_due, send_resources};
 pub use sign::{sign, verify};
-pub use target::{check_target, is_public, TargetPolicy};
+pub use target::{check_target, is_public, PublicResolver, TargetPolicy};
 
 id_kind!(EndpointId, EndpointKind, "whk");
 id_kind!(DeliveryId, DeliveryKind, "whd");
